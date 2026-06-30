@@ -10,10 +10,10 @@
     "lint": "eslint ."
   },
   "dependencies": {
+    "@repo/config-env": "*",
     "@repo/database": "*",
     "@repo/logger": "*",
-    "@repo/queue": "*",
-    "dotenv": "^16.4.7"
+    "@repo/queue": "*"
   },
   "devDependencies": {
     "@repo/eslint-config": "*",

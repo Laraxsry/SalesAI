@@ -27,7 +27,9 @@ export function chunk(arr, size) {
 
 /** Removes undefined/null values from an object (shallow). */
 export function compact(obj) {
-    return Object.fromEntries(Object.entries(obj).filter(([, v]) => v != null));
+    return Object.fromEntries(
+        Object.entries(obj).filter(([, v]) => v !== null && v !== undefined)
+    );
 }
 
 /** Simple retry with exponential backoff. */

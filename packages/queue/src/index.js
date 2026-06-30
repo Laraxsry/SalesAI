@@ -2,8 +2,12 @@ import { Queue, Worker, QueueEvents } from 'bullmq';
 import IORedis from 'ioredis';
 
 const connection = new IORedis(process.env.REDIS_URL || 'redis://localhost:6379', {
-    maxRetriesPerRequest: null
+    maxRetriesPerRequest: null,
+    enableReadyCheck: false
 });
+// Avoid "Unhandled error event" crashing the worker process when Redis is down;
+// BullMQ keeps retrying and recovers once Redis is reachable.
+connection.on('error', () => {});
 
 /** Canonical queue names used across the platform. */
 export const QUEUES = Object.freeze({

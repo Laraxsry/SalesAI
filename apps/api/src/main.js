@@ -1,4 +1,4 @@
-import 'dotenv/config';
+import '@repo/config-env/load';
 import http from 'node:http';
 import express from 'express';
 import cors from 'cors';

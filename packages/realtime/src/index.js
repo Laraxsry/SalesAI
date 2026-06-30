@@ -15,8 +15,15 @@ export function createRealtimeServer(httpServer, opts = {}) {
     });
 
     const url = process.env.REDIS_URL || 'redis://localhost:6379';
-    const pub = new IORedis(url);
+    // maxRetriesPerRequest:null keeps the process alive while Redis is briefly
+    // unavailable (e.g. before `npm run infra:up`) instead of throwing.
+    const redisOpts = { maxRetriesPerRequest: null, enableReadyCheck: false };
+    const pub = new IORedis(url, redisOpts);
     const sub = pub.duplicate();
+    // Without an 'error' listener ioredis throws "Unhandled error event" and
+    // can crash the server when Redis is down.
+    pub.on('error', () => {});
+    sub.on('error', () => {});
     io.adapter(createAdapter(pub, sub));
 
     return io;

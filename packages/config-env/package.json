@@ -4,12 +4,14 @@
   "type": "module",
   "main": "./src/index.js",
   "exports": {
-    ".": "./src/index.js"
+    ".": "./src/index.js",
+    "./load": "./src/load.js"
   },
   "scripts": {
     "lint": "eslint ."
   },
   "dependencies": {
+    "dotenv": "^16.4.7",
     "zod": "^3.24.1"
   },
   "devDependencies": {

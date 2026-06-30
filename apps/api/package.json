@@ -14,6 +14,7 @@
     "@repo/agent": "*",
     "@repo/auth": "*",
     "@repo/avatar": "*",
+    "@repo/config-env": "*",
     "@repo/contracts": "*",
     "@repo/database": "*",
     "@repo/livekit": "*",
@@ -25,7 +26,6 @@
     "@repo/utils": "*",
     "@repo/validation": "*",
     "cors": "^2.8.5",
-    "dotenv": "^16.4.7",
     "express": "^4.21.2",
     "helmet": "^8.0.0"
   },

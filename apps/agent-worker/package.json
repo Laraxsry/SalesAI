@@ -15,10 +15,10 @@
     "@livekit/agents-plugin-silero": "^1.4.11",
     "@repo/agent": "*",
     "@repo/avatar": "*",
+    "@repo/config-env": "*",
     "@repo/database": "*",
     "@repo/logger": "*",
-    "@repo/screen": "*",
-    "dotenv": "^16.4.7"
+    "@repo/screen": "*"
   },
   "devDependencies": {
     "@repo/eslint-config": "*",

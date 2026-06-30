@@ -5,17 +5,23 @@
   "description": "SalesAI - an AI sales representative platform (realtime voice + avatar + RAG + screen intelligence)",
   "type": "module",
   "scripts": {
-    "build": "turbo build",
-    "dev": "turbo dev",
-    "lint": "turbo lint",
-    "test": "turbo test",
-    "clean": "turbo clean",
+    "build": "npm run build --workspaces --if-present",
+    "dev": "concurrently -n api,console,visitor,ingest,general -c blue,green,magenta,yellow,cyan \"npm:dev:api\" \"npm:dev:console\" \"npm:dev:visitor\" \"npm:dev:ingest\" \"npm:dev:general\"",
+    "dev:api": "npm run dev -w @app/api",
+    "dev:console": "npm run dev -w @app/console",
+    "dev:visitor": "npm run dev -w @app/visitor",
+    "dev:ingest": "npm run dev -w @app/worker-ingestion",
+    "dev:general": "npm run dev -w @app/worker-general",
+    "dev:agent": "npm run dev -w @app/agent-worker",
+    "dev:mobile": "npm run start -w @app/mobile",
+    "lint": "npm run lint --workspaces --if-present",
+    "test": "npm run test --workspaces --if-present",
     "format": "prettier --write \"**/*.{js,jsx,ts,tsx,json,md}\"",
     "kill-ports": "node scripts/kill-ports.js",
     "infra:up": "docker compose -f infra/docker-compose.yaml up -d",
     "infra:down": "docker compose -f infra/docker-compose.yaml down",
     "db:indexes": "npm run db:indexes -w @repo/database",
-    "prepare": "husky"
+    "prepare": "husky || exit 0"
   },
   "lint-staged": {
     "*.{js,jsx,ts,tsx}": [
@@ -23,6 +29,7 @@
     ]
   },
   "devDependencies": {
+    "concurrently": "^10.0.3",
     "dotenv-cli": "^8.0.0",
     "eslint": "^9.17.0",
     "husky": "^9.1.7",

@@ -11,12 +11,12 @@
   },
   "dependencies": {
     "@repo/ai": "*",
+    "@repo/config-env": "*",
     "@repo/database": "*",
     "@repo/logger": "*",
     "@repo/queue": "*",
     "@repo/rag": "*",
-    "@repo/storage": "*",
-    "dotenv": "^16.4.7"
+    "@repo/storage": "*"
   },
   "devDependencies": {
     "@repo/eslint-config": "*",

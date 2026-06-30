@@ -1,4 +1,4 @@
-import 'dotenv/config';
+import '@repo/config-env/load';
 import { fileURLToPath } from 'node:url';
 import { WorkerOptions, cli, defineAgent, voice } from '@livekit/agents';
 import * as openai from '@livekit/agents-plugin-openai';

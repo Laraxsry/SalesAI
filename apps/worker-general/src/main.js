@@ -1,4 +1,4 @@
-import 'dotenv/config';
+import '@repo/config-env/load';
 import { connectDB, ShareLink, Session } from '@repo/database';
 import { createWorker, QUEUES } from '@repo/queue';
 import { Logger } from '@repo/logger';

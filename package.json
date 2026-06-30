@@ -1,0 +1,38 @@
+{
+  "name": "salesai-monorepo",
+  "private": true,
+  "version": "0.1.0",
+  "description": "SalesAI - an AI sales representative platform (realtime voice + avatar + RAG + screen intelligence)",
+  "type": "module",
+  "scripts": {
+    "build": "turbo build",
+    "dev": "turbo dev",
+    "lint": "turbo lint",
+    "test": "turbo test",
+    "clean": "turbo clean",
+    "format": "prettier --write \"**/*.{js,jsx,ts,tsx,json,md}\"",
+    "kill-ports": "node scripts/kill-ports.js",
+    "infra:up": "docker compose -f infra/docker-compose.yaml up -d",
+    "infra:down": "docker compose -f infra/docker-compose.yaml down",
+    "db:indexes": "npm run db:indexes -w @repo/database",
+    "prepare": "husky"
+  },
+  "lint-staged": {
+    "*.{js,jsx,ts,tsx}": [
+      "eslint --fix"
+    ]
+  },
+  "devDependencies": {
+    "dotenv-cli": "^8.0.0",
+    "eslint": "^9.17.0",
+    "husky": "^9.1.7",
+    "lint-staged": "^16.0.0",
+    "prettier": "^3.4.2",
+    "turbo": "^2.3.3"
+  },
+  "packageManager": "npm@10.0.0",
+  "workspaces": [
+    "apps/*",
+    "packages/*"
+  ]
+}

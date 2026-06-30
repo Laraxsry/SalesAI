@@ -1,0 +1,29 @@
+{
+  "name": "@app/visitor",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "vite --port 5174",
+    "build": "vite build",
+    "preview": "vite preview",
+    "lint": "eslint ."
+  },
+  "dependencies": {
+    "@livekit/components-react": "^2.9.21",
+    "@livekit/components-styles": "^1.2.0",
+    "livekit-client": "^2.20.0",
+    "react": "^19.0.0",
+    "react-dom": "^19.0.0",
+    "react-router-dom": "^7.1.1"
+  },
+  "devDependencies": {
+    "@repo/eslint-config": "*",
+    "@repo/tailwind-config": "*",
+    "@vitejs/plugin-react": "^4.3.4",
+    "@tailwindcss/vite": "^4.3.2",
+    "eslint": "^9.17.0",
+    "tailwindcss": "^4.3.2",
+    "vite": "^6.0.7"
+  }
+}

@@ -1,0 +1,10 @@
+@import 'tailwindcss';
+
+@theme {
+    --color-brand: #6d5efc;
+    --color-brand-dark: #4b3fd6;
+    --color-bg: #0b0b12;
+    --color-surface: #15151f;
+    --color-text: #f5f5fa;
+    --radius-card: 12px;
+}

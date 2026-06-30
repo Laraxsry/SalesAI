@@ -1,0 +1,27 @@
+{
+  "name": "@app/agent-worker",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "main": "src/agent.js",
+  "scripts": {
+    "dev": "node src/agent.js dev",
+    "start": "node src/agent.js start",
+    "lint": "eslint ."
+  },
+  "dependencies": {
+    "@livekit/agents": "^1.4.11",
+    "@livekit/agents-plugin-openai": "^1.4.11",
+    "@livekit/agents-plugin-silero": "^1.4.11",
+    "@repo/agent": "*",
+    "@repo/avatar": "*",
+    "@repo/database": "*",
+    "@repo/logger": "*",
+    "@repo/screen": "*",
+    "dotenv": "^16.4.7"
+  },
+  "devDependencies": {
+    "@repo/eslint-config": "*",
+    "eslint": "^9.17.0"
+  }
+}

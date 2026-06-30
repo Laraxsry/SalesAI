@@ -1,0 +1,25 @@
+{
+  "name": "@app/worker-ingestion",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "main": "src/main.js",
+  "scripts": {
+    "dev": "node --watch src/main.js",
+    "start": "node src/main.js",
+    "lint": "eslint ."
+  },
+  "dependencies": {
+    "@repo/ai": "*",
+    "@repo/database": "*",
+    "@repo/logger": "*",
+    "@repo/queue": "*",
+    "@repo/rag": "*",
+    "@repo/storage": "*",
+    "dotenv": "^16.4.7"
+  },
+  "devDependencies": {
+    "@repo/eslint-config": "*",
+    "eslint": "^9.17.0"
+  }
+}

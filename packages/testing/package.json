@@ -1,0 +1,13 @@
+{
+  "name": "@repo/testing",
+  "version": "0.0.0",
+  "type": "module",
+  "main": "./src/index.js",
+  "exports": {
+    ".": "./src/index.js",
+    "./vitest-preset": "./vitest-preset.js"
+  },
+  "dependencies": {
+    "vitest": "^2.1.8"
+  }
+}

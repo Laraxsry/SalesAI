@@ -1,0 +1,23 @@
+{
+  "name": "@repo/database",
+  "version": "0.0.0",
+  "type": "module",
+  "main": "./src/index.js",
+  "exports": {
+    ".": "./src/index.js",
+    "./models": "./src/models/index.js"
+  },
+  "scripts": {
+    "db:indexes": "node scripts/sync-indexes.js",
+    "lint": "eslint ."
+  },
+  "dependencies": {
+    "@repo/logger": "*",
+    "mongoose": "^9.7.3"
+  },
+  "devDependencies": {
+    "@repo/eslint-config": "*",
+    "dotenv": "^16.4.7",
+    "eslint": "^9.17.0"
+  }
+}

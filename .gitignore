@@ -1,0 +1,47 @@
+# dependencies
+node_modules
+.pnp
+.pnp.js
+
+# testing
+coverage
+.nyc_output
+
+# build outputs
+dist
+build
+.next/
+out/
+*.tsbuildinfo
+
+# turbo
+.turbo/
+
+# env files
+.env
+.env*.local
+.env.production
+.env.development
+.env.test
+
+# logs
+*.log
+npm-debug.log*
+
+# prisma
+packages/database/prisma/migrations/dev.db*
+
+# uploads / local artifacts
+apps/api/uploads/*
+.playwright/
+
+# OS / IDE
+.DS_Store
+Thumbs.db
+.idea
+*.swp
+*.swo
+
+# vercel / expo
+.vercel
+apps/mobile/.expo/

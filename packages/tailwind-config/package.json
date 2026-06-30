@@ -1,0 +1,13 @@
+{
+  "name": "@repo/tailwind-config",
+  "version": "0.0.0",
+  "type": "module",
+  "main": "./index.js",
+  "exports": {
+    ".": "./index.js",
+    "./css": "./src/index.css"
+  },
+  "dependencies": {
+    "tailwindcss": "^4.3.2"
+  }
+}

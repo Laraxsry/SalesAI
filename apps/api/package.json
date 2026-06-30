@@ -1,0 +1,36 @@
+{
+  "name": "@app/api",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "main": "src/main.js",
+  "scripts": {
+    "dev": "node --watch src/main.js",
+    "start": "node src/main.js",
+    "lint": "eslint ."
+  },
+  "dependencies": {
+    "@repo/access": "*",
+    "@repo/agent": "*",
+    "@repo/auth": "*",
+    "@repo/avatar": "*",
+    "@repo/contracts": "*",
+    "@repo/database": "*",
+    "@repo/livekit": "*",
+    "@repo/logger": "*",
+    "@repo/queue": "*",
+    "@repo/rag": "*",
+    "@repo/realtime": "*",
+    "@repo/storage": "*",
+    "@repo/utils": "*",
+    "@repo/validation": "*",
+    "cors": "^2.8.5",
+    "dotenv": "^16.4.7",
+    "express": "^4.21.2",
+    "helmet": "^8.0.0"
+  },
+  "devDependencies": {
+    "@repo/eslint-config": "*",
+    "eslint": "^9.17.0"
+  }
+}

@@ -1,0 +1,13 @@
+{
+  "expo": {
+    "name": "SalesAI",
+    "slug": "salesai",
+    "scheme": "salesai",
+    "version": "0.1.0",
+    "orientation": "portrait",
+    "userInterfaceStyle": "dark",
+    "plugins": ["expo-router"],
+    "ios": { "supportsTablet": true, "bundleIdentifier": "com.salesai.app" },
+    "android": { "package": "com.salesai.app" }
+  }
+}

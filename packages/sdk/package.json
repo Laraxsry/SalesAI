@@ -1,0 +1,16 @@
+{
+  "name": "@repo/sdk",
+  "version": "0.0.0",
+  "type": "module",
+  "main": "./src/index.js",
+  "exports": {
+    ".": "./src/index.js"
+  },
+  "scripts": {
+    "lint": "eslint ."
+  },
+  "devDependencies": {
+    "@repo/eslint-config": "*",
+    "eslint": "^9.17.0"
+  }
+}

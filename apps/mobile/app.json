@@ -7,7 +7,16 @@
     "orientation": "portrait",
     "userInterfaceStyle": "dark",
     "plugins": ["expo-router"],
-    "ios": { "supportsTablet": true, "bundleIdentifier": "com.salesai.app" },
-    "android": { "package": "com.salesai.app" }
+    "ios": {
+      "supportsTablet": true,
+      "bundleIdentifier": "com.salesai.app",
+      "infoPlist": {
+        "NSMicrophoneUsageDescription": "SalesAI uses your microphone so you can talk to your AI sales representative."
+      }
+    },
+    "android": {
+      "package": "com.salesai.app",
+      "permissions": ["android.permission.RECORD_AUDIO"]
+    }
   }
 }

@@ -25,6 +25,15 @@ async function main() {
     await KnowledgeChunk.createCollection().catch(() => {});
     const collection = KnowledgeChunk.collection;
 
+    const db = mongoose.connection.db;
+    const exists = await db
+        .listCollections({ name: collection.collectionName }, { nameOnly: true })
+        .hasNext();
+    if (!exists) {
+        await db.createCollection(collection.collectionName);
+        console.log(`Created collection ${collection.collectionName}`);
+    }
+
     const definition = {
         name: 'vector_index',
         type: 'vectorSearch',

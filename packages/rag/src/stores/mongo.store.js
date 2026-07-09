@@ -1,4 +1,5 @@
 import { KnowledgeChunk } from '@repo/database';
+import { Types } from 'mongoose';
 
 /**
  * Vector store backed by MongoDB Atlas Vector Search.
@@ -19,7 +20,8 @@ export class MongoVectorStore {
      * @returns {Promise<Array<{id:string, sourceId:string, text:string, score:number, metadata?:object}>>}
      */
     async query({ productId, embedding, topK = 8, modality }) {
-        const filter = { productId };
+        // $vectorSearch filter requires exact type matching — cast to ObjectId
+        const filter = { productId: new Types.ObjectId(productId) };
         if (modality) filter.modality = modality;
 
         const results = await KnowledgeChunk.aggregate([

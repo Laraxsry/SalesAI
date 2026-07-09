@@ -7,6 +7,7 @@ import { Logger } from '@repo/logger';
 import { connectDB } from '@repo/database';
 import { createRealtimeServer } from '@repo/realtime';
 import { registerRoutes } from './routes/index.js';
+import { errorHandler } from './middleware/error-handler.js';
 
 const PORT = Number(process.env.API_PORT || 5001);
 
@@ -20,6 +21,9 @@ async function main() {
 
     app.get('/health', (_req, res) => res.json({ ok: true, service: 'api' }));
     registerRoutes(app);
+
+    // Global error handler — tüm yakalanmamış hataları yakalar
+    app.use(errorHandler);
 
     const server = http.createServer(app);
     const io = createRealtimeServer(server);

@@ -4,8 +4,38 @@ import { KnowledgeSourceInput } from '@repo/contracts';
 import { KnowledgeSource } from '@repo/database';
 import { enqueue, QUEUES } from '@repo/queue';
 import { requireAuth } from '@repo/auth';
+import { presignUpload } from '@repo/storage';
+import { shortId } from '@repo/utils';
 
 export const knowledgeRouter = Router();
+
+/**
+ * POST /knowledge/upload-url
+ *
+ * İstemcinin MinIO/S3'ye doğrudan dosya yükleyebilmesi için
+ * geçici bir yükleme linki (presigned URL) oluşturur.
+ *
+ * Body: { "filename": "rapor.pdf", "contentType": "application/pdf" }
+ */
+knowledgeRouter.post('/upload-url', requireAuth, async (req, res, next) => {
+    try {
+        const { filename, contentType } = req.body;
+        if (!filename || !contentType) {
+            return res.status(400).json({ error: 'filename and contentType are required' });
+        }
+
+        // Benzersiz bir dosya anahtarı oluştur (örneğin: uploads/user123/rapor-abc123.pdf)
+        const ext = filename.split('.').pop();
+        const fileKey = `uploads/${req.user.sub}/${shortId(8)}.${ext}`;
+
+        // 15 dakikalık yükleme linki oluştur
+        const url = await presignUpload(fileKey, contentType, 900);
+
+        res.json({ url, fileKey });
+    } catch (err) {
+        next(err);
+    }
+});
 
 /**
  * Seller adds a knowledge source (text/document/image/video/url/api).

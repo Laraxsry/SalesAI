@@ -16,7 +16,9 @@
     "@repo/logger": "*",
     "@repo/queue": "*",
     "@repo/rag": "*",
-    "@repo/storage": "*"
+    "@repo/storage": "*",
+    "fluent-ffmpeg": "^2.1.3",
+    "pdf-parse": "^2.4.5"
   },
   "devDependencies": {
     "@repo/eslint-config": "*",

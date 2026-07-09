@@ -39,9 +39,12 @@ apps/api/uploads/*
 .DS_Store
 Thumbs.db
 .idea
+.vscode/settings.json
+.qodo/
 *.swp
 *.swo
 
 # vercel / expo
 .vercel
 apps/mobile/.expo/
+

@@ -21,9 +21,15 @@ async function main() {
     );
 
     worker.on('completed', (job) => Logger.info('ingestion completed', { id: job.id }));
-    worker.on('failed', (job, err) =>
-        Logger.error('ingestion failed', { id: job?.id, error: err })
-    );
+    worker.on('failed', (job, err) => {
+        Logger.error('ingestion failed', {
+            id: job?.id,
+            name: job?.name,
+            data: job?.data,
+            message: err?.message,
+            stack: err?.stack
+        });
+    });
 
     Logger.info('worker-ingestion ready');
 }

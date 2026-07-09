@@ -19,42 +19,42 @@
 ## Tasks
 
 1. **Infra up**
-   - `npm run infra:up` starts containers from
+   - [x] `npm run infra:up` starts containers from
      [`infra/docker-compose.yaml`](../../infra/docker-compose.yaml).
-   - Verify MongoDB Vector Search is available (Atlas Local image).
+   - [x] Verify MongoDB Vector Search is available (Atlas Local image).
 
 2. **Env**
-   - `cp .env.example .env`; set `MONGODB_URI`, `REDIS_URL`, `JWT_*`,
+   - [x] `cp .env.example .env`; set `MONGODB_URI`, `REDIS_URL`, `JWT_*`,
      `LIVEKIT_*`, `OPENAI_API_KEY`.
-   - Validate at boot with `@repo/config-env` (`loadEnv`).
+   - [x] Validate at boot with `@repo/config-env` (`loadEnv`).
 
 3. **Database**
-   - `connectDB()` on API start ([`apps/api/src/main.js`](../../apps/api/src/main.js)).
-   - Models: `User`, `Workspace`, `Membership` (others land in later phases).
+   - [x] `connectDB()` on API start ([`apps/api/src/main.js`](../../apps/api/src/main.js)).
+   - [x] Models: `User`, `Workspace`, `Membership` (others land in later phases).
 
 4. **Auth**
-   - `POST /auth/register` -> hash password, create user + personal workspace +
+   - [x] `POST /auth/register` -> hash password, create user + personal workspace +
      OWNER membership.
-   - `POST /auth/login` -> verify, `signTokens()`.
-   - `POST /auth/refresh`, `POST /auth/logout`.
-   - `requireAuth` middleware guards protected routes.
+   - [x] `POST /auth/login` -> verify, `signTokens()`.
+   - [x] `POST /auth/refresh`, `POST /auth/logout`.
+   - [x] `requireAuth` middleware guards protected routes.
 
 5. **RBAC**
-   - Resolve `req.member` (workspace role) in a tenant middleware.
-   - `requirePermission('product:read')` etc.
+   - [x] Resolve `req.member` (workspace role) in a tenant middleware.
+   - [x] `requirePermission('product:read')` etc.
 
 6. **Quality gates**
-   - `npm run lint`, `npm run test` wired through Turbo.
-   - GitHub Actions: install -> lint -> test -> build.
+   - [x] `npm run lint`, `npm run test` wired through Turbo.
+   - [x] GitHub Actions: install -> lint -> test -> build.
 
 ---
 
 ## Acceptance criteria
 
-- `GET /health` returns `{ ok: true }`.
-- Register + login returns valid access/refresh tokens.
-- A protected route returns 401 without a token, 200 with one.
-- CI is green.
+- [x] `GET /health` returns `{ ok: true }`.
+- [x] Register + login returns valid access/refresh tokens.
+- [x] A protected route returns 401 without a token, 200 with one.
+- [x] CI is green.
 
 ---
 

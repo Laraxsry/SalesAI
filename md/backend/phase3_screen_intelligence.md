@@ -19,40 +19,37 @@
 ## Tasks
 
 1. **Guided tour (mode A)**
-   - `GuidedTour.open({ startUrl })` launches a headless Chromium of the product.
-   - Tool handlers: `start_guided_tour`, `navigate_to`, `highlight`.
-   - Publish frames into LiveKit as a video track (screenshot loop or CDP
-     screencast) so the visitor sees the live UI alongside the avatar.
-   - Optional Browserbase + Stagehand backend for cloud browser + computer-use
-     ("go to billing and add a seat") driven by natural language.
-   - Authentication: support a seller-provided demo account / session for the
-     product so the tour shows real screens.
+   - [x] `GuidedTour.open({ startUrl })` launches a headless Chromium of the product.
+   - [x] Tool handlers: `start_guided_tour`, `navigate_to`, `highlight`.
+   - [ ] Publish frames into LiveKit as a video track (sadece screenshot alınıyor, LiveKit'e publish stublandı; gerçek `publishTrack()` implemente edilmemiş).
+   - [ ] Optional Browserbase + Stagehand backend (planlanmış, implemente edilmemiş).
+   - [ ] Authentication: demo account / session desteği yok.
 
 2. **Customer-shared screen (mode B)**
-   - Detect the visitor's screen-share track in the room.
-   - Sample ~1 frame/sec, encode as data URL, call `analyzeFrame()`.
-   - Expose as `read_customer_screen` tool; the agent decides when to look.
-   - Privacy: only sample while sharing; never persist frames by default.
+   - [x] Detect the visitor's screen-share track in the room (`trackSubscribed` event var).
+   - [ ] Sample ~1 frame/sec, encode as data URL (gerçek frame örneklemesi stublandı; sabit stub base64 döndürülüyor).
+   - [x] Expose as `read_customer_screen` tool; the agent decides when to look.
+   - [ ] Privacy: only sample while sharing; never persist frames (kural var ama gerçek sampling olmadığı için anlamsız).
 
 3. **Orchestration**
-   - The agent chooses the mode based on intent; `screenModes` gates what's
-     allowed per agent.
-   - Record screen actions in `messages.meta` for the transcript timeline.
+   - [ ] The agent chooses the mode based on intent; `screenModes` gates what's
+     allowed per agent. (`screenModes` kontrolü agent-worker'da uygulanmamış).
+   - [ ] Record screen actions in `messages.meta` for the transcript timeline. (mesaj meta’ya yazılmıyor).
 
 4. **Performance**
-   - Pool/limit concurrent tour browsers; reuse contexts; cap frame rate.
-   - Downscale frames before vision calls to control token cost.
+   - [ ] Pool/limit concurrent tour browsers; reuse contexts; cap frame rate. (pool mekanizması yok).
+   - [ ] Downscale frames before vision calls to control token cost. (downscaling yok).
 
 ---
 
 ## Acceptance criteria
 
-- Asking for a demo opens the product and the visitor sees navigation +
-  highlights synced with narration.
-- Sharing a screen lets the agent describe what's on it and suggest the next
-  action.
-- Both modes respect `agent.screenModes`.
-- Concurrency limits prevent runaway browser/vision cost.
+- [ ] Asking for a demo opens the product and the visitor sees navigation +
+  highlights synced with narration. (LiveKit video track publish eksik).
+- [ ] Sharing a screen lets the agent describe what's on it and suggest the next
+  action. (gerçek frame örneklemesi stub, gerçek bir analiz yapılamıyor).
+- [ ] Both modes respect `agent.screenModes`. (`screenModes` kontrolü yok).
+- [ ] Concurrency limits prevent runaway browser/vision cost. (limit yok).
 
 ---
 

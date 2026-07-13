@@ -1,7 +1,7 @@
 import { Router } from 'express';
 import { validate } from '@repo/validation';
 import { AgentConfigInput } from '@repo/contracts';
-import { Agent, ShareLink, Product } from '@repo/database';
+import { Agent, ShareLink, Product, Message } from '@repo/database';
 import { requireAuth } from '@repo/auth';
 import { shareToken } from '@repo/utils';
 import { retrieve } from '@repo/rag';
@@ -102,7 +102,26 @@ ${contextText || 'No specific context found.'}
             messages: messages
         });
 
-        // 3. Yanıtı dön
+        // 3. Konuşma turlarını DB'ye kaydet (fire-and-forget, hata non-fatal)
+        Message.insertMany([
+            {
+                agentId: agent._id,
+                channel: 'text',
+                role: 'user',
+                text: query,
+                at: new Date()
+            },
+            {
+                agentId: agent._id,
+                channel: 'text',
+                role: 'assistant',
+                text: response.text,
+                meta: { citations },
+                at: new Date()
+            }
+        ]).catch(err => console.warn('[agents] message persist failed:', err?.message));
+
+        // 4. Yanıtı dön
         res.json({
             role: 'assistant',
             content: response.text,

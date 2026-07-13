@@ -1,10 +1,23 @@
 import '@repo/config-env/load';
 import { connectDB, ShareLink, Session } from '@repo/database';
-import { createWorker, QUEUES } from '@repo/queue';
+import { createWorker, getQueue, QUEUES } from '@repo/queue';
 import { Logger } from '@repo/logger';
 
 async function main() {
     await connectDB();
+
+    const generalQueue = getQueue(QUEUES.GENERAL);
+
+    // Schedule repetitive maintenance jobs
+    await generalQueue.add('expire-links', {}, {
+        repeat: { pattern: '* * * * *' }, // every minute
+        jobId: 'cron-expire-links'
+    });
+    
+    await generalQueue.add('close-stale-sessions', {}, {
+        repeat: { pattern: '*/5 * * * *' }, // every 5 minutes
+        jobId: 'cron-close-stale-sessions'
+    });
 
     const worker = createWorker(QUEUES.GENERAL, async (job) => {
         switch (job.name) {

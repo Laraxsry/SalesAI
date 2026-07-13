@@ -12,6 +12,7 @@ const KnowledgeSourceSchema = new Schema(
         // raw text (type=text), storage key (document/image/video), or url (url/api)
         content: { type: String },
         fileKey: { type: String },
+        mimeType: { type: String }, // e.g. 'application/pdf', 'application/vnd.openxmlformats-officedocument.wordprocessingml.document'
         url: { type: String },
         status: {
             type: String,

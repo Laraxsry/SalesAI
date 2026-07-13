@@ -19,7 +19,9 @@
     "@repo/config-env": "*",
     "@repo/database": "*",
     "@repo/logger": "*",
-    "@repo/screen": "*"
+    "@repo/realtime": "*",
+    "@repo/screen": "*",
+    "sharp": "^0.34.5"
   },
   "devDependencies": {
     "@repo/eslint-config": "*",

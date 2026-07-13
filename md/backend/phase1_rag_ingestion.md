@@ -24,13 +24,18 @@
      `ingest-source` ([`routes/knowledge.js`](../../apps/api/src/routes/knowledge.js)).
    - [x] `POST /knowledge/upload-url` returns a presigned PUT (S3/MinIO) for
      binary sources; client uploads, then registers the source with `fileKey`.
+   - [x] `KnowledgeSource` model ve `KnowledgeSourceInput` contract'ına opsiyonel `mimeType` alanı eklendi;
+     client yüklediği dosyanın gerçek MIME tipini gönderir, worker uzantı yerine bunu kullanır.
+   - [x] MinIO bucket (`salesai-uploads`) API ayağa kalkarken `ensureBucket()` ile otomatik oluşturuluyor
+     (önceden bucket yoksa presigned URL çalışmıyordu).
 
 2. **Ingestion worker** ([`worker-ingestion`](../../apps/worker-ingestion))
    - Extraction by modality (see `handlers/ingest-source.js`):
      - [x] text: as-is; document: pdf-parse; image: `describeImage`;
        video: ffmpeg audio -> transcribe (Whisper); url: fetch + strip;
-     - [ ] mammoth (docx desteği yok, sadece pdf-parse var); keyframe descriptions eksik; api modality stub.
-   - [ ] Emits `ingestion:progress` / `ingestion:ready` over Socket.IO (Socket.IO emit yok).
+     - [x] mammoth (docx desteği eklendi); parser seçimi `mimeType` → uzantı önceliğiyle yapılıyor
+       (PDF yanlışlıkla .docx olarak yüklense bile doğru parser devreye girer).
+   - [x] Emits `ingestion:progress` / `ingestion:ready` over Socket.IO (Redis pub/sub üzerinden `publishEvent()` ile her aşamada emit ediliyor).
 
 3. **RAG core** ([`@repo/rag`](../../packages/rag))
    - [x] `chunkText()` overlapping chunks.
@@ -47,12 +52,12 @@
 5. **Grounded chat endpoint**
    - [x] `POST /agents/:id/chat` (text): retrieve -> assemble context -> `getLLM().complete()`
      -> return answer + citations.
-   - [ ] Store turns in `messages` (chat endpoint'te mesaj kaydetme yok, sadece agent-worker'da var).
+   - [x] Store turns in `messages` — her chat turunda `user` ve `assistant` mesajları `agentId` + `channel:'text'` ile kaydediliyor; citations `meta.citations`'da.
 
 6. **Quality upgrades**
-   - [ ] Hybrid search (dense + text/BM25) and cross-encoder rerank.
-   - [ ] Per-(product, normalized query) retrieval cache in Redis.
-   - [ ] Golden-set grounding eval.
+   - [x] Hybrid search (dense + text/BM25) and cross-encoder rerank — Atlas `text_index` eklendi, sonuçlar `@xenova/transformers` bge-reranker-base ile yeniden sıralanıyor.
+   - [x] Per-(product, normalized query) retrieval cache in Redis — `retrieve` fonksiyonunda `rag:cache:{productId}:{normalizedQuery}:{topK}` formatında 24 saatlik önbellek eklendi.
+   - [x] Golden-set grounding eval — `packages/rag/scripts/eval.js` scripti eklendi (faithfulness ve relevancy testleri yapıyor).
 
 ---
 
@@ -61,7 +66,7 @@
 - [x] Upload a PDF + a demo video + a URL; all reach `status: ready`.
 - [x] `POST /agents/:id/chat` answers using retrieved chunks and cites `sourceId`s.
 - [x] Switching `VECTOR_STORE=qdrant` works without code changes.
-- [ ] Ingestion failures set `status: failed` with an error and are retried (failed set ediyor ama retry mekanizması yok).
+- [x] Ingestion failures set `status: failed` with an error and are retried (BullMQ: `attempts:3`, `backoff: exponential 2s` — `packages/queue/src/index.js:33-35`).
 
 ---
 

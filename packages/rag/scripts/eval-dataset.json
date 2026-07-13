@@ -1,0 +1,14 @@
+[
+  {
+    "productId": "6a53976161f0043a4aec0642",
+    "question": "Ülgen Karar Belgesi'ne göre hedef maketlerin çekimi nasıl planlanmıştır?",
+    "expectedAnswer": "Hedef maketler yazdırılıp 5, 10 ve 15 metre ile ara mesafelerden fotoğraflanacaktır. Çekimler yarışma ortamına benzer koşullarda (kamera açısı, ışık, arka plan vb.) yapılarak yalnızca modelin domain adaptation (fine-tuning) işlemi için kullanılacaktır, mesafe ölçümü için kullanılmayacaktır.",
+    "contextHints": ["Domain Adaptation Katmanı", "fiziksel çekim", "5, 10 ve 15 metre"]
+  },
+  {
+    "productId": "6a53976161f0043a4aec0642",
+    "question": "Nesne tespit modeli seçiminde teorik eleme kriterleri nelerdir?",
+    "expectedAnswer": "Teorik elemede DETR ve transformer modelleri yüksek hesaplama maliyeti, SSD küçük nesne tespitindeki zayıflığı, Faster R-CNN ise edge cihazda gerçek zamanlı çalışamaması nedeniyle elenmiştir. Geriye en uygun olarak YOLO mimarisi (özellikle YOLO26) kalmıştır.",
+    "contextHints": ["DETR", "SSD", "Faster R-CNN", "YOLO"]
+  }
+]

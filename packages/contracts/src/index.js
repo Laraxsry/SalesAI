@@ -34,6 +34,7 @@ export const KnowledgeSourceInput = z.object({
     // text content OR a storage/external reference depending on type
     content: z.string().optional(),
     fileKey: z.string().optional(),
+    mimeType: z.string().optional(), // MIME type of the uploaded file (e.g. 'application/pdf')
     url: z.string().url().optional()
 });
 

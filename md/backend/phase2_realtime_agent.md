@@ -30,7 +30,7 @@
    - [x] `POST /sessions` resolves the share token, creates a `Session` + LiveKit
      room name, and returns `{ roomName, token, livekitUrl }`
      ([`routes/sessions.js`](../../apps/api/src/routes/sessions.js)).
-   - [ ] Enforce `active`, `expiresAt`, `maxSessions` (sadece `active` kontrol ediliyor; `expiresAt` ve `maxSessions` kontrolü yok).
+   - [x] Enforce `active`, `expiresAt`, `maxSessions` (Added validation in POST /sessions).
 
 3. **Agent worker** ([`agent-worker`](../../apps/agent-worker))
    - [x] `defineAgent` entry: `connectDB`, load `Session`->`Agent`->`Product`.
@@ -39,26 +39,27 @@
      interruption, tool calls.
    - [x] Attach avatar via `getAvatarProvider(agent.avatarProvider)`.
    - [x] Persist transcript turns to `messages`.
-   - [ ] Emit `session:transcript` over Socket.IO (emit yok).
+   - [x] Emit `session:transcript` over Socket.IO (emit eklendi).
 
 4. **Avatar providers** ([`@repo/avatar`](../../packages/avatar))
    - [x] Start with `voice-only` (always works) + `tavus` (server-rendered video).
    - [x] `simli`/`heygen`/`did` wired but gated by env keys.
 
 5. **Worker dispatch**
-   - [ ] Configure LiveKit to dispatch `agent-worker` on room creation (agent name)
-     so the brain joins automatically when a visitor connects. (LiveKit dispatch config'i kurulmamış).
+   - [x] Configure LiveKit to dispatch `agent-worker` on room creation (agent name)
+     so the brain joins automatically when a visitor connects. (`agentName: 'salesai-agent'`
+     in `WorkerOptions`; `dispatchAgent()` called in `POST /sessions`).
 
 6. **Resilience**
    - [x] Avatar attach failure -> fall back to voice-only (try/catch + warn var).
-   - [ ] Session timeouts + cleanup via `worker-general` (worker-general yok).
+   - [x] Session timeouts + cleanup via `worker-general` (zamanlı cron görevleri aktifleştirildi).
 
 ---
 
 ## Acceptance criteria
 
 - [x] Activating an agent returns a working `/v/:token` link.
-- [ ] Opening the link starts a session, the agent joins, and voice works two-way. (LiveKit dispatch yapılandırılmamış; agent otomatik join etmiyor).
+- [x] Opening the link starts a session, the agent joins, and voice works two-way. (`dispatchAgent()` routes agent-worker to room via `AgentDispatchClient`).
 - [ ] With `AVATAR_PROVIDER=tavus` (+ keys), a talking face video appears. (test edilmedi).
 - [x] Answers are grounded (agent calls `search_knowledge`).
 - [x] Transcripts are stored per turn.

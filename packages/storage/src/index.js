@@ -1,4 +1,4 @@
-import { S3Client, PutObjectCommand, GetObjectCommand } from '@aws-sdk/client-s3';
+import { S3Client, PutObjectCommand, GetObjectCommand, CreateBucketCommand, HeadBucketCommand } from '@aws-sdk/client-s3';
 import { getSignedUrl } from '@aws-sdk/s3-request-presigner';
 
 const client = new S3Client({
@@ -35,3 +35,17 @@ export function presignDownload(key, expiresIn = 900) {
 }
 
 export { client as s3, BUCKET };
+
+/** Ensures the default bucket exists. Should be called at boot. */
+export async function ensureBucket() {
+    try {
+        await client.send(new HeadBucketCommand({ Bucket: BUCKET }));
+    } catch (err) {
+        if (err.name === 'NotFound' || err.$metadata?.httpStatusCode === 404) {
+            await client.send(new CreateBucketCommand({ Bucket: BUCKET }));
+            console.log(`[storage] Created bucket: ${BUCKET}`);
+        } else {
+            throw err;
+        }
+    }
+}

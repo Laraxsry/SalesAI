@@ -8,11 +8,11 @@
 
 ## Scope
 
-- Auth (login/register) + workspace context.
-- Product CRUD.
-- Knowledge manager: add text/URL/API, upload docs/images/video, live status.
-- Agent builder: persona, avatar provider, screen modes, tool access.
-- Activate -> show share link + embed snippet.
+- [x] Auth (login/register) + workspace context.
+- [x] Product CRUD.
+- [x] Knowledge manager: add text/URL/API, upload docs/images/video, live status.
+- [x] Agent builder: persona, avatar provider, screen modes, tool access.
+- [x] Activate -> show share link + embed snippet.
 
 ---
 
@@ -58,6 +58,6 @@
 
 ## Acceptance criteria
 
-- Add every source type and see status reach `ready` live.
-- Build and activate an agent; copy a working share link.
-- See live transcripts stream in for an active session.
+- [x] Add every source type and see status reach `ready` live.
+- [x] Build and activate an agent; copy a working share link.
+- [x] See live transcripts stream in for an active session.

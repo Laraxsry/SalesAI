@@ -7,11 +7,11 @@
 
 ## Scope (visitor app)
 
-- **Guided tour view**: render the agent-driven product video track with a
+- [x] **Guided tour view**: render the agent-driven product video track with a
   "the AI is showing you …" indicator and highlight overlays.
-- **Customer screen share**: a prominent "Share my screen" control; show a
+- [x] **Customer screen share**: a prominent "Share my screen" control; show a
   thumbnail of what's shared and an indicator when the agent is "looking".
-- Layout that adapts between avatar-only, tour, and split (avatar + screen).
+- [x] Layout that adapts between avatar-only, tour, and split (avatar + screen).
 
 ---
 
@@ -52,7 +52,7 @@ flowchart LR
 
 ## Acceptance criteria
 
-- Requesting a demo switches to the tour layout with synced highlights.
-- Sharing a screen switches to the customer-share layout with a viewing
+- [x] Requesting a demo switches to the tour layout with synced highlights.
+- [x] Sharing a screen switches to the customer-share layout with a viewing
   indicator, and the agent gives accurate, position-aware guidance.
-- Returning to plain Q&A restores the avatar-only layout.
+- [x] Returning to plain Q&A restores the avatar-only layout.

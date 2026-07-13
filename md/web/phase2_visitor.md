@@ -8,10 +8,10 @@
 
 ## Scope
 
-- `/v/:token` route: auto-create session, join LiveKit room, render agent.
-- Avatar rendering per provider config.
-- Mic permission + connection states; captions; end-session.
-- Embeddable mode (`?embed=1`) for the SDK widget iframe.
+- [x] `/v/:token` route: auto-create session, join LiveKit room, render agent.
+- [x] Avatar rendering per provider config.
+- [x] Mic permission + connection states; captions; end-session.
+- [x] Embeddable mode (`?embed=1`) for the SDK widget iframe.
 
 ---
 
@@ -60,7 +60,7 @@ renderer accordingly.
 
 ## Acceptance criteria
 
-- Open a link, allow mic, and hold a two-way voice conversation.
-- The avatar renders correctly for the agent's configured provider.
-- Captions reflect the live transcript.
-- `?embed=1` renders cleanly inside the SDK iframe.
+- [x] Open a link, allow mic, and hold a two-way voice conversation.
+- [x] The avatar renders correctly for the agent's configured provider.
+- [x] Captions reflect the live transcript.
+- [x] `?embed=1` renders cleanly inside the SDK iframe.

@@ -7,7 +7,13 @@
     "orientation": "portrait",
     "userInterfaceStyle": "dark",
     "plugins": ["expo-router"],
-    "ios": { "supportsTablet": true, "bundleIdentifier": "com.salesai.app" },
+    "ios": {
+      "supportsTablet": true,
+      "bundleIdentifier": "com.salesai.app",
+      "infoPlist": {
+        "NSMicrophoneUsageDescription": "SalesAI needs access to your microphone to converse with the agent."
+      }
+    },
     "android": { "package": "com.salesai.app" }
   }
 }

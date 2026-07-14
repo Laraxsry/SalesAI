@@ -41,7 +41,7 @@ services:
   livekit:
     image: livekit/livekit-server:latest
     container_name: salesai-livekit
-    command: --dev --bind 0.0.0.0
+    command: --dev --bind 0.0.0.0 --node-ip 172.20.10.3
     ports:
       - '7880:7880'
       - '7881:7881'

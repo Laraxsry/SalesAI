@@ -20,47 +20,49 @@
 ## Tasks
 
 1. **Agent config & activation**
-   - `POST /agents` validates with `AgentConfigInput`; choose `avatarProvider`,
+   - [x] `POST /agents` validates with `AgentConfigInput`; choose `avatarProvider`,
      `screenModes`, persona, optional `toolAccess`.
-   - `POST /agents/:id/activate` sets `status: active`, mints a `ShareLink`,
+   - [x] `POST /agents/:id/activate` sets `status: active`, mints a `ShareLink`,
      returns the public URL + embed snippet
      ([`routes/agents.js`](../../apps/api/src/routes/agents.js)).
 
 2. **Session creation**
-   - `POST /sessions` resolves the share token, creates a `Session` + LiveKit
+   - [x] `POST /sessions` resolves the share token, creates a `Session` + LiveKit
      room name, and returns `{ roomName, token, livekitUrl }`
      ([`routes/sessions.js`](../../apps/api/src/routes/sessions.js)).
-   - Enforce `active`, `expiresAt`, `maxSessions`.
+   - [x] Enforce `active`, `expiresAt`, `maxSessions` (Added validation in POST /sessions).
 
 3. **Agent worker** ([`agent-worker`](../../apps/agent-worker))
-   - `defineAgent` entry: `connectDB`, load `Session`->`Agent`->`Product`.
-   - `buildSystemPrompt()` + `buildTools()` from `@repo/agent`.
-   - `voice.AgentSession` with OpenAI Realtime (`gpt-realtime-2`); VAD,
+   - [x] `defineAgent` entry: `connectDB`, load `Session`->`Agent`->`Product`.
+   - [x] `buildSystemPrompt()` + `buildTools()` from `@repo/agent`.
+   - [x] `voice.AgentSession` with OpenAI Realtime (`gpt-realtime-2`); VAD,
      interruption, tool calls.
-   - Attach avatar via `getAvatarProvider(agent.avatarProvider)`.
-   - Persist transcript turns to `messages`; emit `session:transcript`.
+   - [x] Attach avatar via `getAvatarProvider(agent.avatarProvider)`.
+   - [x] Persist transcript turns to `messages`.
+   - [x] Emit `session:transcript` over Socket.IO (emit eklendi).
 
 4. **Avatar providers** ([`@repo/avatar`](../../packages/avatar))
-   - Start with `voice-only` (always works) + `tavus` (server-rendered video).
-   - `simli`/`heygen`/`did` wired but gated by env keys.
+   - [x] Start with `voice-only` (always works) + `tavus` (server-rendered video).
+   - [x] `simli`/`heygen`/`did` wired but gated by env keys.
 
 5. **Worker dispatch**
-   - Configure LiveKit to dispatch `agent-worker` on room creation (agent name)
-     so the brain joins automatically when a visitor connects.
+   - [x] Configure LiveKit to dispatch `agent-worker` on room creation (agent name)
+     so the brain joins automatically when a visitor connects. (`agentName: 'salesai-agent'`
+     in `WorkerOptions`; `dispatchAgent()` called in `POST /sessions`).
 
 6. **Resilience**
-   - Avatar attach failure -> fall back to voice-only (already handled).
-   - Session timeouts + cleanup via `worker-general`.
+   - [x] Avatar attach failure -> fall back to voice-only (try/catch + warn var).
+   - [x] Session timeouts + cleanup via `worker-general` (zamanlı cron görevleri aktifleştirildi).
 
 ---
 
 ## Acceptance criteria
 
-- Activating an agent returns a working `/v/:token` link.
-- Opening the link starts a session, the agent joins, and voice works two-way.
-- With `AVATAR_PROVIDER=tavus` (+ keys), a talking face video appears.
-- Answers are grounded (agent calls `search_knowledge`).
-- Transcripts are stored per turn.
+- [x] Activating an agent returns a working `/v/:token` link.
+- [x] Opening the link starts a session, the agent joins, and voice works two-way. (`dispatchAgent()` routes agent-worker to room via `AgentDispatchClient`).
+- [ ] With `AVATAR_PROVIDER=tavus` (+ keys), a talking face video appears. (test edilmedi).
+- [x] Answers are grounded (agent calls `search_knowledge`).
+- [x] Transcripts are stored per turn.
 
 ---
 

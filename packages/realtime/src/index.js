@@ -2,6 +2,9 @@ import { Server } from 'socket.io';
 import { createAdapter } from '@socket.io/redis-adapter';
 import IORedis from 'ioredis';
 
+/** Shared Redis pub channel used by publishEvent(). */
+const EMIT_CHANNEL = 'rt:emit';
+
 /**
  * Creates a Socket.IO server with a Redis adapter so it scales across pods.
  * Used for console live updates (ingestion progress, session events).
@@ -37,3 +40,21 @@ export const RT_EVENTS = Object.freeze({
     SESSION_ENDED: 'session:ended',
     SESSION_TRANSCRIPT: 'session:transcript'
 });
+
+/**
+ * Publishes a Socket.IO event from any process (worker, agent-worker…) via Redis.
+ * The API process listens on EMIT_CHANNEL and forwards events to Socket.IO clients.
+ *
+ * @param {string} event   - RT_EVENTS constant
+ * @param {object} payload - Serialisable payload
+ */
+export async function publishEvent(event, payload) {
+    const url = process.env.REDIS_URL || 'redis://localhost:6379';
+    const redis = new IORedis(url, { maxRetriesPerRequest: 1, enableReadyCheck: false });
+    redis.on('error', () => {});
+    try {
+        await redis.publish(EMIT_CHANNEL, JSON.stringify({ event, payload }));
+    } finally {
+        redis.disconnect();
+    }
+}

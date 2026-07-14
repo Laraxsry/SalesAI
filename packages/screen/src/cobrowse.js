@@ -11,6 +11,10 @@ import { chromium } from 'playwright';
  *  - playwright (default): deterministic + AI actions via highlight/goto/click.
  *  - browserbase/stagehand (optional): cloud browser with computer-use agent.
  */
+/** Global set to track active browser instances across all sessions. */
+const activeBrowsers = new Set();
+const MAX_CONCURRENT_BROWSERS = Number(process.env.MAX_TOUR_BROWSERS || 3);
+
 export class GuidedTour {
     constructor({ startUrl, viewport = { width: 1280, height: 720 } } = {}) {
         this.startUrl = startUrl;
@@ -20,7 +24,14 @@ export class GuidedTour {
     }
 
     async open() {
+        if (activeBrowsers.size >= MAX_CONCURRENT_BROWSERS) {
+            throw new Error(
+                `[GuidedTour] Concurrent browser limit reached (${MAX_CONCURRENT_BROWSERS}). ` +
+                'Try again later or increase MAX_TOUR_BROWSERS env var.'
+            );
+        }
         this.browser = await chromium.launch({ headless: true });
+        activeBrowsers.add(this.browser);
         const context = await this.browser.newContext({ viewport: this.viewport });
         this.page = await context.newPage();
         if (this.startUrl) await this.page.goto(this.startUrl, { waitUntil: 'networkidle' });
@@ -54,6 +65,11 @@ export class GuidedTour {
     }
 
     async close() {
-        await this.browser?.close();
+        if (this.browser) {
+            activeBrowsers.delete(this.browser);
+            await this.browser.close();
+            this.browser = null;
+            this.page = null;
+        }
     }
 }

@@ -9,7 +9,9 @@
     "ios": "expo run:ios"
   },
   "dependencies": {
+    "@config-plugins/react-native-webrtc": "^13.0.0",
     "@livekit/react-native": "^2.11.1",
+    "@livekit/react-native-expo-plugin": "^1.0.2",
     "@livekit/react-native-webrtc": "^144.1.1",
     "expo": "~56.0.15",
     "expo-constants": "^56.0.20",

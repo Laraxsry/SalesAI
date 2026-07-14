@@ -46,6 +46,36 @@ async function main() {
         }
     };
 
+    const textIndexDefinition = {
+        name: 'text_index',
+        type: 'search',
+        definition: {
+            mappings: {
+                dynamic: false,
+                fields: {
+                    text: {
+                        type: 'string',
+                        analyzer: 'lucene.standard'
+                    },
+                    productId: {
+                        type: 'objectId'
+                    }
+                }
+            }
+        }
+    };
+
+    try {
+        await collection.createSearchIndex(textIndexDefinition);
+        console.log(`Created text_index on knowledgechunks`);
+    } catch (err) {
+        if (/already exists/i.test(err.message)) {
+            console.log('text_index already exists, skipping');
+        } else {
+            throw err;
+        }
+    }
+
     try {
         await collection.createSearchIndex(definition);
         console.log(`Created vector_index (dim=${DIM}) on knowledgechunks`);

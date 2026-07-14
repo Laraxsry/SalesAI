@@ -17,6 +17,7 @@ export function Visit() {
     const { token } = useParams();
     const [conn, setConn] = useState(null);
     const [error, setError] = useState(null);
+    const [layoutMode, setLayoutMode] = useState('avatar-only'); // 'avatar-only' | 'tour' | 'customer-share'
 
     async function start() {
         try {
@@ -42,16 +43,42 @@ export function Visit() {
     if (!conn) return <div style={{ padding: 32 }}>Connecting to your AI rep…</div>;
 
     return (
-        <LiveKitRoom
-            serverUrl={conn.livekitUrl}
-            token={conn.token}
-            connect
-            audio
-            video={false}
-            style={{ height: '100vh' }}
-        >
-            <VideoConference />
-            <RoomAudioRenderer />
-        </LiveKitRoom>
+        <div style={{ display: 'flex', flexDirection: 'column', height: '100vh' }}>
+            {/* Header / Controls */}
+            <header style={{ padding: 16, background: '#f0f0f0', display: 'flex', gap: 16 }}>
+                <button onClick={() => setLayoutMode('avatar-only')}>Avatar Only</button>
+                <button onClick={() => setLayoutMode('tour')}>Request Demo (Tour)</button>
+                <button onClick={() => setLayoutMode('customer-share')}>Share My Screen</button>
+                {layoutMode === 'customer-share' && <span style={{ color: 'red' }}>Agent is viewing your screen</span>}
+            </header>
+
+            <div style={{ flex: 1, display: 'flex' }}>
+                {layoutMode === 'tour' && (
+                    <div style={{ flex: 1, background: '#ccc', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                        <h1>Guided Tour Video</h1>
+                    </div>
+                )}
+                {layoutMode === 'customer-share' && (
+                    <div style={{ flex: 1, background: '#e0e0e0', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                        <h1>Your Screen Share</h1>
+                    </div>
+                )}
+                
+                {/* LiveKit Room (Avatar) */}
+                <div style={{ flex: layoutMode === 'avatar-only' ? 1 : '0 0 300px' }}>
+                    <LiveKitRoom
+                        serverUrl={conn.livekitUrl}
+                        token={conn.token}
+                        connect
+                        audio
+                        video={false}
+                        style={{ height: '100%' }}
+                    >
+                        <VideoConference />
+                        <RoomAudioRenderer />
+                    </LiveKitRoom>
+                </div>
+            </div>
+        </div>
     );
 }

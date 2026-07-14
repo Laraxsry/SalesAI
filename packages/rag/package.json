@@ -13,7 +13,8 @@
     "@qdrant/js-client-rest": "^1.18.0",
     "@repo/ai": "*",
     "@repo/database": "*",
-    "@repo/logger": "*"
+    "@repo/logger": "*",
+    "ioredis": "^5.11.1"
   },
   "devDependencies": {
     "@repo/eslint-config": "*",

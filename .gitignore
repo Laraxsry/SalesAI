@@ -47,4 +47,7 @@ Thumbs.db
 # vercel / expo
 .vercel
 apps/mobile/.expo/
+# expo prebuild output (regenerated via `npx expo prebuild`)
+apps/mobile/ios/
+apps/mobile/android/
 

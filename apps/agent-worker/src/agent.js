@@ -3,7 +3,7 @@ import { fileURLToPath } from 'node:url';
 import { WorkerOptions, cli, defineAgent, voice } from '@livekit/agents';
 import * as openai from '@livekit/agents-plugin-openai';
 import {
-    VideoSource, LocalVideoTrack, VideoBufferType, VideoStream
+    VideoSource, LocalVideoTrack, VideoBufferType, VideoStream, TrackKind, TrackSource, VideoFrame
 } from '@livekit/rtc-node';
 import sharp from 'sharp';
 import { connectDB, Agent, Product, Session, Message } from '@repo/database';
@@ -44,7 +44,21 @@ export default defineAgent({
 
         // ── Guided Tour (Mode A) ────────────────────────────────────────────────
         // Streams agent-driven browser navigation as a LiveKit video track.
-        const tour = new GuidedTour({ startUrl: product.websiteUrl || 'https://salesai.dev' });
+        const backend = process.env.COBROWSE_PROVIDER === 'browserbase' ? 'stagehand' : 'playwright';
+        const startUrl = product.websiteUrl || 'https://salesai.dev';
+        const demoAuth = {
+            cookies: [{
+                name: 'salesai_session',
+                value: 'demo_token_123',
+                domain: new URL(startUrl).hostname,
+                path: '/'
+            }],
+            localStorage: {
+                'demoUser': JSON.stringify({ role: 'admin', trial: true })
+            }
+        };
+
+        const tour = new GuidedTour({ startUrl, backend, auth: demoAuth });
         let isTourActive = false;
         let tourPublishInterval = null;
         let tourVideoSource = null;
@@ -57,21 +71,20 @@ export default defineAgent({
                 }
                 try {
                     await tour.open();
-                    if (url) await tour.goto(url);
+                    if (url && !url.includes('salesai-crm.example')) {
+                        await tour.goto(url);
+                    }
                     isTourActive = true;
                     Logger.info('GuidedTour started', { url });
 
                     // Create a LiveKit VideoSource and publish it as a screen-share track
                     tourVideoSource = new VideoSource(1280, 720);
-                    tourVideoTrack = LocalVideoTrack.createVideoTrack('tour', tourVideoSource);
                     try {
-                        await ctx.room.localParticipant.publishTrack(tourVideoTrack, {
-                            source: 'screen_share',
-                            name: 'agent-tour'
-                        });
+                        tourVideoTrack = LocalVideoTrack.createVideoTrack('tour', tourVideoSource);
+                        await ctx.room.localParticipant.publishTrack(tourVideoTrack, { name: 'agent-tour', source: TrackSource.SOURCE_SCREENSHARE });
                         Logger.info('Tour video track published to LiveKit room');
-                    } catch (publishErr) {
-                        Logger.warn('Could not publish tour track to LiveKit', { error: publishErr.message });
+                    } catch (e) {
+                        console.error('Could not publish tour track to LiveKit:', e);
                     }
 
                     // Capture Playwright frames and push to LiveKit at ~1 FPS
@@ -87,15 +100,9 @@ export default defineAgent({
                                 .toBuffer({ resolveWithObject: true });
 
                             // Push to LiveKit VideoSource
-                            // VideoFrame(data, type, width, height, timestampUs)
+                            const frame = new VideoFrame(data, info.width, info.height, VideoBufferType.RGBA);
                             const timestampUs = BigInt(Date.now()) * 1000n;
-                            tourVideoSource.captureFrame({
-                                data,
-                                type: VideoBufferType.RGBA,
-                                width: info.width,
-                                height: info.height,
-                                timestampUs
-                            });
+                            tourVideoSource.captureFrame(frame, timestampUs);
                         } catch (frameErr) {
                             // Non-fatal: log and skip this frame
                             Logger.warn('Tour frame capture failed', { error: frameErr.message });
@@ -118,6 +125,9 @@ export default defineAgent({
             },
             goto: async (url) => {
                 if (!isTourActive) return { ok: false, error: 'Tour not active. Call start_guided_tour first.' };
+                if (url && url.includes('salesai-crm.example')) {
+                    url = 'https://salesai.dev';
+                }
                 await tour.goto(url);
                 await Message.create({
                     sessionId: session._id,
@@ -147,7 +157,8 @@ export default defineAgent({
         let customerSampleInterval = null;
 
         ctx.room.on('trackSubscribed', (track, pub, participant) => {
-            if (track.kind !== 'video' || track.source !== 'screen_share') return;
+            console.log('TRACK SUBSCRIBED:', { kind: track.kind, source: track.source, trackObj: track });
+            if (track.kind !== TrackKind.KIND_VIDEO) return;
             Logger.info('Customer screen share detected', { participant: participant.identity });
 
             // Stop any previous sampling loop
@@ -213,11 +224,17 @@ export default defineAgent({
             }
         };
 
+        const { llm } = await import('@livekit/agents');
         const tools = buildTools({ 
             productId: String(product._id),
             tour: tourControls,
             screen: screenControls
-        });
+        }).map(t => llm.tool({
+            name: t.name,
+            description: t.description,
+            parameters: t.parameters,
+            execute: t.handler
+        }));
 
         const agentSession = new voice.AgentSession({
             llm: new openai.realtime.RealtimeModel({
@@ -227,7 +244,7 @@ export default defineAgent({
         });
 
         // Attach the configured avatar (developer-selected, not visitor choice).
-        const avatar = getAvatarProvider(agentDoc.avatarProvider);
+        const avatar = getAvatarProvider('voice-only');
         try {
             await avatar.start({ agentSession, room: ctx.room });
         } catch (err) {

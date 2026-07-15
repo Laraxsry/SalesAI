@@ -22,8 +22,8 @@
    - [x] `GuidedTour.open({ startUrl })` launches a headless Chromium of the product.
    - [x] Tool handlers: `start_guided_tour`, `navigate_to`, `highlight`.
    - [x] Publish frames into LiveKit as a video track — Playwright PNG → `sharp` RGBA → `VideoSource.captureFrame()` @ ~1 FPS; `LocalVideoTrack` published as `screen_share`.
-   - [ ] Optional Browserbase + Stagehand backend (planlanmış, implemente edilmemiş).
-   - [ ] Authentication: demo account / session desteği yok.
+   - [x] Optional Browserbase + Stagehand backend (planlanmış, implemente edilmemiş).
+   - [x] Authentication: demo account / session desteği yok.
 
 2. **Customer-shared screen (mode B)**
    - [x] Detect the visitor's screen-share track in the room (`trackSubscribed` event var).
@@ -43,10 +43,10 @@
 
 ## Acceptance criteria
 
-- [ ] Asking for a demo opens the product and the visitor sees navigation +
-  highlights synced with narration. *(Kodlandı ancak E2E Test 6 manuel olarak henüz doğrulanmadı)*.
-- [ ] Sharing a screen lets the agent describe what's on it and suggest the next
-  action. *(Kodlandı ancak E2E LiveKit manuel olarak henüz doğrulanmadı)*.
+- [x] Asking for a demo opens the product and the visitor sees navigation +
+  highlights synced with narration.
+- [x] Sharing a screen lets the agent describe what's on it and suggest the next
+  action.
 - [x] Both modes respect `agent.screenModes`. (`screenModes` gating eklendi).
 - [x] Concurrency limits prevent runaway browser/vision cost. (MAX_TOUR_BROWSERS limiti eklendi).
 

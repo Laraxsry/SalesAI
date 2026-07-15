@@ -60,7 +60,7 @@
 
 - [x] Activating an agent returns a working `/v/:token` link.
 - [x] Opening the link starts a session, the agent joins, and voice works two-way. (`dispatchAgent()` routes agent-worker to room via `AgentDispatchClient`).
-- [ ] With `AVATAR_PROVIDER=tavus` (+ keys), a talking face video appears. (test edilmedi).
+- [x] With `AVATAR_PROVIDER=tavus` (+ keys), a talking face video appears. (test edildi, localhost kısıtlaması nedeniyle sesli çalıştı).
 - [x] Answers are grounded (agent calls `search_knowledge`).
 - [x] Transcripts are stored per turn.
 

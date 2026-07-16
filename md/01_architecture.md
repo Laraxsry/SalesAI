@@ -193,4 +193,20 @@ realtime model. See [`02_ai_realtime_avatar_screen.md`](./02_ai_realtime_avatar_
 | Vector store | Atlas Vector Search (or managed Qdrant) |
 | Object storage | S3 + CDN |
 | Web apps | Vite build -> CDN/static host |
-| CI/CD | GitHub Actions -> Docker -> deploy |
+| SDK loader | `@repo/sdk` built + served from a versioned CDN route |
+| CI/CD | GitHub Actions -> Docker -> deploy (lint -> test -> build -> push) |
+
+---
+
+## 10. Cross-cutting concerns (later phases)
+
+These span all services and are detailed in the phase docs:
+
+| Concern | Where | Phase |
+|---|---|---|
+| **Analytics & insights** | `worker-general` post-call analysis, `analytics` API, console dashboard | 4 |
+| **Embeddable SDK/widget** | `@repo/sdk` loader, embed tokens + origin allowlist, `?embed=1` visitor UI | 5 |
+| **Team & billing** | `@repo/access` RBAC, Stripe subscriptions, usage metering + quotas | 6 |
+| **Observability** | OpenTelemetry traces, Prometheus metrics, `/health` + `/ready`, provider fallback + circuit breakers | 7 |
+| **Security & compliance** | refresh rotation + 2FA + API keys, PII redaction + retention TTLs, `AuditLog`, secrets manager | 8 |
+| **Autoscale** | HPA on API/workers; agent-worker scales on concurrent LiveKit rooms; Socket.IO Redis adapter | 8 |

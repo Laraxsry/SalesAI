@@ -116,13 +116,41 @@ flowchart LR
 
 ## 7. Phased delivery
 
+The product ships end-to-end across nine phases (0–8). Each phase is a working,
+demoable slice; later phases turn the demo into a secure, multi-tenant SaaS.
+
 | Phase | Theme | Outcome |
 |---|---|---|
 | 0 | Foundation | Monorepo, auth, DB, infra, CI |
 | 1 | Knowledge & RAG | Ingest any source; text chat Q&A grounded in it |
-| 2 | Realtime agent | Voice + avatar + share link + visitor app |
+| 2 | Realtime agent | Voice + avatar + share link + visitor app (web + mobile) |
 | 3 | Screen intelligence | Guided tour + customer-shared-screen guidance |
-| 4 | Mobile & scale | Expo app, analytics, multi-provider hardening, SDK |
+| 4 | Analytics & insights | Summaries, topics, sentiment, leads, dashboards |
+| 5 | Embeddable SDK & widget | One-snippet embed on any site; embed studio |
+| 6 | Team, billing & quotas | Members/roles, Stripe plans, usage metering |
+| 7 | Hardening & observability | Provider fallback, tracing, metrics, cost tracking |
+| 8 | Security, compliance & scale | PII/retention, audit, secrets, CI/CD, autoscale, release |
 
-Each phase ships a working, demoable slice. Details live in the phase docs under
-`md/backend`, `md/web`, and `md/mobile`.
+Details live in the phase docs under `md/backend`, `md/web`, and `md/mobile`:
+
+- **Backend**: `phase0`–`phase8` (foundation -> RAG -> realtime -> screen ->
+  analytics -> SDK -> billing -> hardening -> security/scale).
+- **Web** (`apps/console` + `apps/visitor`): `phase1` console, `phase2` visitor,
+  `phase3` screen UI, `phase4` analytics dashboard, `phase5` team & billing,
+  `phase6` embed studio, `phase7` polish/i18n/a11y.
+- **Mobile** (`apps/mobile`): `phase1` visitor, `phase2` avatar/captions/screen,
+  `phase3` push & saved conversations, `phase4` console-lite, `phase5` release.
+
+---
+
+## 8. What "done" looks like
+
+At Phase 8 the platform is a complete, sellable product:
+
+- **Sellers** sign up, invite a team, ingest any knowledge, build and activate
+  agents, embed them on their site, and review analytics + leads — on web and a
+  companion mobile app.
+- **Visitors** talk to a grounded voice+avatar rep on the web, in an embedded
+  widget, or on iOS/Android, with guided tours and screen guidance.
+- **Operators** run it in production with observability, provider fallback,
+  usage-based billing, quotas, PII/retention controls, audit logs, and CI/CD.

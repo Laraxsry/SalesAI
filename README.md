@@ -66,4 +66,19 @@ See [`md/`](./md):
 - [`01_architecture.md`](./md/01_architecture.md)
 - [`02_ai_realtime_avatar_screen.md`](./md/02_ai_realtime_avatar_screen.md)
 - [`03_data_model_and_api.md`](./md/03_data_model_and_api.md)
-- Phase docs: [`md/backend`](./md/backend), [`md/web`](./md/web), [`md/mobile`](./md/mobile)
+
+### Phase docs (roadmap to production)
+
+The product is delivered across phases 0–8. Each doc has scope, tasks, and
+acceptance criteria.
+
+- **Backend** [`md/backend`](./md/backend): `phase0` foundation, `phase1` RAG,
+  `phase2` realtime agent, `phase3` screen intelligence, `phase4` analytics,
+  `phase5` SDK/widget, `phase6` billing & quotas, `phase7` hardening &
+  observability, `phase8` security, compliance & scale.
+- **Web** [`md/web`](./md/web): `phase1` console, `phase2` visitor, `phase3`
+  screen UI, `phase4` analytics dashboard, `phase5` team & billing, `phase6`
+  embed studio, `phase7` polish/i18n/a11y.
+- **Mobile** [`md/mobile`](./md/mobile): `phase1` visitor, `phase2`
+  avatar/captions/screen, `phase3` push & saved conversations, `phase4`
+  console-lite, `phase5` release & store readiness.

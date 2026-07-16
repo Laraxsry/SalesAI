@@ -69,6 +69,33 @@ Atlas index **`vector_index`** on `embedding` (cosine) with `productId` +
 `sessionId`, `role` ∈ `user|assistant|tool|system`, `text`, `meta`
 (tool calls, citations, screen actions), `at`.
 
+> The collections below are introduced in later phases; the core (above) exists
+> first. See the phase docs for details.
+
+### Analytics (Phase 4)
+- **SessionSummary** — `sessionId`, `tldr`, `topics[]`, `objections[]`,
+  `unanswered[]`, `sentiment`, `dropOff`, `nextStep`.
+- **SessionEvent** — `sessionId`, `type`, `at`, `meta` (funnel/timeline events).
+- **AnalyticsRollup** — `scope` (agent/product), `scopeId`, `bucket`, `metrics{}`.
+- **Lead** — `sessionId`, `workspaceId`, `contact{}`, `score`, `status`, `signals[]`.
+
+### Embed / SDK (Phase 5)
+- **EmbedConfig** — `agentId`, `theme{}`, `launcher{}`, `greeting`, `micAutoPrompt`,
+  `rateCaps{}`.
+- **EmbedDomain** — `agentId`, `domain` (supports `*.` wildcard), `verified`.
+
+### Billing & team (Phase 6)
+- **Plan** — `key`, `name`, `stripePriceId`, `quotas{}`, `features{}`.
+- **Subscription** — `workspaceId`, `planKey`, `stripeCustomerId`, `stripeSubId`,
+  `status`, `periodStart/End`, `usage{}`.
+- **Invitation** — `workspaceId`, `email`, `role`, `token`, `status`, `expiresAt`.
+- **UsageRecord** — `workspaceId`, `meter`, `quantity`, `estCost`, `sessionId?`, `at`.
+
+### Security & compliance (Phase 8)
+- **ApiKey** — `workspaceId`, `name`, `hash`, `scopes[]`, `lastUsedAt`, `revokedAt`.
+- **AuditLog** — `workspaceId`, `actorId`, `action`, `target`, `before/after`, `ip`, `at`.
+- **AuthSession** — `userId`, `refreshTokenHash`, `device`, `revokedAt`, `expiresAt`.
+
 ---
 
 ## 3. REST API (`/api/v1`)
@@ -105,8 +132,35 @@ POST   /api/v1/agents/:id/pause
 POST   /api/v1/sessions                   # { shareToken } -> { roomName, token, livekitUrl }
 GET    /api/v1/sessions/:id/transcript
 
-# Analytics
+# Analytics (Phase 4)
 GET    /api/v1/analytics/agents/:id
+GET    /api/v1/analytics/products/:id/topics
+GET    /api/v1/analytics/leads
+GET    /api/v1/sessions/search?q=
+
+# Embed / SDK (Phase 5)
+POST   /api/v1/agents/:id/embed
+GET    /api/v1/embed/:token/config        # public, origin-checked
+POST   /api/v1/embed/:token/session       # public, origin + rate limited
+GET    /sdk/salesai.js                     # versioned loader script
+
+# Team & billing (Phase 6)
+POST   /api/v1/workspaces/:id/invitations
+POST   /api/v1/invitations/:token/accept
+PATCH  /api/v1/memberships/:id
+DELETE /api/v1/memberships/:id
+POST   /api/v1/billing/checkout
+POST   /api/v1/billing/portal
+POST   /api/v1/billing/webhook            # Stripe (raw body, signature verified)
+GET    /api/v1/billing/usage
+
+# Security & privacy (Phase 8)
+POST   /api/v1/auth/2fa/enable | /verify | /disable
+POST   /api/v1/api-keys
+DELETE /api/v1/api-keys/:id
+POST   /api/v1/privacy/export
+POST   /api/v1/privacy/delete
+GET    /api/v1/audit-logs
 ```
 
 Request validation uses Zod schemas from `@repo/contracts` via the `validate()`
@@ -130,6 +184,9 @@ Defined in `@repo/realtime` (`RT_EVENTS`):
 | `session:started` | S->C | `{ sessionId, agentId }` |
 | `session:transcript` | S->C | `{ sessionId, role, text }` |
 | `session:ended` | S->C | `{ sessionId, summary }` |
+| `session:summary` | S->C | `{ sessionId, tldr, topics, sentiment }` (Phase 4) |
+| `lead:created` | S->C | `{ leadId, sessionId, score }` (Phase 4) |
+| `billing:updated` | S->C | `{ workspaceId, planKey, status }` (Phase 6) |
 
 ---
 

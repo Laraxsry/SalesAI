@@ -44,21 +44,20 @@ export default defineAgent({
 
         // ── Guided Tour (Mode A) ────────────────────────────────────────────────
         // Streams agent-driven browser navigation as a LiveKit video track.
+        // COBROWSE_PROVIDER=browserbase opts into the Stagehand/Browserbase
+        // cloud backend; default stays local Playwright.
         const backend = process.env.COBROWSE_PROVIDER === 'browserbase' ? 'stagehand' : 'playwright';
         const startUrl = product.websiteUrl || 'https://salesai.dev';
-        const demoAuth = {
-            cookies: [{
-                name: 'salesai_session',
-                value: 'demo_token_123',
-                domain: new URL(startUrl).hostname,
-                path: '/'
-            }],
-            localStorage: {
-                'demoUser': JSON.stringify({ role: 'admin', trial: true })
-            }
-        };
+        // Seller-provided demo session (cookies/localStorage) so the tour can
+        // land on authenticated screens. No fallback fake credentials — an
+        // unconfigured product just tours unauthenticated, same as before.
+        const tour = new GuidedTour({
+            startUrl,
+            backend,
+            allowedDomains: product.tourAllowedDomains || [],
+            auth: product.demoSession || null
+        });
 
-        const tour = new GuidedTour({ startUrl, backend, auth: demoAuth });
         let isTourActive = false;
         let tourPublishInterval = null;
         let tourVideoSource = null;
@@ -69,9 +68,12 @@ export default defineAgent({
                 if (!screenModes.includes('guided-tour')) {
                     return { ok: false, error: 'Guided tour is not enabled for this agent (screenModes).' };
                 }
+                if (isTourActive) {
+                    return { ok: false, error: 'Tour already active. Use navigate_to to move within the current tour.' };
+                }
                 try {
                     await tour.open();
-                    if (url && !url.includes('salesai-crm.example')) {
+                    if (url) {
                         await tour.goto(url);
                     }
                     isTourActive = true;
@@ -120,33 +122,42 @@ export default defineAgent({
                     return { ok: true, status: 'Tour started. Visitor can now see the browser. Use navigate_to or highlight next.' };
                 } catch (e) {
                     Logger.error('GuidedTour open failed', { error: e.message });
+                    await tour.close().catch(() => {});
+                    isTourActive = false;
                     return { ok: false, error: e.message };
                 }
             },
             goto: async (url) => {
                 if (!isTourActive) return { ok: false, error: 'Tour not active. Call start_guided_tour first.' };
-                if (url && url.includes('salesai-crm.example')) {
-                    url = 'https://salesai.dev';
+                try {
+                    await tour.goto(url);
+                    await Message.create({
+                        sessionId: session._id,
+                        role: 'system',
+                        text: `[screen:navigate_to] url=${url}`,
+                        meta: { action: 'navigate_to', url }
+                    }).catch(() => {});
+                    return { ok: true };
+                } catch (e) {
+                    Logger.error('GuidedTour navigate failed', { error: e.message });
+                    return { ok: false, error: e.message };
                 }
-                await tour.goto(url);
-                await Message.create({
-                    sessionId: session._id,
-                    role: 'system',
-                    text: `[screen:navigate_to] url=${url}`,
-                    meta: { action: 'navigate_to', url }
-                }).catch(() => {});
-                return { ok: true };
             },
             highlight: async (selector) => {
                 if (!isTourActive) return { ok: false, error: 'Tour not active.' };
-                await tour.highlight(selector);
-                await Message.create({
-                    sessionId: session._id,
-                    role: 'system',
-                    text: `[screen:highlight] selector=${selector}`,
-                    meta: { action: 'highlight', selector }
-                }).catch(() => {});
-                return { ok: true };
+                try {
+                    await tour.highlight(selector);
+                    await Message.create({
+                        sessionId: session._id,
+                        role: 'system',
+                        text: `[screen:highlight] selector=${selector}`,
+                        meta: { action: 'highlight', selector }
+                    }).catch(() => {});
+                    return { ok: true };
+                } catch (e) {
+                    Logger.error('GuidedTour highlight failed', { error: e.message });
+                    return { ok: false, error: e.message };
+                }
             }
         };
 
@@ -288,9 +299,7 @@ export default defineAgent({
                 // Cleanup: stop tour publish loop and close browser
                 if (tourPublishInterval) clearInterval(tourPublishInterval);
                 if (customerSampleInterval) clearInterval(customerSampleInterval);
-                if (isTourActive) {
-                    try { await tour.close(); } catch (_) {}
-                }
+                try { await tour.close(); } catch { /* best-effort cleanup */ }
 
                 await Session.updateOne({ _id: session._id }, { status: 'ended' });
                 Logger.info('session ended', { sessionId: session._id });

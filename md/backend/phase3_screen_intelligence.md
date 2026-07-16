@@ -57,3 +57,20 @@
 - **Headless browser scale** — memory/CPU heavy; pool + offload (Browserbase).
 - **Vision cost on frames** — sample sparsely, downscale, only on demand.
 - **Cross-origin/auth on the product** — needs a demo session strategy.
+
+---
+
+## Security
+
+`cobrowse.js`: `goto`/`click` are gated by an eTLD+1 allow-list built from
+`Product.websiteUrl` + `tourAllowedDomains`, re-checked after navigation to
+catch open-redirects. Double-open and orphaned-browser-on-failure leaks are
+fixed; `goto`/`highlight` errors are caught instead of crashing.
+
+`packages/contracts`: `ProductInput` rejects `file://`, private IPs, and
+cloud metadata addresses (`169.254.169.254`) at the API boundary, so the
+allow-list above is built from an already-safe root.
+
+Known gaps: `open()`'s initial navigation isn't re-validated beyond what
+`ProductInput` checked at creation · subresource requests from a trusted
+page (e.g. an `<img>` pointed at a metadata IP) aren't blocked.

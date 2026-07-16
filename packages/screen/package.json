@@ -12,7 +12,8 @@
   "dependencies": {
     "@repo/ai": "*",
     "@repo/logger": "*",
-    "playwright": "^1.49.1"
+    "playwright": "^1.49.1",
+    "tldts": "^7.4.8"
   },
   "optionalDependencies": {
     "@browserbasehq/stagehand": "^2.0.0"

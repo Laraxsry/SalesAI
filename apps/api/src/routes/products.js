@@ -36,7 +36,8 @@ productsRouter.post(
                 workspaceId: req.workspaceId,
                 name: req.body.name,
                 description: req.body.description,
-                websiteUrl: req.body.websiteUrl
+                websiteUrl: req.body.websiteUrl,
+                tourAllowedDomains: req.body.tourAllowedDomains
             });
 
             res.status(201).json({
@@ -44,7 +45,8 @@ productsRouter.post(
                 workspaceId: String(product.workspaceId),
                 name: product.name,
                 description: product.description,
-                websiteUrl: product.websiteUrl
+                websiteUrl: product.websiteUrl,
+                tourAllowedDomains: product.tourAllowedDomains
             });
         } catch (err) {
             next(err);
@@ -80,6 +82,7 @@ productsRouter.get('/:id', requireAuth, async (req, res, next) => {
             name: product.name,
             description: product.description,
             websiteUrl: product.websiteUrl,
+            tourAllowedDomains: product.tourAllowedDomains,
             createdAt: product.createdAt
         });
     } catch (err) {

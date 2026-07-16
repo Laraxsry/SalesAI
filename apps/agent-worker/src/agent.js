@@ -81,7 +81,7 @@ export default defineAgent({
                     tourVideoSource = new VideoSource(1280, 720);
                     try {
                         tourVideoTrack = LocalVideoTrack.createVideoTrack('tour', tourVideoSource);
-                        await ctx.room.localParticipant.publishTrack(tourVideoTrack, { name: 'agent-tour', source: TrackSource.SOURCE_SCREENSHARE });
+                        await ctx.room.localParticipant.publishTrack(tourVideoTrack, { name: 'screen_share', source: TrackSource.SOURCE_SCREENSHARE });
                         Logger.info('Tour video track published to LiveKit room');
                     } catch (e) {
                         console.error('Could not publish tour track to LiveKit:', e);

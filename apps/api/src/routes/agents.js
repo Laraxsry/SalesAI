@@ -44,6 +44,37 @@ agentsRouter.post('/:id/activate', requireAuth, async (req, res, next) => {
     }
 });
 
+/** Get a specific agent configuration. */
+agentsRouter.get('/:id', requireAuth, async (req, res, next) => {
+    try {
+        const agent = await Agent.findById(req.params.id);
+        if (!agent) return res.status(404).json({ error: 'Agent not found' });
+        res.json(agent);
+    } catch (err) {
+        next(err);
+    }
+});
+
+/** Pause an agent -> status: paused. */
+agentsRouter.post('/:id/pause', requireAuth, async (req, res, next) => {
+    try {
+        let agent = await Agent.findById(req.params.id);
+        if (!agent) return res.status(404).json({ error: 'Agent not found' });
+        if (agent.status === 'paused') {
+            return res.status(400).json({ error: 'Agent is already paused' });
+        }
+
+        agent = await Agent.findByIdAndUpdate(
+            req.params.id,
+            { status: 'paused' },
+            { new: true }
+        );
+        res.json(agent);
+    } catch (err) {
+        next(err);
+    }
+});
+
 /** List all sessions for an agent */
 agentsRouter.get('/:id/sessions', requireAuth, async (req, res, next) => {
     try {

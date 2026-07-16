@@ -1,7 +1,7 @@
 import { Router } from 'express';
 import { validate } from '@repo/validation';
 import { CreateSessionInput } from '@repo/contracts';
-import { ShareLink, Agent, Session } from '@repo/database';
+import { ShareLink, Agent, Session, Message } from '@repo/database';
 import { createAccessToken, livekitUrl, dispatchAgent } from '@repo/livekit';
 import { shortId } from '@repo/utils';
 
@@ -62,6 +62,19 @@ sessionsRouter.post('/', validate({ body: CreateSessionInput }), async (req, res
         }
 
         res.json({ roomName, token, livekitUrl: livekitUrl() });
+    } catch (err) {
+        next(err);
+    }
+});
+
+/** Get session transcript (messages). Public access. */
+sessionsRouter.get('/:id/transcript', async (req, res, next) => {
+    try {
+        const session = await Session.findById(req.params.id);
+        if (!session) return res.status(404).json({ error: 'Session not found' });
+
+        const messages = await Message.find({ sessionId: session._id }).sort({ at: 1 });
+        res.json(messages);
     } catch (err) {
         next(err);
     }

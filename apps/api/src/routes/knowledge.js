@@ -71,3 +71,30 @@ knowledgeRouter.get('/:productId', requireAuth, async (req, res, next) => {
         next(err);
     }
 });
+
+/**
+ * DELETE /api/v1/knowledge/:id
+ * 
+ * Deletes a knowledge source and its associated chunks from the vector store.
+ */
+knowledgeRouter.delete('/:id', requireAuth, async (req, res, next) => {
+    try {
+        const source = await KnowledgeSource.findById(req.params.id);
+        if (!source) return res.status(404).json({ error: 'Knowledge source not found' });
+
+        // 1. Delete source from DB
+        await KnowledgeSource.deleteOne({ _id: source._id });
+
+        // 2. Delete chunks from vector store (strategy handles both Mongo and Qdrant)
+        try {
+            const { getVectorStore } = await import('@repo/rag');
+            await getVectorStore().deleteBySource(String(source._id));
+        } catch (vectorErr) {
+            console.warn('[knowledge] failed to delete chunks from vector store:', vectorErr.message);
+        }
+
+        res.json({ ok: true, message: 'Knowledge source and its chunks deleted successfully' });
+    } catch (err) {
+        next(err);
+    }
+});

@@ -1,7 +1,8 @@
-import { useState } from 'react';
+import { useCallback, useState } from 'react';
 import { View, Text, StyleSheet, TextInput, TouchableOpacity, KeyboardAvoidingView, Platform, ScrollView } from 'react-native';
 import { StatusBar } from 'expo-status-bar';
-import { useRouter } from 'expo-router';
+import { useRouter, useFocusEffect } from 'expo-router';
+import { getSavedConversations } from '../src/savedConversations';
 
 /**
  * Mobile visitor landing. The user enters an agent token or share link 
@@ -11,6 +12,13 @@ export default function Home() {
     const router = useRouter();
     const [input, setInput] = useState('');
     const [error, setError] = useState('');
+    const [savedCount, setSavedCount] = useState(0);
+
+    useFocusEffect(
+        useCallback(() => {
+            getSavedConversations().then((list) => setSavedCount(list.length));
+        }, [])
+    );
 
     const handleConnect = () => {
         if (!input.trim()) {
@@ -67,6 +75,12 @@ export default function Home() {
                         <Text style={styles.buttonText}>Connect to Representative</Text>
                     </TouchableOpacity>
                 </View>
+
+                {savedCount > 0 && (
+                    <TouchableOpacity style={styles.savedLink} onPress={() => router.push('/saved')}>
+                        <Text style={styles.savedLinkText}>Kayıtlı Görüşmeler ({savedCount})</Text>
+                    </TouchableOpacity>
+                )}
 
                 <View style={styles.footer}>
                     <Text style={styles.footerText}>Powered by LiveKit WebRTC & SalesAI</Text>
@@ -164,6 +178,18 @@ const styles = StyleSheet.create({
     buttonText: {
         color: '#ffffff',
         fontSize: 16,
+        fontWeight: '600',
+    },
+    savedLink: {
+        marginTop: 24,
+        alignItems: 'center',
+        alignSelf: 'center',
+        paddingVertical: 8,
+        paddingHorizontal: 16,
+    },
+    savedLinkText: {
+        color: '#6d5efc',
+        fontSize: 14,
         fontWeight: '600',
     },
     footer: {

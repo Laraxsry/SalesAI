@@ -1,10 +1,12 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { View, Text, StyleSheet, TouchableOpacity, ActivityIndicator, Animated, Platform, PermissionsAndroid } from 'react-native';
+import { View, Text, StyleSheet, TouchableOpacity, ActivityIndicator, Animated, Platform, PermissionsAndroid, Alert } from 'react-native';
 import { useLocalSearchParams, useRouter } from 'expo-router';
-import { LiveKitRoom, VideoTrack, useTracks } from '@livekit/react-native';
-import { Track } from 'livekit-client';
+import { LiveKitRoom, VideoTrack, useTracks, AudioSession } from '@livekit/react-native';
+import { Track, RoomEvent } from 'livekit-client';
 import { StatusBar } from 'expo-status-bar';
+import * as Haptics from 'expo-haptics';
 import { CONFIG } from '../../config';
+import { saveConversation } from '../../src/savedConversations';
 
 // Simple SVG-like icons built using pure React Native components for maximum compatibility
 const MuteIcon = ({ color }) => (
@@ -21,6 +23,19 @@ const PhoneIcon = () => (
     </View>
 );
 
+const SpeakerIcon = () => (
+    <View style={styles.iconContainer}>
+        <View style={styles.speakerBody} />
+        <View style={styles.speakerWaveOuter} />
+    </View>
+);
+
+const ScreenShareIcon = ({ active }) => (
+    <View style={styles.iconContainer}>
+        <View style={[styles.screenRect, active && styles.screenRectActive]} />
+    </View>
+);
+
 export default function SessionScreen() {
     const { token } = useLocalSearchParams();
     const router = useRouter();
@@ -30,10 +45,18 @@ export default function SessionScreen() {
     const [connDetails, setConnDetails] = useState(null);
     const [activeRoom, setActiveRoom] = useState(null);
     const [isMuted, setIsMuted] = useState(false);
+    const [isSharingScreen, setIsSharingScreen] = useState(false);
+    const [reconnecting, setReconnecting] = useState(false);
     const [captions, setCaptions] = useState('');
     const [agentName, setAgentName] = useState('AI Representative');
 
-
+    // Prepares the native audio session (speaker/earpiece routing, category) before joining.
+    useEffect(() => {
+        AudioSession.startAudioSession().catch(() => {});
+        return () => {
+            AudioSession.stopAudioSession().catch(() => {});
+        };
+    }, []);
 
     // Request permissions and fetch connection details
     const startSession = async () => {
@@ -83,7 +106,7 @@ export default function SessionScreen() {
         }
     }, [token]);
 
-    // Setup transcription listener on the room
+    // Setup transcription + connection-lifecycle listeners on the room
     useEffect(() => {
         if (!activeRoom) return;
 
@@ -133,10 +156,19 @@ export default function SessionScreen() {
         activeRoom.on('participantConnected', handleParticipantConnected);
         activeRoom.participants.forEach(handleParticipantConnected);
 
+        // Reconnection lifecycle — wifi<->cellular switches, brief network drops, etc.
+        const onReconnecting = () => setReconnecting(true);
+        const onReconnected = () => setReconnecting(false);
+
+        activeRoom.on(RoomEvent.Reconnecting, onReconnecting);
+        activeRoom.on(RoomEvent.Reconnected, onReconnected);
+
         return () => {
             if (unsubscribe) unsubscribe();
             activeRoom.off('transcriptionReceived', handleTranscription);
             activeRoom.off('participantConnected', handleParticipantConnected);
+            activeRoom.off(RoomEvent.Reconnecting, onReconnecting);
+            activeRoom.off(RoomEvent.Reconnected, onReconnected);
         };
     }, [activeRoom]);
 
@@ -146,6 +178,7 @@ export default function SessionScreen() {
     };
 
     const handleDisconnect = () => {
+        saveConversation({ token, agentName }).catch(() => {});
         if (activeRoom) {
             activeRoom.disconnect();
         }
@@ -157,7 +190,29 @@ export default function SessionScreen() {
             const nextMuted = !isMuted;
             await activeRoom.localParticipant.setMicrophoneEnabled(!nextMuted);
             setIsMuted(nextMuted);
+            Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light).catch(() => {});
         }
+    };
+
+    const toggleScreenShare = async () => {
+        if (!activeRoom?.localParticipant) return;
+        try {
+            const next = !isSharingScreen;
+            await activeRoom.localParticipant.setScreenShareEnabled(next);
+            setIsSharingScreen(next);
+            Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium).catch(() => {});
+        } catch (err) {
+            // Best-effort: screen share needs OS-level setup (ReplayKit / MediaProjection)
+            // that isn't always available — fail gracefully instead of crashing the call.
+            console.warn('Screen share unavailable on this device:', err?.message);
+            Alert.alert('Ekran paylaşımı kullanılamıyor', 'Bu cihazda/derlemede ekran paylaşımı desteklenmiyor.');
+        }
+    };
+
+    const openAudioRoutePicker = () => {
+        AudioSession.showAudioRoutePicker().catch((err) => {
+            console.warn('Audio route picker unavailable:', err?.message);
+        });
     };
 
     // Render loading/error states before LiveKit starts
@@ -213,7 +268,7 @@ export default function SessionScreen() {
 
             {connDetails && (
                 <LiveKitRoom
-                    serverUrl={connDetails.livekitUrl ? connDetails.livekitUrl.replace('localhost', '172.20.10.3') : ''}
+                    serverUrl={CONFIG.LIVEKIT_URL}
                     token={connDetails.token}
                     connect={true}
                     audio={true}
@@ -226,8 +281,12 @@ export default function SessionScreen() {
                         agentName={agentName}
                         isMuted={isMuted}
                         toggleMute={toggleMute}
+                        isSharingScreen={isSharingScreen}
+                        toggleScreenShare={toggleScreenShare}
+                        openAudioRoutePicker={openAudioRoutePicker}
                         handleDisconnect={handleDisconnect}
                         captions={captions}
+                        reconnecting={reconnecting}
                     />
                 </LiveKitRoom>
             )}
@@ -236,7 +295,17 @@ export default function SessionScreen() {
 }
 
 // Inner view that uses hooks and handles track state
-function RoomView({ agentName, isMuted, toggleMute, handleDisconnect, captions }) {
+function RoomView({
+    agentName,
+    isMuted,
+    toggleMute,
+    isSharingScreen,
+    toggleScreenShare,
+    openAudioRoutePicker,
+    handleDisconnect,
+    captions,
+    reconnecting
+}) {
     // Look for remote camera tracks (the agent video stream)
     const remoteVideoTracks = useTracks([Track.Source.Camera]);
     const hasVideo = remoteVideoTracks.length > 0;
@@ -269,8 +338,8 @@ function RoomView({ agentName, isMuted, toggleMute, handleDisconnect, captions }
         <View style={styles.innerContainer}>
             {/* Header info */}
             <View style={styles.topBar}>
-                <View style={styles.statusDot} />
-                <Text style={styles.agentTitle}>{agentName}</Text>
+                <View style={[styles.statusDot, reconnecting && styles.statusDotWarn]} />
+                <Text style={styles.agentTitle}>{reconnecting ? 'Yeniden bağlanıyor…' : agentName}</Text>
             </View>
 
             {/* Video or Voice visualizer */}
@@ -317,6 +386,24 @@ function RoomView({ agentName, isMuted, toggleMute, handleDisconnect, captions }
                 >
                     <MuteIcon color="#ffffff" />
                     <Text style={styles.controlText}>{isMuted ? 'Unmute' : 'Mute'}</Text>
+                </TouchableOpacity>
+
+                <TouchableOpacity
+                    style={[styles.controlButton, styles.controlActive]}
+                    onPress={openAudioRoutePicker}
+                    activeOpacity={0.8}
+                >
+                    <SpeakerIcon />
+                    <Text style={styles.controlText}>Speaker</Text>
+                </TouchableOpacity>
+
+                <TouchableOpacity
+                    style={[styles.controlButton, isSharingScreen ? styles.controlSharing : styles.controlActive]}
+                    onPress={toggleScreenShare}
+                    activeOpacity={0.8}
+                >
+                    <ScreenShareIcon active={isSharingScreen} />
+                    <Text style={styles.controlText}>Share</Text>
                 </TouchableOpacity>
 
                 <TouchableOpacity
@@ -419,6 +506,9 @@ const styles = StyleSheet.create({
         backgroundColor: '#10b981',
         marginRight: 10,
     },
+    statusDotWarn: {
+        backgroundColor: '#f59e0b',
+    },
     agentTitle: {
         color: '#ffffff',
         fontSize: 15,
@@ -504,9 +594,9 @@ const styles = StyleSheet.create({
     controlButton: {
         alignItems: 'center',
         justifyContent: 'center',
-        width: 80,
-        height: 80,
-        borderRadius: 40,
+        width: 68,
+        height: 68,
+        borderRadius: 34,
     },
     controlActive: {
         backgroundColor: '#1b1b2a',
@@ -516,20 +606,23 @@ const styles = StyleSheet.create({
     controlMuted: {
         backgroundColor: '#ef4444',
     },
+    controlSharing: {
+        backgroundColor: '#6d5efc',
+    },
     controlEnd: {
         backgroundColor: '#f87171',
     },
     controlText: {
         color: '#9ba1b0',
-        fontSize: 12,
-        marginTop: 6,
+        fontSize: 11,
+        marginTop: 4,
         fontWeight: '500',
     },
 
     // Custom Icon styles
     iconContainer: {
-        width: 32,
-        height: 32,
+        width: 28,
+        height: 28,
         justifyContent: 'center',
         alignItems: 'center',
     },
@@ -561,5 +654,33 @@ const styles = StyleSheet.create({
         borderRadius: 10,
         backgroundColor: '#ffffff',
         transform: [{ rotate: '135deg' }],
+    },
+    speakerBody: {
+        width: 14,
+        height: 14,
+        borderRadius: 3,
+        backgroundColor: '#ffffff',
+    },
+    speakerWaveOuter: {
+        position: 'absolute',
+        right: 2,
+        width: 10,
+        height: 18,
+        borderRadius: 8,
+        borderWidth: 2,
+        borderColor: '#ffffff',
+        borderLeftColor: 'transparent',
+        borderBottomColor: 'transparent',
+        transform: [{ rotate: '45deg' }],
+    },
+    screenRect: {
+        width: 22,
+        height: 16,
+        borderRadius: 3,
+        borderWidth: 2,
+        borderColor: '#ffffff',
+    },
+    screenRectActive: {
+        backgroundColor: 'rgba(255,255,255,0.2)',
     },
 });

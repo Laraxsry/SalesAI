@@ -1,5 +1,7 @@
 PODS:
-  - EXConstants (56.0.20):
+  - EXApplication (56.0.3):
+    - ExpoModulesCore
+  - EXConstants (56.0.21):
     - ExpoModulesCore
   - Expo (56.0.15):
     - ExpoModulesCore
@@ -31,13 +33,13 @@ PODS:
     - ExpoModulesCore
   - ExpoDomWebView (56.0.6):
     - ExpoModulesCore
-  - ExpoFileSystem (56.0.8):
+  - ExpoFileSystem (19.0.23):
     - ExpoModulesCore
-  - ExpoFont (56.0.7):
+  - ExpoFont (14.0.12):
     - ExpoModulesCore
-  - ExpoGlassEffect (56.0.4):
+  - ExpoHaptics (56.0.3):
     - ExpoModulesCore
-  - ExpoKeepAwake (56.0.3):
+  - ExpoKeepAwake (15.0.8):
     - ExpoModulesCore
   - ExpoLinking (57.0.2):
     - ExpoModulesCore
@@ -73,11 +75,11 @@ PODS:
   - ExpoModulesWorklets (56.0.20):
     - ExpoModulesCore
     - ExpoModulesJSI
+  - ExpoNotifications (56.0.21):
+    - ExpoModulesCore
   - ExpoRouter (56.2.14):
     - ExpoModulesCore
     - RNScreens
-  - ExpoSymbols (56.0.6):
-    - ExpoModulesCore
   - ExpoUI (56.0.21):
     - ExpoModulesCore
     - ExpoModulesWorklets
@@ -112,6 +114,10 @@ PODS:
   - livekit-react-native-webrtc (144.1.1):
     - React-Core
     - WebRTC-SDK (= 144.7559.10)
+  - LiveKitExpoPlugin (1.0.2):
+    - ExpoModulesCore
+    - livekit-react-native
+    - livekit-react-native-webrtc
   - RCTDeprecation (0.86.0)
   - RCTRequired (0.86.0)
   - RCTSwiftUI (0.86.0)
@@ -2001,7 +2007,7 @@ PODS:
     - React-utils (= 0.86.0)
     - ReactNativeDependencies
   - ReactNativeDependencies (0.86.0)
-  - RNCMaskedView (0.3.2):
+  - RNCAsyncStorage (2.2.0):
     - hermes-engine
     - RCTRequired
     - RCTTypeSafety
@@ -2074,26 +2080,28 @@ PODS:
   - Yoga (0.0.0)
 
 DEPENDENCIES:
+  - EXApplication (from `../../../node_modules/expo-application/ios`)
   - EXConstants (from `../../../node_modules/expo-constants/ios`)
   - Expo (from `../../../node_modules/expo`)
   - ExpoAsset (from `../../../node_modules/expo-asset/ios`)
   - "ExpoDomWebView (from `../../../node_modules/@expo/dom-webview/ios`)"
   - ExpoFileSystem (from `../../../node_modules/expo-file-system/ios`)
   - ExpoFont (from `../../../node_modules/expo-font/ios`)
-  - ExpoGlassEffect (from `../../../node_modules/expo-glass-effect/ios`)
+  - ExpoHaptics (from `../../../node_modules/expo-haptics/ios`)
   - ExpoKeepAwake (from `../../../node_modules/expo-keep-awake/ios`)
   - ExpoLinking (from `../../../node_modules/expo-linking/ios`)
   - "ExpoLogBox (from `../../../node_modules/@expo/log-box`)"
-  - ExpoModulesCore (from `../../../node_modules/expo-modules-core`)
+  - ExpoModulesCore (from `../../../node_modules/expo-modules-core/ExpoModulesCore.podspec`)
   - ExpoModulesJSI (from `../../../node_modules/expo-modules-jsi/apple`)
-  - ExpoModulesWorklets (from `../../../node_modules/expo-modules-core`)
+  - ExpoModulesWorklets (from `../../../node_modules/expo-modules-core/ExpoModulesWorklets.podspec`)
+  - ExpoNotifications (from `../../../node_modules/expo-notifications/ios`)
   - ExpoRouter (from `../../../node_modules/expo-router/ios`)
-  - ExpoSymbols (from `../../../node_modules/expo-symbols/ios`)
   - "ExpoUI (from `../../../node_modules/@expo/ui/ios`)"
   - FBLazyVector (from `../node_modules/react-native/Libraries/FBLazyVector`)
   - hermes-engine (from `../node_modules/react-native/sdks/hermes-engine/hermes-engine.podspec`)
   - "livekit-react-native (from `../../../node_modules/@livekit/react-native`)"
   - "livekit-react-native-webrtc (from `../../../node_modules/@livekit/react-native-webrtc`)"
+  - "LiveKitExpoPlugin (from `../../../node_modules/@livekit/react-native-expo-plugin/ios`)"
   - RCTDeprecation (from `../node_modules/react-native/ReactApple/Libraries/RCTFoundation/RCTDeprecation`)
   - RCTRequired (from `../node_modules/react-native/Libraries/Required`)
   - RCTSwiftUI (from `../node_modules/react-native/ReactApple/RCTSwiftUI`)
@@ -2168,7 +2176,7 @@ DEPENDENCIES:
   - ReactCodegen (from `build/generated/ios/ReactCodegen`)
   - ReactCommon/turbomodule/core (from `../node_modules/react-native/ReactCommon`)
   - ReactNativeDependencies (from `../node_modules/react-native/third-party-podspecs/ReactNativeDependencies.podspec`)
-  - "RNCMaskedView (from `../../../node_modules/@react-native-masked-view/masked-view`)"
+  - "RNCAsyncStorage (from `../../../node_modules/@react-native-async-storage/async-storage`)"
   - RNScreens (from `../../../node_modules/react-native-screens`)
   - Yoga (from `../node_modules/react-native/ReactCommon/yoga`)
 
@@ -2177,6 +2185,8 @@ SPEC REPOS:
     - WebRTC-SDK
 
 EXTERNAL SOURCES:
+  EXApplication:
+    :path: "../../../node_modules/expo-application/ios"
   EXConstants:
     :path: "../../../node_modules/expo-constants/ios"
   Expo:
@@ -2189,8 +2199,8 @@ EXTERNAL SOURCES:
     :path: "../../../node_modules/expo-file-system/ios"
   ExpoFont:
     :path: "../../../node_modules/expo-font/ios"
-  ExpoGlassEffect:
-    :path: "../../../node_modules/expo-glass-effect/ios"
+  ExpoHaptics:
+    :path: "../../../node_modules/expo-haptics/ios"
   ExpoKeepAwake:
     :path: "../../../node_modules/expo-keep-awake/ios"
   ExpoLinking:
@@ -2198,15 +2208,15 @@ EXTERNAL SOURCES:
   ExpoLogBox:
     :path: "../../../node_modules/@expo/log-box"
   ExpoModulesCore:
-    :path: "../../../node_modules/expo-modules-core"
+    :podspec: "../../../node_modules/expo-modules-core/ExpoModulesCore.podspec"
   ExpoModulesJSI:
     :path: "../../../node_modules/expo-modules-jsi/apple"
   ExpoModulesWorklets:
-    :path: "../../../node_modules/expo-modules-core"
+    :podspec: "../../../node_modules/expo-modules-core/ExpoModulesWorklets.podspec"
+  ExpoNotifications:
+    :path: "../../../node_modules/expo-notifications/ios"
   ExpoRouter:
     :path: "../../../node_modules/expo-router/ios"
-  ExpoSymbols:
-    :path: "../../../node_modules/expo-symbols/ios"
   ExpoUI:
     :path: "../../../node_modules/@expo/ui/ios"
   FBLazyVector:
@@ -2218,6 +2228,8 @@ EXTERNAL SOURCES:
     :path: "../../../node_modules/@livekit/react-native"
   livekit-react-native-webrtc:
     :path: "../../../node_modules/@livekit/react-native-webrtc"
+  LiveKitExpoPlugin:
+    :path: "../../../node_modules/@livekit/react-native-expo-plugin/ios"
   RCTDeprecation:
     :path: "../node_modules/react-native/ReactApple/Libraries/RCTFoundation/RCTDeprecation"
   RCTRequired:
@@ -2364,34 +2376,36 @@ EXTERNAL SOURCES:
     :path: "../node_modules/react-native/ReactCommon"
   ReactNativeDependencies:
     :podspec: "../node_modules/react-native/third-party-podspecs/ReactNativeDependencies.podspec"
-  RNCMaskedView:
-    :path: "../../../node_modules/@react-native-masked-view/masked-view"
+  RNCAsyncStorage:
+    :path: "../../../node_modules/@react-native-async-storage/async-storage"
   RNScreens:
     :path: "../../../node_modules/react-native-screens"
   Yoga:
     :path: "../node_modules/react-native/ReactCommon/yoga"
 
 SPEC CHECKSUMS:
-  EXConstants: 5120c651b684c629efa1bafcf0d0ddb96b0de62f
+  EXApplication: e6040c92edc5522accd62852342e6b14742d42c0
+  EXConstants: b761e3534d6066412c7c3276dd4f104d2275e6d4
   Expo: cd8054bc11d25aa148c04d939ca40ecae8834174
   ExpoAsset: df5110ae7e42e935bad07138133aa74f025ef79e
   ExpoDomWebView: 4e53b05879dc73ba374f76bff93dd64c8a0d91b3
-  ExpoFileSystem: 9dc04ec1e11bc3c7b965d7feb2de12c789755c7b
-  ExpoFont: 274487aa78f8c65d6551e2558eca3ec6ce3432ce
-  ExpoGlassEffect: 7d4233dc0727ee2b28dd757eda70e1b6abf662fd
-  ExpoKeepAwake: 359c47a1d9ccc3a3c519bca6e39562cce230c5bb
+  ExpoFileSystem: a8e7fb1e958471764fb48d281cf9fa81a9e4d77c
+  ExpoFont: dfb7c572372b610da45b41e3b436321fd6a97215
+  ExpoHaptics: 89364cf3c3ca2cfd54cafed42f3be3169bab6d42
+  ExpoKeepAwake: 55f75eca6499bb9e4231ebad6f3e9cb8f99c0296
   ExpoLinking: 24c7525db6e8ab5c347890b3498857babde8b306
   ExpoLogBox: cdad5c9402a186574fb5924ea91df1f08ba9a98a
-  ExpoModulesCore: 09fc200bc4f0fc085e7d89bafccce1cb688b2b91
+  ExpoModulesCore: 08b776227e9a7abe562bc58066b362097cc2e4e9
   ExpoModulesJSI: e62656cfaffb5aeb3fdc1dd2bc49f77e87ed2261
   ExpoModulesWorklets: bf01b3310464f105c5f6dbd887db81a51c765d05
+  ExpoNotifications: 6f8639a697373661879b36fc2173860826300a1d
   ExpoRouter: 173998c68fd6c518276ff8b516cf5748760d2d8f
-  ExpoSymbols: 377747de25bcb1ab68ec68f23d81fb81d43eae83
   ExpoUI: 1f2b09895d7479e3392732946cd71202574d667d
   FBLazyVector: b3e7ad108f0d882e30445c5527d774e3fd432f3d
-  hermes-engine: 7b245a7d57039c579b6a0e33926fa0a9dd30d07c
+  hermes-engine: 0a7496d6f426d14580b089059002fdde80a1185c
   livekit-react-native: 8b8f3cb64195b11c40d3b724aa07c44d0eed20dc
   livekit-react-native-webrtc: 9f52dbcc5edee327cdc8c9b458b6d6fd8ece1561
+  LiveKitExpoPlugin: 244fe0ae6c8226121a2257a2408749ea10c5e11c
   RCTDeprecation: 2a74a2c57675e64419bd89078efde81f7c1de90b
   RCTRequired: 30451112e6fef4e6f31b4e7eee0845156e35e4b0
   RCTSwiftUI: 5aaf0b07e747ba749dc6acc94d8bd41eea4b570f
@@ -2465,7 +2479,7 @@ SPEC CHECKSUMS:
   ReactCodegen: afe0d436ee089d7bea6418429d8312b1d23a6801
   ReactCommon: d5c1bb4427bf51c443de5926aac332c89ddd9363
   ReactNativeDependencies: fa0a54b3f5319ae0e3b9aff32bfee7a424b88e66
-  RNCMaskedView: eb2b2e538afa907f05a5848a1a1ac26092e6fec9
+  RNCAsyncStorage: 2ad919e88b8bc2cd80e8697ce66d04d006743283
   RNScreens: 5586f63b3b1f35c42806069aecf842dc4a980300
   WebRTC-SDK: 1d7fc2ae91da6edd63e25f3882ff24f86a8d9d8b
   Yoga: fe50ab299e578f397fef753cf309c6703a4db29b

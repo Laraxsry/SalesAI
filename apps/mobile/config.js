@@ -5,7 +5,7 @@ import { Platform } from 'react-native';
 // - Android Emulator must use 10.0.2.2 to access the host's localhost
 // - Physical devices need the computer's actual local IP address (e.g. 192.168.1.X)
 // Replace the IP below with your computer's local IP address if testing on a physical device.
-const LOCAL_IP = '172.20.10.3'; 
+const LOCAL_IP = '192.168.1.49';
 
 const getApiUrl = () => {
     if (__DEV__) {

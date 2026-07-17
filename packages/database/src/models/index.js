@@ -8,3 +8,8 @@ export { Agent } from './Agent.js';
 export { ShareLink } from './ShareLink.js';
 export { Session } from './Session.js';
 export { Message } from './Message.js';
+// Phase 4: Analytics & Insights
+export { SessionSummary } from './SessionSummary.js';
+export { SessionEvent } from './SessionEvent.js';
+export { AnalyticsRollup } from './AnalyticsRollup.js';
+export { Lead } from './Lead.js';

@@ -38,7 +38,10 @@ export const RT_EVENTS = Object.freeze({
     INGESTION_READY: 'ingestion:ready',
     SESSION_STARTED: 'session:started',
     SESSION_ENDED: 'session:ended',
-    SESSION_TRANSCRIPT: 'session:transcript'
+    SESSION_TRANSCRIPT: 'session:transcript',
+    // Phase 4: Analytics & Insights
+    SESSION_SUMMARY: 'session:summary',    // post-call özet hazır (03_data_model_and_api.md)
+    LEAD_CAPTURED: 'lead:captured'         // yeni lead yakalandı
 });
 
 /**

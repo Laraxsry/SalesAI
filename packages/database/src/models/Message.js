@@ -16,4 +16,6 @@ const MessageSchema = new Schema(
     { timestamps: true }
 );
 
+MessageSchema.index({ text: 'text' });
+
 export const Message = model('Message', MessageSchema);

@@ -1,10 +1,19 @@
 @import 'tailwindcss';
 
+/* packages/ui is a separate workspace package (own package.json), so Tailwind's
+   automatic content detection skips it by default — opt it back in explicitly. */
+@source '../../ui/src/**/*.{js,jsx,ts,tsx}';
+
 @theme {
     --color-brand: #6d5efc;
+    --color-brand-light: #8b7dff;
     --color-brand-dark: #4b3fd6;
-    --color-bg: #0b0b12;
-    --color-surface: #15151f;
+    --color-bg: #0a0a10;
+    --color-surface: #14141e;
+    --color-surface-raised: #1a1a27;
+    --color-border: #26263a;
     --color-text: #f5f5fa;
-    --radius-card: 12px;
+    --color-text-muted: #9494a8;
+    --radius-card: 14px;
+    --radius-input: 10px;
 }

@@ -1,17 +1,30 @@
 import { useEffect, useState } from 'react';
-import { useParams } from 'react-router-dom';
-import {
-    LiveKitRoom,
-    RoomAudioRenderer,
-    VideoConference
-} from '@livekit/components-react';
+import { useParams, useSearchParams } from 'react-router-dom';
+import { LiveKitRoom } from '@livekit/components-react';
+import { Logo } from '@repo/ui';
+import { Loader2, AlertCircle, PhoneOff } from 'lucide-react';
+import { VisitRoom } from './VisitRoom.jsx';
 
 const API = import.meta.env.VITE_API_URL || 'http://localhost:5001';
 
+function CenteredMessage({ embed, icon: Icon, children }) {
+    return (
+        <div className="flex h-full flex-col items-center justify-center gap-4 bg-bg px-6 text-center">
+            {!embed && <Logo />}
+            <Icon size={28} className="text-text-muted" />
+            <p className="text-sm text-text-muted">{children}</p>
+        </div>
+    );
+}
+
 export function Visit() {
     const { token } = useParams();
+    const [searchParams] = useSearchParams();
+    const embed = searchParams.get('embed') === '1';
+
     const [conn, setConn] = useState(null);
     const [error, setError] = useState(null);
+    const [ended, setEnded] = useState(false);
 
     useEffect(() => {
         let ignore = false;
@@ -22,46 +35,58 @@ export function Visit() {
                     headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify({ shareToken: token })
                 });
-                if (!res.ok) throw new Error('Could not start session');
                 const data = await res.json();
-                if (!ignore) {
-                    setConn(data);
-                }
+                if (!res.ok) throw new Error(data.error || 'Bağlantı kurulamadı');
+                if (!ignore) setConn(data);
             } catch (err) {
-                if (!ignore) {
-                    setError(err.message);
-                }
+                if (!ignore) setError(err.message);
             }
         }
         start();
-        return () => { ignore = true; };
+        return () => {
+            ignore = true;
+        };
     }, [token]);
 
-    if (error) return <div style={{ padding: 32 }}>{error}</div>;
-    if (!conn) return <div style={{ padding: 32 }}>Connecting to your AI rep…</div>;
+    // Checked before `error`: ending the call can make an in-flight LiveKit
+    // connect() reject with a "client initiated disconnect" error — once the
+    // visitor has intentionally left, that trailing rejection is just noise.
+    if (ended) {
+        return (
+            <CenteredMessage embed={embed} icon={PhoneOff}>
+                Görüşme sona erdi.
+            </CenteredMessage>
+        );
+    }
+
+    if (error) {
+        return (
+            <CenteredMessage embed={embed} icon={AlertCircle}>
+                {error}
+            </CenteredMessage>
+        );
+    }
+
+    if (!conn) {
+        return (
+            <CenteredMessage embed={embed} icon={Loader2}>
+                AI temsilciye bağlanılıyor…
+            </CenteredMessage>
+        );
+    }
 
     return (
-        <div style={{ height: '100vh', display: 'flex', flexDirection: 'column' }}>
-            <div style={{ padding: 16, background: '#111', color: '#fff', textAlign: 'center' }}>
-                <h2>SalesAI Live Agent</h2>
-                <p>Use the control bar below to mute/unmute or share your screen.</p>
-            </div>
-            
-            <div style={{ flex: 1, position: 'relative' }}>
-                <LiveKitRoom
-                    serverUrl={conn.livekitUrl}
-                    token={conn.token}
-                    connect
-                    audio
-                    video={false}
-                    style={{ height: '100%' }}
-                >
-                    <RoomAudioRenderer />
-                    {/* The VideoConference component automatically handles showing screen shares (both from Agent and User) and Avatar videos, plus gives you a real control bar to share your screen. */}
-                    <VideoConference />
-                </LiveKitRoom>
-            </div>
-        </div>
+        <LiveKitRoom
+            serverUrl={conn.livekitUrl}
+            token={conn.token}
+            connect
+            audio={false}
+            video={false}
+            onDisconnected={() => setEnded(true)}
+            onError={(err) => setError(err.message)}
+            style={{ height: '100%' }}
+        >
+            <VisitRoom embed={embed} onEnd={() => setEnded(true)} />
+        </LiveKitRoom>
     );
 }
-

@@ -9,6 +9,20 @@ import { getLLM } from '@repo/ai';
 
 export const agentsRouter = Router();
 
+/** List all agents for a product. */
+agentsRouter.get('/', requireAuth, async (req, res, next) => {
+    try {
+        const { productId } = req.query;
+        if (!productId) {
+            return res.status(400).json({ error: 'productId query param is required' });
+        }
+        const agents = await Agent.find({ productId }).sort({ createdAt: -1 });
+        res.json(agents);
+    } catch (err) {
+        next(err);
+    }
+});
+
 /** Create / configure an agent for a product. */
 agentsRouter.post('/', requireAuth, validate({ body: AgentConfigInput }), async (req, res, next) => {
     try {
@@ -44,12 +58,22 @@ agentsRouter.post('/:id/activate', requireAuth, async (req, res, next) => {
     }
 });
 
-/** Get a specific agent configuration. */
+/** Get a specific agent configuration, including its active share link (if any). */
 agentsRouter.get('/:id', requireAuth, async (req, res, next) => {
     try {
         const agent = await Agent.findById(req.params.id);
         if (!agent) return res.status(404).json({ error: 'Agent not found' });
-        res.json(agent);
+
+        let shareUrl;
+        if (agent.status === 'active') {
+            const link = await ShareLink.findOne({ agentId: agent._id, active: true }).sort({ createdAt: -1 });
+            if (link) {
+                const base = process.env.VISITOR_PUBLIC_URL || 'http://localhost:5174';
+                shareUrl = `${base}/v/${link.token}`;
+            }
+        }
+
+        res.json({ ...agent.toObject(), shareUrl });
     } catch (err) {
         next(err);
     }

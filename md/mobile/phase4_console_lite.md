@@ -32,7 +32,7 @@
 ## Tasks
 
 1. **Auth & workspace context**
-   - Login/refresh against `@repo/auth`; secure token storage (SecureStore).
+   - [x] Login/refresh against `@repo/auth`; secure token storage (SecureStore).
    - Workspace switcher; RBAC gates what's visible per role.
 
 2. **Live sessions**

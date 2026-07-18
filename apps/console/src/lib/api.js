@@ -93,3 +93,9 @@ export const agentsApi = {
     activate: (id) => apiFetch(`/agents/${id}/activate`, { method: 'POST' }),
     pause: (id) => apiFetch(`/agents/${id}/pause`, { method: 'POST' })
 };
+
+export const leadsApi = {
+    list: (workspaceId, { status } = {}) =>
+        apiFetch(`/analytics/leads?workspaceId=${workspaceId}${status ? `&status=${status}` : ''}`),
+    updateStatus: (id, status) => apiFetch(`/analytics/leads/${id}/status`, { method: 'PATCH', body: { status } })
+};

@@ -2392,7 +2392,7 @@ SPEC CHECKSUMS:
   ExpoKeepAwake: 359c47a1d9ccc3a3c519bca6e39562cce230c5bb
   ExpoLinking: f8a78524352bf2c3baed5b33c8b56cd57c448702
   ExpoLogBox: cdad5c9402a186574fb5924ea91df1f08ba9a98a
-  ExpoModulesCore: 5cea27a477df9e47a822d3be3c78afc15928ca07
+  ExpoModulesCore: 3a310ad4538ca884e913948aa84f04b64dea5722
   ExpoModulesJSI: e62656cfaffb5aeb3fdc1dd2bc49f77e87ed2261
   ExpoModulesWorklets: 58bf4b7f263b5cad3f6017a68148789878ffd5a3
   ExpoNotifications: 6f8639a697373661879b36fc2173860826300a1d
@@ -2400,7 +2400,7 @@ SPEC CHECKSUMS:
   ExpoSymbols: 377747de25bcb1ab68ec68f23d81fb81d43eae83
   ExpoUI: 41ec84b8a9c2de820ae3e2e209d66e683be0e435
   FBLazyVector: 24e62c765683b8d89006a88a2c8f5cf019f0074d
-  hermes-engine: a6482b621b8280814a401b7d1d210cbab56fd1d7
+  hermes-engine: 635bd8d6b2f53c1e46da65af1f83c30b6f94e0bf
   livekit-react-native: 8b8f3cb64195b11c40d3b724aa07c44d0eed20dc
   livekit-react-native-webrtc: 9f52dbcc5edee327cdc8c9b458b6d6fd8ece1561
   LiveKitExpoPlugin: 244fe0ae6c8226121a2257a2408749ea10c5e11c
@@ -2412,7 +2412,7 @@ SPEC CHECKSUMS:
   React: e2dc35338068bbd299c66f043ae0d7f25de8499e
   React-callinvoker: 28b25d21b124c26cebaea713ba7d801b9351dc48
   React-Core: 02ed7d2ffb70437bdf2aba074a13078a7b0b9ff0
-  React-Core-prebuilt: 958c152ef808bd8e1bd4a61dd8ba34a51b647fe4
+  React-Core-prebuilt: c34e8fbc84313c0b2b480d3caf9e09f624a7d233
   React-CoreModules: b3a5a42dadcde3b5d47b325bd912eb2ced89e146
   React-cxxreact: fe8f88dda044e5905e99a00f41b7a874c3908716
   React-debug: 92944dc4d89f56d640e75498266cbde557a48189
@@ -2475,7 +2475,7 @@ SPEC CHECKSUMS:
   ReactAppDependencyProvider: 25c9c516839be2c5e3d3344f95dc7da5f7e63fc2
   ReactCodegen: dfe41c3f92bdf782bcf9b2c9d7c12cb9cfd82cb7
   ReactCommon: 7dfc3250793bf36cf221096ff59e1179e13eef7f
-  ReactNativeDependencies: 9954e7e568f876a3d18da0285a347f4c41c31f2d
+  ReactNativeDependencies: b11b2ea50f79d5141caef8f2c1177ee42c3e91a6
   RNCAsyncStorage: 2ad919e88b8bc2cd80e8697ce66d04d006743283
   RNCMaskedView: eb2b2e538afa907f05a5848a1a1ac26092e6fec9
   RNScreens: f94000b3cb1eb14cbb8d08dd6074fdd6ccf0e6b0

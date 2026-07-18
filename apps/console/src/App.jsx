@@ -1,6 +1,6 @@
 import { Routes, Route, NavLink, useNavigate } from 'react-router-dom';
 import { Logo, cn } from '@repo/ui';
-import { LayoutDashboard, BookOpen, Bot, LogOut } from 'lucide-react';
+import { LayoutDashboard, BookOpen, Bot, Users, Settings as SettingsIcon, LogOut } from 'lucide-react';
 import { Login } from './pages/Login.jsx';
 import { Register } from './pages/Register.jsx';
 import { Overview } from './pages/Overview.jsx';
@@ -8,13 +8,19 @@ import { ProductDetail } from './pages/ProductDetail.jsx';
 import { Knowledge } from './pages/Knowledge.jsx';
 import { Agents } from './pages/Agents.jsx';
 import { AgentDetail } from './pages/AgentDetail.jsx';
+import { Leads } from './pages/Leads.jsx';
+import { Settings } from './pages/Settings.jsx';
 import { RequireAuth } from './lib/RequireAuth.jsx';
 import { useAuthStore } from './store/auth.js';
 
+// Mirrors the mobile console-lite tab bar (Home/Calls/Leads/Agents/Settings)
+// so sellers see the same top-level sections on web and mobile.
 const NAV_ITEMS = [
     { to: '/', label: 'Overview', icon: LayoutDashboard, end: true },
     { to: '/knowledge', label: 'Knowledge', icon: BookOpen },
-    { to: '/agents', label: 'Agents', icon: Bot }
+    { to: '/agents', label: 'Agents', icon: Bot },
+    { to: '/leads', label: 'Leads', icon: Users },
+    { to: '/settings', label: 'Settings', icon: SettingsIcon }
 ];
 
 function initials(name = '') {
@@ -104,6 +110,8 @@ export function App() {
                                 <Route path="/agents" element={<Agents />} />
                                 <Route path="/agents/:id" element={<AgentDetail />} />
                                 <Route path="/agents/:id/sessions" element={<h1 className="text-xl font-semibold text-text">Transcripts + analytics</h1>} />
+                                <Route path="/leads" element={<Leads />} />
+                                <Route path="/settings" element={<Settings />} />
                             </Routes>
                         </Shell>
                     </RequireAuth>

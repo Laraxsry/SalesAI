@@ -12,7 +12,7 @@
 - Overview dashboard with KPI cards + time-series charts.
 - Per-agent and per-product analytics drill-downs.
 - Conversation explorer: searchable transcript list + detail view with summary.
-- Leads inbox with scoring and status.
+- [x] Leads inbox with scoring and status.
 - Knowledge-gaps report that links straight into the knowledge manager.
 
 ---

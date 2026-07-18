@@ -1,28 +1,27 @@
-import { useState, useEffect } from 'react';
+import { useState } from 'react';
 import { View, Text, StyleSheet, TextInput, TouchableOpacity, KeyboardAvoidingView, Platform, ScrollView, ActivityIndicator } from 'react-native';
 import { StatusBar } from 'expo-status-bar';
 import { useRouter } from 'expo-router';
 import { useAuth } from './_layout';
 import { CONFIG } from '../../config';
 
-export default function LoginScreen() {
+export default function RegisterScreen() {
     const router = useRouter();
-    const { token, login } = useAuth();
+    const { login } = useAuth();
 
+    const [name, setName] = useState('');
     const [email, setEmail] = useState('');
     const [password, setPassword] = useState('');
     const [loading, setLoading] = useState(false);
     const [error, setError] = useState('');
 
-    // A restored session (from SecureStore) already carries a valid token by
-    // the time this screen mounts — skip straight to the dashboard.
-    useEffect(() => {
-        if (token) router.replace('/console/dashboard');
-    }, [token]);
-
-    const handleLogin = async () => {
-        if (!email.trim() || !password.trim()) {
-            setError('Please enter both email and password');
+    const handleRegister = async () => {
+        if (!name.trim() || !email.trim() || !password.trim()) {
+            setError('Please fill in name, email and password');
+            return;
+        }
+        if (password.length < 8) {
+            setError('Password must be at least 8 characters');
             return;
         }
 
@@ -30,24 +29,25 @@ export default function LoginScreen() {
         setLoading(true);
 
         try {
-            const res = await fetch(`${CONFIG.API_URL}/api/v1/auth/login`, {
+            const res = await fetch(`${CONFIG.API_URL}/api/v1/auth/register`, {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ email: email.trim(), password }),
+                body: JSON.stringify({ name: name.trim(), email: email.trim(), password }),
             });
 
             if (!res.ok) {
                 const data = await res.json().catch(() => ({}));
-                throw new Error(data.error || 'Invalid credentials');
+                throw new Error(data.error || 'Could not create account');
             }
 
             const data = await res.json();
             login(data.accessToken, data.user, data.refreshToken);
 
-            // Navigate to console dashboard
+            // Same backend/account system as web — this seller can now log
+            // into the web console with the same credentials, and vice versa.
             router.replace('/console/dashboard');
         } catch (err) {
-            console.error('Login failed:', err);
+            console.error('Registration failed:', err);
             setError(err.message);
         } finally {
             setLoading(false);
@@ -63,12 +63,25 @@ export default function LoginScreen() {
             <ScrollView contentContainerStyle={styles.scrollContainer} keyboardShouldPersistTaps="handled">
                 <View style={styles.header}>
                     <Text style={styles.brand}>SalesAI</Text>
-                    <Text style={styles.tagline}>Seller Console Monitor</Text>
+                    <Text style={styles.tagline}>Create your seller account</Text>
                 </View>
 
                 <View style={styles.card}>
-                    <Text style={styles.cardTitle}>Seller Login</Text>
-                    <Text style={styles.cardDesc}>Enter your seller credentials to access agents, workspaces, leads, and live call analytics.</Text>
+                    <Text style={styles.cardTitle}>Seller Sign Up</Text>
+                    <Text style={styles.cardDesc}>Create an account to build agents, monitor calls, and track leads — from web or mobile.</Text>
+
+                    <TextInput
+                        style={[styles.input, error ? styles.inputError : null]}
+                        placeholder="Full Name"
+                        placeholderTextColor="#6c727f"
+                        value={name}
+                        onChangeText={(text) => {
+                            setName(text);
+                            if (error) setError('');
+                        }}
+                        autoCapitalize="words"
+                        autoCorrect={false}
+                    />
 
                     <TextInput
                         style={[styles.input, error ? styles.inputError : null]}
@@ -86,7 +99,7 @@ export default function LoginScreen() {
 
                     <TextInput
                         style={[styles.input, error ? styles.inputError : null]}
-                        placeholder="Password"
+                        placeholder="Password (min. 8 characters)"
                         placeholderTextColor="#6c727f"
                         secureTextEntry
                         value={password}
@@ -100,26 +113,22 @@ export default function LoginScreen() {
 
                     {error ? <Text style={styles.errorText}>{error}</Text> : null}
 
-                    <TouchableOpacity 
-                        style={styles.button} 
-                        onPress={handleLogin} 
+                    <TouchableOpacity
+                        style={styles.button}
+                        onPress={handleRegister}
                         activeOpacity={0.8}
                         disabled={loading}
                     >
                         {loading ? (
                             <ActivityIndicator size="small" color="#ffffff" />
                         ) : (
-                            <Text style={styles.buttonText}>Login to Console</Text>
+                            <Text style={styles.buttonText}>Create Account</Text>
                         )}
                     </TouchableOpacity>
                 </View>
 
-                <TouchableOpacity style={styles.backLink} onPress={() => router.push('/console/register')} activeOpacity={0.7}>
-                    <Text style={styles.backLinkText}>No account yet? Create one</Text>
-                </TouchableOpacity>
-
-                <TouchableOpacity style={styles.backLink} onPress={() => router.replace('/')} activeOpacity={0.7}>
-                    <Text style={styles.backLinkText}>Go Back to Visitor App</Text>
+                <TouchableOpacity style={styles.backLink} onPress={() => router.replace('/console')} activeOpacity={0.7}>
+                    <Text style={styles.backLinkText}>Already have an account? Log in</Text>
                 </TouchableOpacity>
 
                 <View style={styles.footer}>

@@ -33,7 +33,7 @@ const MAX_CONCURRENT_BROWSERS = Number(process.env.MAX_TOUR_BROWSERS || 3);
  * as untrusted (otherwise `trusted=localhost:5432` would also trust
  * `localhost:6379`, turning the guard into a same-host port scanner).
  */
-function trustKey(url) {
+export function trustKey(url) {
     let parsed;
     try {
         parsed = new URL(url);
@@ -43,7 +43,7 @@ function trustKey(url) {
     return getDomain(url, { allowPrivateDomains: true }) || parsed.origin;
 }
 
-function assertHttpUrl(url) {
+export function assertHttpUrl(url) {
     let target;
     try {
         target = new URL(url);

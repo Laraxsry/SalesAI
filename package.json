@@ -6,7 +6,7 @@
   "type": "module",
   "scripts": {
     "build": "npm run build --workspaces --if-present",
-    "dev": "concurrently -n api,console,visitor,ingest,general -c blue,green,magenta,yellow,cyan \"npm:dev:api\" \"npm:dev:console\" \"npm:dev:visitor\" \"npm:dev:ingest\" \"npm:dev:general\"",
+    "dev": "concurrently -n api,console,visitor,ingest,general,agent -c blue,green,magenta,yellow,cyan,red \"npm:dev:api\" \"npm:dev:console\" \"npm:dev:visitor\" \"npm:dev:ingest\" \"npm:dev:general\" \"npm:dev:agent\"",
     "dev:api": "npm run dev -w @app/api",
     "dev:console": "npm run dev -w @app/console",
     "dev:visitor": "npm run dev -w @app/visitor",
@@ -46,9 +46,17 @@
     "@ffmpeg-installer/ffmpeg": "^1.1.0",
     "events-universal": "^1.0.1",
     "fetch-nodeshim": "^0.4.10",
+    "lucide-react": "^1.25.0",
+    "multitars": "^1.0.0",
     "option": "^0.2.4",
     "react": "^19.2.7",
     "react-dom": "^19.2.7",
-    "sharp": "^0.35.3"
+    "sharp": "^0.35.3",
+    "whatwg-url-minimum": "^0.2.0"
+  },
+  "overrides": {
+    "react-native": "0.85.3",
+    "react-native-safe-area-context": "5.7.0",
+    "react-native-screens": "4.25.2"
   }
 }

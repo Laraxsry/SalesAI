@@ -99,6 +99,18 @@ agentsRouter.post('/:id/pause', requireAuth, async (req, res, next) => {
     }
 });
 
+/** List all agents, optionally filtered by productId. */
+agentsRouter.get('/', requireAuth, async (req, res, next) => {
+    try {
+        const { productId } = req.query;
+        const filter = productId ? { productId } : {};
+        const agents = await Agent.find(filter).sort({ createdAt: -1 });
+        res.json(agents);
+    } catch (err) {
+        next(err);
+    }
+});
+
 /** List all sessions for an agent */
 agentsRouter.get('/:id/sessions', requireAuth, async (req, res, next) => {
     try {

@@ -35,7 +35,7 @@ async function run() {
 
     // Create a dummy user and token for requireAuth
     const userId = new mongoose.Types.ObjectId();
-    const tokenObj = signTokens(String(userId));
+    const tokenObj = signTokens({ sub: String(userId) });
     const headers = {
         'Content-Type': 'application/json',
         'Authorization': `Bearer ${tokenObj.accessToken}`

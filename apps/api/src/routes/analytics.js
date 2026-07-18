@@ -264,3 +264,23 @@ analyticsRouter.get('/knowledge-gaps', requireAuth, async (req, res, next) => {
         next(err);
     }
 });
+
+/** Update lead status. */
+analyticsRouter.patch('/leads/:id/status', requireAuth, async (req, res, next) => {
+    try {
+        const { status } = req.body;
+        if (!status) return res.status(400).json({ error: 'status field is required' });
+
+        const lead = await Lead.findByIdAndUpdate(
+            req.params.id,
+            { status },
+            { new: true }
+        );
+        if (!lead) return res.status(404).json({ error: 'Lead not found' });
+
+        res.json(lead);
+    } catch (err) {
+        next(err);
+    }
+});
+

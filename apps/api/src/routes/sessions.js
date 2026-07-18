@@ -168,3 +168,28 @@ sessionsRouter.get('/search', requireAuth, async (req, res, next) => {
         next(err);
     }
 });
+
+/** Get details of a single session. */
+sessionsRouter.get('/:id', requireAuth, async (req, res, next) => {
+    try {
+        const session = await Session.findById(req.params.id);
+        if (!session) return res.status(404).json({ error: 'Session not found' });
+        res.json(session);
+    } catch (err) {
+        next(err);
+    }
+});
+
+/** Get session summary (if generated). */
+sessionsRouter.get('/:id/summary', requireAuth, async (req, res, next) => {
+    try {
+        const { SessionSummary } = await import('@repo/database');
+        const summary = await SessionSummary.findOne({ sessionId: req.params.id });
+        if (!summary) return res.status(404).json({ error: 'Summary not found yet' });
+        res.json(summary);
+    } catch (err) {
+        next(err);
+    }
+});
+
+

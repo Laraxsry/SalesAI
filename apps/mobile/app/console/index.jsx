@@ -1,43 +1,51 @@
-import { useCallback, useState } from 'react';
-import { View, Text, StyleSheet, TextInput, TouchableOpacity, KeyboardAvoidingView, Platform, ScrollView } from 'react-native';
+import { useState } from 'react';
+import { View, Text, StyleSheet, TextInput, TouchableOpacity, KeyboardAvoidingView, Platform, ScrollView, ActivityIndicator } from 'react-native';
 import { StatusBar } from 'expo-status-bar';
-import { useRouter, useFocusEffect } from 'expo-router';
-import { getSavedConversations } from '../src/savedConversations';
+import { useRouter } from 'expo-router';
+import { useAuth } from './_layout';
+import { CONFIG } from '../../config';
 
-/**
- * Mobile visitor landing. The user enters an agent token or share link 
- * to connect to their AI sales representative.
- */
-export default function Home() {
+export default function LoginScreen() {
     const router = useRouter();
-    const [input, setInput] = useState('');
+    const { login } = useAuth();
+
+    const [email, setEmail] = useState('');
+    const [password, setPassword] = useState('');
+    const [loading, setLoading] = useState(false);
     const [error, setError] = useState('');
-    const [savedCount, setSavedCount] = useState(0);
 
-    useFocusEffect(
-        useCallback(() => {
-            getSavedConversations().then((list) => setSavedCount(list.length));
-        }, [])
-    );
-
-    const handleConnect = () => {
-        if (!input.trim()) {
-            setError('Please enter a valid share link or token');
+    const handleLogin = async () => {
+        if (!email.trim() || !password.trim()) {
+            setError('Please enter both email and password');
             return;
         }
 
         setError('');
-        let token = input.trim();
+        setLoading(true);
 
-        // If the user inputs a full link (universal link or deep link), extract the token
-        // e.g. salesai://v/some-token or http://.../v/some-token
-        const tokenMatch = token.match(/(?:v\/|v=)([a-zA-Z0-9_-]+)/) || token.match(/\/v\/([a-zA-Z0-9_-]+)/);
-        if (tokenMatch && tokenMatch[1]) {
-            token = tokenMatch[1];
+        try {
+            const res = await fetch(`${CONFIG.API_URL}/api/v1/auth/login`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ email: email.trim(), password }),
+            });
+
+            if (!res.ok) {
+                const data = await res.json().catch(() => ({}));
+                throw new Error(data.error || 'Invalid credentials');
+            }
+
+            const data = await res.json();
+            login(data.accessToken, data.user);
+            
+            // Navigate to console dashboard
+            router.replace('/console/dashboard');
+        } catch (err) {
+            console.error('Login failed:', err);
+            setError(err.message);
+        } finally {
+            setLoading(false);
         }
-
-        // Navigate to the video call screen with the token
-        router.push(`/v/${token}`);
     };
 
     return (
@@ -49,20 +57,35 @@ export default function Home() {
             <ScrollView contentContainerStyle={styles.scrollContainer} keyboardShouldPersistTaps="handled">
                 <View style={styles.header}>
                     <Text style={styles.brand}>SalesAI</Text>
-                    <Text style={styles.tagline}>Talk to your AI sales representative</Text>
+                    <Text style={styles.tagline}>Seller Console Monitor</Text>
                 </View>
 
                 <View style={styles.card}>
-                    <Text style={styles.cardTitle}>Join AI Conversation</Text>
-                    <Text style={styles.cardDesc}>Enter your representative's share link or token below to start a voice and video session.</Text>
+                    <Text style={styles.cardTitle}>Seller Login</Text>
+                    <Text style={styles.cardDesc}>Enter your seller credentials to access agents, workspaces, leads, and live call analytics.</Text>
 
                     <TextInput
                         style={[styles.input, error ? styles.inputError : null]}
-                        placeholder="e.g. agent_token_abc"
+                        placeholder="Email Address"
                         placeholderTextColor="#6c727f"
-                        value={input}
+                        value={email}
                         onChangeText={(text) => {
-                            setInput(text);
+                            setEmail(text);
+                            if (error) setError('');
+                        }}
+                        autoCapitalize="none"
+                        keyboardType="email-address"
+                        autoCorrect={false}
+                    />
+
+                    <TextInput
+                        style={[styles.input, error ? styles.inputError : null]}
+                        placeholder="Password"
+                        placeholderTextColor="#6c727f"
+                        secureTextEntry
+                        value={password}
+                        onChangeText={(text) => {
+                            setPassword(text);
                             if (error) setError('');
                         }}
                         autoCapitalize="none"
@@ -71,23 +94,26 @@ export default function Home() {
 
                     {error ? <Text style={styles.errorText}>{error}</Text> : null}
 
-                    <TouchableOpacity style={styles.button} onPress={handleConnect} activeOpacity={0.8}>
-                        <Text style={styles.buttonText}>Connect to Representative</Text>
+                    <TouchableOpacity 
+                        style={styles.button} 
+                        onPress={handleLogin} 
+                        activeOpacity={0.8}
+                        disabled={loading}
+                    >
+                        {loading ? (
+                            <ActivityIndicator size="small" color="#ffffff" />
+                        ) : (
+                            <Text style={styles.buttonText}>Login to Console</Text>
+                        )}
                     </TouchableOpacity>
                 </View>
 
-                {savedCount > 0 && (
-                    <TouchableOpacity style={styles.savedLink} onPress={() => router.push('/saved')}>
-                        <Text style={styles.savedLinkText}>Kayıtlı Görüşmeler ({savedCount})</Text>
-                    </TouchableOpacity>
-                )}
-
-                <TouchableOpacity style={styles.consoleLink} onPress={() => router.push('/console')} activeOpacity={0.7}>
-                    <Text style={styles.consoleLinkText}>Access Seller Console</Text>
+                <TouchableOpacity style={styles.backLink} onPress={() => router.replace('/')} activeOpacity={0.7}>
+                    <Text style={styles.backLinkText}>Go Back to Visitor App</Text>
                 </TouchableOpacity>
 
                 <View style={styles.footer}>
-                    <Text style={styles.footerText}>Powered by LiveKit WebRTC & SalesAI</Text>
+                    <Text style={styles.footerText}>Powered by SalesAI Dashboard</Text>
                 </View>
             </ScrollView>
         </KeyboardAvoidingView>
@@ -178,32 +204,21 @@ const styles = StyleSheet.create({
         shadowOpacity: 0.3,
         shadowRadius: 10,
         elevation: 4,
+        justifyContent: 'center',
+        minHeight: 52,
     },
     buttonText: {
         color: '#ffffff',
         fontSize: 16,
         fontWeight: '600',
     },
-    savedLink: {
+    backLink: {
         marginTop: 24,
-        alignItems: 'center',
         alignSelf: 'center',
         paddingVertical: 8,
         paddingHorizontal: 16,
     },
-    savedLinkText: {
-        color: '#6d5efc',
-        fontSize: 14,
-        fontWeight: '600',
-    },
-    consoleLink: {
-        marginTop: 12,
-        alignItems: 'center',
-        alignSelf: 'center',
-        paddingVertical: 8,
-        paddingHorizontal: 16,
-    },
-    consoleLinkText: {
+    backLinkText: {
         color: '#9ba1b0',
         fontSize: 14,
         fontWeight: '600',

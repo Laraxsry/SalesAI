@@ -23,14 +23,4 @@ const config = getDefaultConfig(projectRoot);
 // 1. Monorepo kökündeki tüm dosyaları izle (workspace paketleri için)
 config.watchFolders = [workspaceRoot];
 
-// 2. Modülleri yalnızca bu klasörlerden çöz — önce mobil, sonra kök
-config.resolver.nodeModulesPaths = [
-    path.resolve(projectRoot, 'node_modules'),
-    path.resolve(workspaceRoot, 'node_modules'),
-];
-
-// 3. Hiyerarşik aramayı kapat → Metro yukarı doğru tırmanıp ikinci bir React
-//    kopyası bulamaz; her import yukarıdaki sıraya göre tek kopyaya gider.
-config.resolver.disableHierarchicalLookup = true;
-
 module.exports = config;

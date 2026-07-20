@@ -5,8 +5,10 @@ import {
     BarVisualizer,
     useVoiceAssistant,
     useLocalParticipant,
-    useRoomContext
+    useRoomContext,
+    useTracks
 } from '@livekit/components-react';
+import { Track } from 'livekit-client';
 import { Logo } from '@repo/ui';
 import { Mic, MicOff, PhoneOff, ScreenShare, ScreenShareOff } from 'lucide-react';
 
@@ -38,6 +40,12 @@ function Captions({ segments }) {
 export function VisitRoom({ embed, onEnd }) {
     const { state, audioTrack, videoTrack, agentTranscriptions } = useVoiceAssistant();
     const { localParticipant, isMicrophoneEnabled, isScreenShareEnabled } = useLocalParticipant();
+    // useVoiceAssistant only surfaces mic/camera; the guided-tour browser is
+    // published as a screen-share track, so pick it up separately (remote only —
+    // the visitor's own share must not be mirrored back to them).
+    const screenTracks = useTracks([Track.Source.ScreenShare]);
+    const tourTrack = screenTracks.find(t => !t.participant.isLocal);
+    const mainTrack = tourTrack ?? videoTrack;
     const room = useRoomContext();
     const [micError, setMicError] = useState(false);
     const startedRef = useRef(false);
@@ -73,8 +81,11 @@ export function VisitRoom({ embed, onEnd }) {
             )}
 
             <div className="relative flex flex-1 items-center justify-center overflow-hidden">
-                {videoTrack ? (
-                    <VideoTrack trackRef={videoTrack} className="h-full w-full object-cover" />
+                {mainTrack ? (
+                    <VideoTrack
+                        trackRef={mainTrack}
+                        className={`h-full w-full ${tourTrack ? 'object-contain' : 'object-cover'}`}
+                    />
                 ) : (
                     <div className="flex flex-col items-center gap-6">
                         <div className="flex h-32 w-32 items-center justify-center rounded-full bg-gradient-to-br from-brand-light to-brand-dark shadow-[0_0_60px_-10px_rgba(109,94,252,0.6)]">

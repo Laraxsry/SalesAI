@@ -158,6 +158,22 @@ export default defineAgent({
                     Logger.error('GuidedTour highlight failed', { error: e.message });
                     return { ok: false, error: e.message };
                 }
+            },
+            click: async (selector) => {
+                if (!isTourActive) return { ok: false, error: 'Tour not active.' };
+                try {
+                    await tour.click(selector);
+                    await Message.create({
+                        sessionId: session._id,
+                        role: 'system',
+                        text: `[screen:click] selector=${selector}`,
+                        meta: { action: 'click', selector }
+                    }).catch(() => {});
+                    return { ok: true };
+                } catch (e) {
+                    Logger.error('GuidedTour click failed', { error: e.message });
+                    return { ok: false, error: e.message };
+                }
             }
         };
 
@@ -177,16 +193,25 @@ export default defineAgent({
 
             const videoStream = new VideoStream(track);
 
-            // Sample the stream at ~1 FPS using setInterval
+            // Drain the stream continuously (a ReadableStream allows only one
+            // reader; per-tick iterators would throw), keep only the newest frame.
+            let latestRawFrame = null;
+            (async () => {
+                // The stream yields VideoFrameEvent ({ frame, timestampUs, rotation })
+                for await (const event of videoStream) {
+                    latestRawFrame = event.frame;
+                }
+            })().catch(err => Logger.warn('Customer video stream ended', { error: err.message }));
+
+            // Convert at ~1 FPS to keep sharp/vision cost bounded
             customerSampleInterval = setInterval(async () => {
                 if (!screenModes.includes('customer-share')) return;
                 try {
-                    // Get the next frame from the stream
-                    const { value: frame } = await videoStream[Symbol.asyncIterator]().next();
+                    const frame = latestRawFrame;
                     if (!frame) return;
 
-                    const { data, width, height } = frame;
-                    // ARGB (LiveKit default) → PNG → resize to max 1024px wide → JPEG base64
+                    // Frames arrive as I420; convert to RGBA so sharp can read raw pixels
+                    const { data, width, height } = frame.convert(VideoBufferType.RGBA);
                     const jpegBuffer = await sharp(Buffer.from(data), {
                         raw: { width, height, channels: 4 }
                     })
@@ -255,7 +280,7 @@ export default defineAgent({
         });
 
         // Attach the configured avatar (developer-selected, not visitor choice).
-        const avatar = getAvatarProvider('voice-only');
+        const avatar = getAvatarProvider(agentDoc.avatarProvider);
         try {
             await avatar.start({ agentSession, room: ctx.room });
         } catch (err) {

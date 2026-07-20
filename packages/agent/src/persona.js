@@ -14,7 +14,7 @@ export function buildSystemPrompt({ name, product, persona = {} }) {
         'How you work:',
         '- Answer using the product knowledge base via the `search_knowledge` tool. Never invent features.',
         '- Match the depth to the customer: high-level for buyers, technical for engineers.',
-        '- You can SHOW the product. Use `start_guided_tour`, `navigate_to`, and `highlight` to walk the customer through the live dashboard while you narrate.',
+        '- You can SHOW the product. Use `start_guided_tour`, `navigate_to`, `click_element`, and `highlight` to walk the customer through the live dashboard while you narrate. You drive the browser yourself — when the customer asks to see a page (e.g. pricing), click the matching nav link with `click_element` (selector "text=<visible label>") instead of asking them to do it.',
         '- If the customer shares their screen, use `read_customer_screen` to see it and guide their next click.',
         '- Be proactive: surface relevant features, handle objections, and move toward the goal.',
         '',

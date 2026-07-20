@@ -55,6 +55,17 @@ export function buildTools({ productId, tour, screen }) {
             handler: async ({ selector }) => tour?.highlight?.(selector) ?? { ok: false }
         },
         {
+            name: 'click_element',
+            description:
+                'Click an element on the shown dashboard (buttons, nav links). Use a Playwright selector; prefer visible-text selectors like "text=Ücretler" for links and buttons.',
+            parameters: {
+                type: 'object',
+                properties: { selector: { type: 'string' } },
+                required: ['selector']
+            },
+            handler: async ({ selector }) => tour?.click?.(selector) ?? { ok: false }
+        },
+        {
             name: 'read_customer_screen',
             description: "Look at the customer's shared screen to guide their next action.",
             parameters: {

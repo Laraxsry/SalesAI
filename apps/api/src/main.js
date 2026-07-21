@@ -19,7 +19,17 @@ async function main() {
 
     const app = express();
     app.use(helmet());
-    app.use(cors({ origin: (process.env.CORS_ORIGIN || '').split(',').filter(Boolean) }));
+    // The embed router (Phase 5) is deliberately excluded from this static,
+    // env-driven CORS policy: its allowed origins come from each agent's own
+    // EmbedDomain allowlist in Mongo, resolved per-request, not from a fixed
+    // CORS_ORIGIN list. The `cors` package short-circuits every OPTIONS
+    // request as soon as it's mounted — including ones outside its allowed
+    // list — so leaving it in front of /api/v1/embed would swallow the
+    // preflight before enforceEmbedOrigin ever got to apply the per-agent
+    // check. The embed router sets its own CORS headers instead (see
+    // apps/api/src/middleware/embed-origin.js).
+    const corsMiddleware = cors({ origin: (process.env.CORS_ORIGIN || '').split(',').filter(Boolean) });
+    app.use((req, res, next) => (req.path.startsWith('/api/v1/embed') ? next() : corsMiddleware(req, res, next)));
     app.use(express.json({ limit: '5mb' }));
 
     app.get('/health', (_req, res) => res.json({ ok: true, service: 'api' }));

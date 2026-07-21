@@ -1,11 +1,12 @@
 import { Router } from 'express';
 import { validate } from '@repo/validation';
-import { AgentConfigInput } from '@repo/contracts';
-import { Agent, ShareLink, Product, Message } from '@repo/database';
+import { AgentConfigInput, EmbedConfigInput } from '@repo/contracts';
+import { Agent, ShareLink, Product, Message, EmbedConfig, EmbedDomain } from '@repo/database';
 import { requireAuth } from '@repo/auth';
-import { shareToken } from '@repo/utils';
+import { shareToken, buildEmbedSnippet } from '@repo/utils';
 import { retrieve } from '@repo/rag';
 import { getLLM } from '@repo/ai';
+import { getSdkVersion } from '../services/sdk-bundle.js';
 
 export const agentsRouter = Router();
 
@@ -74,6 +75,58 @@ agentsRouter.get('/:id', requireAuth, async (req, res, next) => {
         }
 
         res.json({ ...agent.toObject(), shareUrl });
+    } catch (err) {
+        next(err);
+    }
+});
+
+/**
+ * Phase 5: Save the agent's embed (widget) configuration + domain allowlist.
+ *
+ * Upsert semantics: one EmbedConfig per agent; the domain list in the body is
+ * the new complete allowlist. Domains kept across updates preserve their
+ * `verified` state; removed ones are deleted, new ones start unverified.
+ *
+ * Requires the agent to already have an active ShareLink: per the chosen
+ * design, the widget and the mailed link share one token (Decision: shared
+ * ShareLink token, not a separate embed token), so there is nothing to embed
+ * until `POST /:id/activate` has minted that token.
+ *
+ * md/backend/phase5: POST /api/v1/agents/:id/embed
+ */
+agentsRouter.post('/:id/embed', requireAuth, validate({ body: EmbedConfigInput }), async (req, res, next) => {
+    try {
+        const agent = await Agent.findById(req.params.id);
+        if (!agent) return res.status(404).json({ error: 'Agent not found' });
+
+        const link = await ShareLink.findOne({ agentId: agent._id, active: true }).sort({ createdAt: -1 });
+        if (!link) {
+            return res.status(409).json({ error: 'Activate the agent first — embedding reuses its share token' });
+        }
+
+        const { domains, ...config } = req.body;
+
+        const embedConfig = await EmbedConfig.findOneAndUpdate(
+            { agentId: agent._id },
+            { $set: config },
+            { new: true, upsert: true, setDefaultsOnInsert: true }
+        );
+
+        // Sync the allowlist: body is authoritative, verification survives.
+        await EmbedDomain.deleteMany({ agentId: agent._id, domain: { $nin: domains } });
+        const existing = new Set(
+            (await EmbedDomain.find({ agentId: agent._id }, 'domain').lean()).map((d) => d.domain)
+        );
+        const toInsert = domains.filter((d) => !existing.has(d)).map((domain) => ({ agentId: agent._id, domain }));
+        if (toInsert.length) await EmbedDomain.insertMany(toInsert);
+
+        const allowlist = await EmbedDomain.find({ agentId: agent._id }).sort({ domain: 1 }).lean();
+        const snippet = buildEmbedSnippet({
+            apiBaseUrl: process.env.API_PUBLIC_URL || 'http://localhost:5001',
+            shareToken: link.token,
+            sdkVersion: getSdkVersion()
+        });
+        res.json({ ...embedConfig.toObject(), domains: allowlist, snippet });
     } catch (err) {
         next(err);
     }

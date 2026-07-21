@@ -136,10 +136,97 @@ export const CreateSessionInput = z.object({
     visitorName: z.string().optional()
 });
 
+// Body for POST /embed/:token/session — the share token itself travels in the
+// URL (set by the origin-checked embed route), not in the body.
+export const EmbedSessionInput = z.object({
+    visitorName: z.string().optional(),
+    // The loader knows its own SPA route better than the Referer header does;
+    // still optional since a plain page load has nothing more specific to send.
+    pageUrl: z.string().url().optional()
+});
+
 export const SessionToken = z.object({
     roomName: z.string(),
     token: z.string(),
     livekitUrl: z.string()
+});
+
+// ─── Embed widget (Phase 5) ───────────────────────────────────
+
+const HOSTNAME_LABEL = /^[a-z0-9]([a-z0-9-]*[a-z0-9])?$/;
+
+/**
+ * True if `value` is a valid embed-domain pattern: a lowercase hostname with
+ * an optional leading `*.` wildcard (e.g. `acme.com`, `*.acme.com`).
+ *
+ * Deliberately rejects IP literals — the allowlist names *who the seller is*
+ * (their web properties), and legitimate customer sites are reached by name,
+ * not by address. Accepting IPs would only widen the surface the runtime
+ * origin check has to reason about. Single-label hosts (`localhost`) are
+ * valid *patterns* so dev setups can be stored; whether localhost is honoured
+ * at request time is the origin middleware's call (dev only, per the md).
+ */
+export function isValidEmbedDomainPattern(value) {
+    if (typeof value !== 'string') return false;
+    const host = value.startsWith('*.') ? value.slice(2) : value;
+    if (!host || host.length > 253) return false;
+    if (isIP(host) !== 0) return false;
+    return host.split('.').every((label) => label.length <= 63 && HOSTNAME_LABEL.test(label));
+}
+
+/**
+ * True if `hostname` (from a request's Origin header, already parsed and
+ * lowercased by the caller) is covered by allowlist `pattern`.
+ *
+ * Exact patterns match only themselves. Wildcard patterns match subdomains
+ * only — `*.acme.com` covers `app.acme.com` but neither the apex `acme.com`
+ * (sellers add both entries when they want both) nor lookalikes like
+ * `evilacme.com`: the comparison keeps the leading dot of the suffix, so a
+ * hostname can't satisfy it without a real label boundary.
+ */
+export function matchesEmbedDomain(hostname, pattern) {
+    if (typeof hostname !== 'string' || !isValidEmbedDomainPattern(pattern)) return false;
+    const host = hostname.toLowerCase();
+    if (pattern.startsWith('*.')) {
+        const suffix = pattern.slice(1); // '.acme.com' — dot kept on purpose
+        return host.length > suffix.length && host.endsWith(suffix);
+    }
+    return host === pattern;
+}
+
+export const EmbedDomainPattern = z
+    .string()
+    .trim()
+    .toLowerCase()
+    .refine(isValidEmbedDomainPattern, {
+        message: 'must be a hostname, optionally with a leading *. wildcard (e.g. acme.com, *.acme.com)'
+    });
+
+export const EmbedConfigInput = z.object({
+    theme: z
+        .object({
+            primaryColor: z
+                .string()
+                .regex(/^#[0-9a-f]{6}$/i, 'must be a #rrggbb hex color')
+                .default('#4f46e5'),
+            mode: z.enum(['light', 'dark', 'auto']).default('auto')
+        })
+        .default({}),
+    launcher: z
+        .object({
+            position: z.enum(['bottom-right', 'bottom-left']).default('bottom-right'),
+            label: z.string().min(1).max(40).default('Talk to sales')
+        })
+        .default({}),
+    greeting: z.string().max(300).optional(),
+    micAutoPrompt: z.boolean().default(false),
+    rateCaps: z
+        .object({
+            sessionsPerIpPerHour: z.number().int().min(1).max(1000).default(6),
+            sessionsPerOriginPerHour: z.number().int().min(1).max(10000).default(60)
+        })
+        .default({}),
+    domains: z.array(EmbedDomainPattern).max(20).default([])
 });
 
 // ─── RAG retrieval ────────────────────────────────────────────

@@ -5,6 +5,8 @@ import { sessionsRouter } from './sessions.js';
 import { knowledgeRouter } from './knowledge.js';
 import { agentsRouter } from './agents.js';
 import { analyticsRouter } from './analytics.js';
+import { embedRouter } from './embed.js';
+import { sdkRouter } from './sdk.js';
 
 /** Mounts all API routers under /api/v1. */
 export function registerRoutes(app) {
@@ -18,4 +20,9 @@ export function registerRoutes(app) {
     app.use('/api/v1/knowledge', knowledgeRouter);
     app.use('/api/v1/agents', agentsRouter);
     app.use('/api/v1/analytics', analyticsRouter);
+
+    // Phase 5: Embeddable SDK & Widget — public, origin-checked
+    app.use('/api/v1/embed', embedRouter);
+    // Bare (unversioned) path, matching md/backend/phase5's literal route.
+    app.use('/sdk', sdkRouter);
 }

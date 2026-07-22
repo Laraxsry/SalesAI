@@ -32,6 +32,22 @@ export function compact(obj) {
     );
 }
 
+/**
+ * Builds the exact two-line snippet a seller pastes onto their site to embed
+ * the widget (Phase 5). Kept as one pure, testable function since every
+ * customer's integration depends on this template being right — a broken
+ * tag here breaks every embed at once, not just the one seller who copies it
+ * next.
+ *
+ * @param {{ apiBaseUrl: string, shareToken: string, sdkVersion: string }} params
+ */
+export function buildEmbedSnippet({ apiBaseUrl, shareToken, sdkVersion }) {
+    return [
+        `<script src="${apiBaseUrl}/sdk/salesai.js?v=${sdkVersion}"></script>`,
+        `<script>SalesAI.init({ shareToken: '${shareToken}' }).mount();</script>`
+    ].join('\n');
+}
+
 /** Simple retry with exponential backoff. */
 export async function retry(fn, { attempts = 3, baseMs = 200 } = {}) {
     let lastErr;

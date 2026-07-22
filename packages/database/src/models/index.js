@@ -13,6 +13,10 @@ export { SessionSummary } from './SessionSummary.js';
 export { SessionEvent } from './SessionEvent.js';
 export { AnalyticsRollup } from './AnalyticsRollup.js';
 export { Lead } from './Lead.js';
+// Phase 5: Embeddable SDK & Widget
+export { EmbedConfig } from './EmbedConfig.js';
+export { EmbedDomain } from './EmbedDomain.js';
+
 // Phase 8: Security, Compliance & Scale
 export { AuthSession } from './AuthSession.js';
 export { ApiKey } from './ApiKey.js';

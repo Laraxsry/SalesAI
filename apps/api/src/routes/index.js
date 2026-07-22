@@ -5,6 +5,10 @@ import { sessionsRouter } from './sessions.js';
 import { knowledgeRouter } from './knowledge.js';
 import { agentsRouter } from './agents.js';
 import { analyticsRouter } from './analytics.js';
+// Phase 5: Embeddable SDK & Widget
+import { embedRouter } from './embed.js';
+import { sdkRouter } from './sdk.js';
+
 // Phase 8: Security, Compliance & Scale
 import { apiKeysRouter } from './api-keys.js';
 import { auditLogsRouter } from './audit-logs.js';
@@ -22,6 +26,11 @@ export function registerRoutes(app) {
     app.use('/api/v1/knowledge', knowledgeRouter);
     app.use('/api/v1/agents', agentsRouter);
     app.use('/api/v1/analytics', analyticsRouter);
+
+    // Phase 5: Embeddable SDK & Widget — public, origin-checked
+    app.use('/api/v1/embed', embedRouter);
+    // Bare (unversioned) path, matching md/backend/phase5's literal route.
+    app.use('/sdk', sdkRouter);
 
     // Phase 8: Security, Compliance & Scale
     app.use('/api/v1/api-keys', apiKeysRouter);

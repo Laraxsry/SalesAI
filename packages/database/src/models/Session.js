@@ -20,7 +20,12 @@ const SessionSchema = new Schema(
         startedAt: { type: Date, default: Date.now },
         endedAt: { type: Date },
         // rolled-up analytics (durations, topics, sentiment)
-        summary: { type: Schema.Types.Mixed }
+        summary: { type: Schema.Types.Mixed },
+        // Phase 5: which channel started this session, for web-vs-widget
+        // segmentation in Phase 4 analytics.
+        source: { type: String, enum: ['link', 'widget'], default: 'link', index: true },
+        pageUrl: { type: String },
+        referrer: { type: String }
     },
     { timestamps: true }
 );

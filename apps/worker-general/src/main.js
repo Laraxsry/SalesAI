@@ -4,6 +4,7 @@ import { createWorker, getQueue, QUEUES } from '@repo/queue';
 import { Logger } from '@repo/logger';
 import { analyzeSession } from './handlers/analyze-session.js';
 import { rollupAnalytics } from './handlers/rollup-analytics.js';
+import { purgeExpiredData } from './handlers/purge-expired-data.js';
 
 async function main() {
     await connectDB();
@@ -27,6 +28,12 @@ async function main() {
         jobId: 'cron-rollup-hourly'
     });
 
+    // Phase 8: Günlük data retention purge — gece yarısı çalışır
+    await generalQueue.add('purge-expired-data', {}, {
+        repeat: { pattern: '0 0 * * *' }, // her gün gece 00:00
+        jobId: 'cron-purge-expired-data'
+    });
+
     const worker = createWorker(QUEUES.GENERAL, async (job) => {
         switch (job.name) {
             case 'expire-links':
@@ -44,6 +51,11 @@ async function main() {
                     },
                     { status: 'ended', endedAt: new Date() }
                 );
+                return;
+
+            // Phase 8: Günlük data retention purge
+            case 'purge-expired-data':
+                await purgeExpiredData();
                 return;
 
             // Phase 4: Post-call analiz

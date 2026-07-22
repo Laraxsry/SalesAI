@@ -94,6 +94,8 @@ sessionsRouter.get('/:id/transcript', async (req, res, next) => {
  */
 sessionsRouter.patch('/:id/end', requireAuth, async (req, res, next) => {
     try {
+        if (!req.params.id.match(/^[0-9a-fA-F]{24}$/)) return res.status(404).json({ error: 'Session not found' });
+        
         const session = await Session.findById(req.params.id);
         if (!session) return res.status(404).json({ error: 'Session not found' });
         if (session.status === 'ended') return res.status(400).json({ error: 'Session already ended' });
@@ -169,9 +171,38 @@ sessionsRouter.get('/search', requireAuth, async (req, res, next) => {
     }
 });
 
+/**
+ * DELETE /sessions/:id
+ * Cascade-deletes a session and all its messages (GDPR / data cleanup).
+ * Returns 409 if the session is currently live.
+ *
+ * Auth: requireAuth
+ */
+sessionsRouter.delete('/:id', requireAuth, async (req, res, next) => {
+    try {
+        if (!req.params.id.match(/^[0-9a-fA-F]{24}$/)) return res.status(404).json({ error: 'Session not found' });
+
+        const session = await Session.findById(req.params.id);
+        if (!session) return res.status(404).json({ error: 'Session not found' });
+
+        if (session.status === 'live') {
+            return res.status(409).json({ error: 'Cannot delete a live session. End it first.' });
+        }
+
+        await Message.deleteMany({ sessionId: session._id });
+        await Session.deleteOne({ _id: session._id });
+
+        res.json({ ok: true, sessionId: String(session._id) });
+    } catch (err) {
+        next(err);
+    }
+});
+
 /** Get details of a single session. */
 sessionsRouter.get('/:id', requireAuth, async (req, res, next) => {
     try {
+        if (!req.params.id.match(/^[0-9a-fA-F]{24}$/)) return res.status(404).json({ error: 'Session not found' });
+
         const session = await Session.findById(req.params.id);
         if (!session) return res.status(404).json({ error: 'Session not found' });
         res.json(session);
@@ -183,6 +214,8 @@ sessionsRouter.get('/:id', requireAuth, async (req, res, next) => {
 /** Get session summary (if generated). */
 sessionsRouter.get('/:id/summary', requireAuth, async (req, res, next) => {
     try {
+        if (!req.params.id.match(/^[0-9a-fA-F]{24}$/)) return res.status(404).json({ error: 'Summary not found yet' });
+
         const { SessionSummary } = await import('@repo/database');
         const summary = await SessionSummary.findOne({ sessionId: req.params.id });
         if (!summary) return res.status(404).json({ error: 'Summary not found yet' });

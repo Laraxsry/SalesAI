@@ -258,7 +258,7 @@ async function run() {
 
         // Kimlik doğrulama token'ı
         const userId = new mongoose.Types.ObjectId();
-        const tokenObj = signTokens({ userId: String(userId) });
+        const tokenObj = signTokens({ sub: String(userId), email: 'test@example.com' });
         const headers = {
             'Content-Type': 'application/json',
             'Authorization': `Bearer ${tokenObj.accessToken}`
@@ -267,6 +267,10 @@ async function run() {
         // ── Test fixture'ları oluştur ──────────────────────────────────────────
         const workspace = await Workspace.create({ name: 'Test Workspace P4', slug: `tw-p4-${Date.now()}`, ownerId: userId });
         testIds.workspaceId = String(workspace._id);
+
+        // Membership kaydı: products endpoint'leri workspace üyeliği kontrolü yapar
+        const { Membership } = await import('@repo/database');
+        await Membership.create({ workspaceId: workspace._id, userId, role: 'OWNER' });
 
         const product = await Product.create({ workspaceId: workspace._id, name: 'Test Product P4' });
         testIds.productId = String(product._id);
@@ -514,6 +518,249 @@ async function run() {
             ok('Zaten ended session → 400 Bad Request (idempotent guard)');
         else
             warn(`Çift end isteği: ${doubleEndRes.status} (400 beklendi)`);
+
+        // ═══════════════════════════════════════════════════════════════════════
+        // BÖLÜM 3: CONSOLE CRUD MANAGEMENT TESTLERİ
+        // ═══════════════════════════════════════════════════════════════════════
+        console.log('\n' + '─'.repeat(60));
+        console.log('🛠️  Console CRUD Testleri Başlıyor...\n');
+
+        // ── Test 12: PATCH /agents/:id ─────────────────────────────────────────
+        console.log('📌 12. PATCH /agents/:id → Persona & Avatar Güncelleme');
+        try {
+            const patchRes = await fetch(
+                `http://localhost:${PORT}/api/v1/agents/${testIds.agentId}`,
+                {
+                    method: 'PATCH',
+                    headers,
+                    body: JSON.stringify({
+                        name: 'Updated Agent Name',
+                        persona: { tone: 'formal', goals: ['close deals', 'qualify leads'] },
+                        avatarProvider: 'voice-only'
+                    })
+                }
+            );
+            const patchData = await patchRes.json();
+            if (patchRes.status === 200) ok('HTTP 200 döndü');
+            else fail('PATCH /agents/:id başarısız', `${patchRes.status}: ${JSON.stringify(patchData)}`);
+
+            if (patchData.name === 'Updated Agent Name') ok('name alanı güncellendi');
+            else fail('name güncellenmedi', JSON.stringify(patchData.name));
+
+            if (patchData.persona?.tone === 'formal') ok('persona.tone güncellendi');
+            else fail('persona.tone güncellenmedi', JSON.stringify(patchData.persona));
+
+            if (Array.isArray(patchData.persona?.goals) && patchData.persona.goals.includes('close deals'))
+                ok('persona.goals güncellendi');
+            else fail('persona.goals güncellenmedi', JSON.stringify(patchData.persona?.goals));
+        } catch (e) {
+            fail('PATCH /agents/:id hatası', e.message);
+        }
+
+        // ── Test 13: DELETE /agents/:id — live session guard ──────────────────
+        console.log('\n📌 13. DELETE /agents/:id → Live Session Guard (409)');
+        try {
+            // Önce live session oluştur
+            const liveAgentId = testIds.agentId;
+            const liveSessionForDelete = await Session.create({
+                agentId: liveAgentId,
+                roomName: 'test-live-delete-guard',
+                status: 'live'
+            });
+
+            const guardRes = await fetch(
+                `http://localhost:${PORT}/api/v1/agents/${liveAgentId}`,
+                { method: 'DELETE', headers }
+            );
+            if (guardRes.status === 409) ok('Live session varken DELETE → 409 Conflict');
+            else fail('Live session guard çalışmıyor', `${guardRes.status} (409 beklendi)`);
+
+            // Live session'ı temizle
+            await Session.deleteOne({ _id: liveSessionForDelete._id });
+        } catch (e) {
+            fail('DELETE /agents/:id live guard hatası', e.message);
+        }
+
+        // ── Test 14: DELETE /agents/:id — cascade ─────────────────────────────
+        console.log('\n📌 14. DELETE /agents/:id → Cascade Silme');
+        try {
+            // Silinecek ayrı bir agent oluştur
+            const { ShareLink: SL } = await import('@repo/database');
+            const tempAgent = await Agent.create({
+                productId: testIds.productId,
+                name: 'Temp Agent For Delete',
+                status: 'draft'
+            });
+            await SL.create({ agentId: tempAgent._id, token: `del-test-${Date.now()}` });
+
+            const delRes = await fetch(
+                `http://localhost:${PORT}/api/v1/agents/${tempAgent._id}`,
+                { method: 'DELETE', headers }
+            );
+            const delData = await delRes.json();
+            if (delRes.status === 200 && delData.ok) ok('DELETE /agents/:id → 200 ok');
+            else fail('DELETE /agents/:id başarısız', `${delRes.status}: ${JSON.stringify(delData)}`);
+
+            // Agent silinmiş mi?
+            const gone = await Agent.findById(tempAgent._id);
+            if (!gone) ok('Agent veritabanından silindi');
+            else fail('Agent hâlâ veritabanında var!');
+
+            // ShareLink da silinmiş mi?
+            const linkGone = await SL.findOne({ agentId: tempAgent._id });
+            if (!linkGone) ok('ShareLink cascade silinmesi çalıştı');
+            else fail('ShareLink silinmedi!');
+        } catch (e) {
+            fail('DELETE /agents/:id cascade hatası', e.message);
+        }
+
+        // ── Test 15: PATCH /products/:id ──────────────────────────────────────
+        console.log('\n📌 15. PATCH /products/:id → İsim ve Açıklama Güncelleme');
+        try {
+            const patchProdRes = await fetch(
+                `http://localhost:${PORT}/api/v1/products/${testIds.productId}`,
+                {
+                    method: 'PATCH',
+                    headers,
+                    body: JSON.stringify({
+                        name: 'Updated Product Name',
+                        description: 'Güncellenmiş açıklama'
+                    })
+                }
+            );
+            const patchProdData = await patchProdRes.json();
+            if (patchProdRes.status === 200) ok('HTTP 200 döndü');
+            else fail('PATCH /products/:id başarısız', `${patchProdRes.status}: ${JSON.stringify(patchProdData)}`);
+
+            if (patchProdData.name === 'Updated Product Name') ok('name alanı güncellendi');
+            else fail('name güncellenmedi', JSON.stringify(patchProdData));
+
+            if (patchProdData.description === 'Güncellenmiş açıklama') ok('description güncellendi');
+            else fail('description güncellenmedi', JSON.stringify(patchProdData));
+        } catch (e) {
+            fail('PATCH /products/:id hatası', e.message);
+        }
+
+        // ── Test 16: DELETE /products/:id — live session guard ────────────────
+        console.log('\n📌 16. DELETE /products/:id → Live Session Guard (409)');
+        try {
+            // Canlı session oluştur (mevcut agentId ile)
+            const liveSessionForProdDelete = await Session.create({
+                agentId: testIds.agentId,
+                roomName: 'test-prod-live-guard',
+                status: 'live'
+            });
+
+            const guardProdRes = await fetch(
+                `http://localhost:${PORT}/api/v1/products/${testIds.productId}`,
+                { method: 'DELETE', headers }
+            );
+            if (guardProdRes.status === 409) ok('Live session varken DELETE /products → 409 Conflict');
+            else fail('Ürün live session guard çalışmıyor', `${guardProdRes.status} (409 beklendi)`);
+
+            await Session.deleteOne({ _id: liveSessionForProdDelete._id });
+        } catch (e) {
+            fail('DELETE /products/:id live guard hatası', e.message);
+        }
+
+        // ── Test 17: DELETE /products/:id — cascade ───────────────────────────
+        console.log('\n📌 17. DELETE /products/:id → Cascade Silme');
+        try {
+            const { ShareLink: SL2 } = await import('@repo/database');
+            // Yeni bir product + agent oluştur (aynı workspace'te, membership zaten var)
+            const tempProd = await Product.create({ workspaceId: testIds.workspaceId, name: 'Temp Prod For Delete' });
+            const tempAgent2 = await Agent.create({ productId: tempProd._id, name: 'Temp Agent2', status: 'draft' });
+            await SL2.create({ agentId: tempAgent2._id, token: `del-prod-${Date.now()}` });
+
+            const delProdRes = await fetch(
+                `http://localhost:${PORT}/api/v1/products/${tempProd._id}`,
+                { method: 'DELETE', headers }
+            );
+            const delProdData = await delProdRes.json();
+            if (delProdRes.status === 200 && delProdData.ok) ok('DELETE /products/:id → 200 ok');
+            else fail('DELETE /products/:id başarısız', `${delProdRes.status}: ${JSON.stringify(delProdData)}`);
+
+            // Cascade kontrolleri
+            const prodGone = await Product.findById(tempProd._id);
+            if (!prodGone) ok('Product veritabanından silindi');
+            else fail('Product hâlâ var!');
+
+            const agentGone = await Agent.findById(tempAgent2._id);
+            if (!agentGone) ok('Bağlı Agent cascade silindi');
+            else fail('Bağlı Agent silinmedi!');
+
+            const linkGone2 = await SL2.findOne({ agentId: tempAgent2._id });
+            if (!linkGone2) ok('Bağlı ShareLink cascade silindi');
+            else fail('Bağlı ShareLink silinmedi!');
+        } catch (e) {
+            fail('DELETE /products/:id cascade hatası', e.message);
+        }
+
+        // ── Test 18: DELETE /sessions/:id — live guard ────────────────────────
+        console.log('\n📌 18. DELETE /sessions/:id → Live Session Guard (409)');
+        try {
+            const liveSessionToDel = await Session.create({
+                agentId: testIds.agentId,
+                roomName: 'test-session-del-live',
+                status: 'live'
+            });
+
+            const liveDelRes = await fetch(
+                `http://localhost:${PORT}/api/v1/sessions/${liveSessionToDel._id}`,
+                { method: 'DELETE', headers }
+            );
+            if (liveDelRes.status === 409) ok('Live session silinemiyor → 409 Conflict');
+            else fail('Live session guard çalışmıyor', `${liveDelRes.status} (409 beklendi)`);
+
+            await Session.deleteOne({ _id: liveSessionToDel._id });
+        } catch (e) {
+            fail('DELETE /sessions/:id live guard hatası', e.message);
+        }
+
+        // ── Test 19: DELETE /sessions/:id — cascade ───────────────────────────
+        console.log('\n📌 19. DELETE /sessions/:id → Cascade Silme');
+        try {
+            const tempSession = await Session.create({
+                agentId: testIds.agentId,
+                roomName: 'test-session-cascade-del',
+                status: 'ended',
+                endedAt: new Date()
+            });
+            await Message.create({ sessionId: tempSession._id, role: 'user', text: 'Test msg', at: new Date() });
+            await Message.create({ sessionId: tempSession._id, role: 'assistant', text: 'Response', at: new Date() });
+
+            const sessionDelRes = await fetch(
+                `http://localhost:${PORT}/api/v1/sessions/${tempSession._id}`,
+                { method: 'DELETE', headers }
+            );
+            const sessionDelData = await sessionDelRes.json();
+            if (sessionDelRes.status === 200 && sessionDelData.ok) ok('DELETE /sessions/:id → 200 ok');
+            else fail('DELETE /sessions/:id başarısız', `${sessionDelRes.status}: ${JSON.stringify(sessionDelData)}`);
+
+            const sesGone = await Session.findById(tempSession._id);
+            if (!sesGone) ok('Session veritabanından silindi');
+            else fail('Session hâlâ var!');
+
+            const msgCount = await Message.countDocuments({ sessionId: tempSession._id });
+            if (msgCount === 0) ok('Bağlı mesajlar cascade silindi');
+            else fail(`${msgCount} mesaj hâlâ var!`);
+        } catch (e) {
+            fail('DELETE /sessions/:id cascade hatası', e.message);
+        }
+
+        // ── Test 20: DELETE /sessions/:id — 404 ──────────────────────────────
+        console.log('\n📌 20. DELETE /sessions/:id → 404 Not Found');
+        try {
+            const fakeId = new mongoose.Types.ObjectId();
+            const notFoundRes = await fetch(
+                `http://localhost:${PORT}/api/v1/sessions/${fakeId}`,
+                { method: 'DELETE', headers }
+            );
+            if (notFoundRes.status === 404) ok('Var olmayan session → 404 Not Found');
+            else fail('404 guard çalışmıyor', `${notFoundRes.status} (404 beklendi)`);
+        } catch (e) {
+            fail('DELETE /sessions/:id 404 guard hatası', e.message);
+        }
 
     } catch (e) {
         fail('HTTP test sırasında beklenmeyen hata', e.stack || e.message);

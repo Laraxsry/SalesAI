@@ -1,9 +1,10 @@
 import { Router } from 'express';
 import { validate } from '@repo/validation';
-import { AgentConfigInput } from '@repo/contracts';
-import { Agent, ShareLink, Product, Message } from '@repo/database';
+import { AgentConfigInput, AgentUpdateInput } from '@repo/contracts';
+import { Agent, ShareLink, Product, Message, Session } from '@repo/database';
 import { requireAuth } from '@repo/auth';
 import { shareToken } from '@repo/utils';
+import { logAudit, extractRequestMeta, AUDIT_ACTIONS } from '@repo/utils';
 import { retrieve } from '@repo/rag';
 import { getLLM } from '@repo/ai';
 
@@ -52,28 +53,115 @@ agentsRouter.post('/:id/activate', requireAuth, async (req, res, next) => {
 
         const link = await ShareLink.create({ agentId: agent._id, token: shareToken() });
         const base = process.env.VISITOR_PUBLIC_URL || 'http://localhost:5174';
+
+        // Phase 8 Task 3.6: AuditLog
+        const product = await Product.findById(agent.productId).lean();
+        if (product) {
+            const { ip, userAgent } = extractRequestMeta(req);
+            await logAudit({
+                action: AUDIT_ACTIONS.AGENT_ACTIVATED,
+                workspaceId: product.workspaceId,
+                actorId: req.user.sub,
+                target: { type: 'Agent', id: String(agent._id) },
+                after: { status: 'active', shareToken: link.token },
+                ip,
+                userAgent
+            });
+        }
+
         res.json({ agentId: String(agent._id), token: link.token, url: `${base}/v/${link.token}` });
     } catch (err) {
         next(err);
     }
 });
 
-/** Get a specific agent configuration, including its active share link (if any). */
+/** Get a specific agent configuration. */
 agentsRouter.get('/:id', requireAuth, async (req, res, next) => {
     try {
         const agent = await Agent.findById(req.params.id);
         if (!agent) return res.status(404).json({ error: 'Agent not found' });
+        res.json({ ...agent.toObject(), shareUrl });
+    } catch (err) {
+        next(err);
+    }
+});
 
-        let shareUrl;
-        if (agent.status === 'active') {
-            const link = await ShareLink.findOne({ agentId: agent._id, active: true }).sort({ createdAt: -1 });
-            if (link) {
-                const base = process.env.VISITOR_PUBLIC_URL || 'http://localhost:5174';
-                shareUrl = `${base}/v/${link.token}`;
-            }
+/**
+ * PATCH /agents/:id
+ * Update agent configuration (persona, tone, goals, avatar, screenModes, toolAccess).
+ * productId cannot be changed after creation.
+ */
+agentsRouter.patch('/:id', requireAuth, validate({ body: AgentUpdateInput }), async (req, res, next) => {
+    try {
+        const agent = await Agent.findById(req.params.id);
+        if (!agent) return res.status(404).json({ error: 'Agent not found' });
+
+        // Build update object — only include provided fields
+        const update = {};
+        if (req.body.name !== undefined) update.name = req.body.name;
+        if (req.body.avatarProvider !== undefined) update.avatarProvider = req.body.avatarProvider;
+        if (req.body.screenModes !== undefined) update.screenModes = req.body.screenModes;
+
+        // Merge persona fields individually to avoid overwriting unset keys
+        if (req.body.persona) {
+            const p = req.body.persona;
+            if (p.tone !== undefined) update['persona.tone'] = p.tone;
+            if (p.language !== undefined) update['persona.language'] = p.language;
+            if (p.goals !== undefined) update['persona.goals'] = p.goals;
+            if (p.guardrails !== undefined) update['persona.guardrails'] = p.guardrails;
         }
 
-        res.json({ ...agent.toObject(), shareUrl });
+        // Merge toolAccess fields individually
+        if (req.body.toolAccess) {
+            const ta = req.body.toolAccess;
+            if (ta.enabled !== undefined) update['toolAccess.enabled'] = ta.enabled;
+            if (ta.baseUrl !== undefined) update['toolAccess.baseUrl'] = ta.baseUrl;
+            if (ta.openApiUrl !== undefined) update['toolAccess.openApiUrl'] = ta.openApiUrl;
+            if (ta.mcpUrl !== undefined) update['toolAccess.mcpUrl'] = ta.mcpUrl;
+        }
+
+        const updated = await Agent.findByIdAndUpdate(req.params.id, { $set: update }, { new: true, runValidators: true });
+        res.json(updated);
+    } catch (err) {
+        next(err);
+    }
+});
+
+/**
+ * DELETE /agents/:id
+ * Cascade-deletes the agent and all its share links.
+ * Returns 409 if any live session is currently running for this agent.
+ */
+agentsRouter.delete('/:id', requireAuth, async (req, res, next) => {
+    try {
+        const agent = await Agent.findById(req.params.id);
+        if (!agent) return res.status(404).json({ error: 'Agent not found' });
+
+        // Guard: do not delete while a live session is running
+        const liveSession = await Session.findOne({ agentId: agent._id, status: 'live' });
+        if (liveSession) {
+            return res.status(409).json({ error: 'Agent has an active live session. End it before deleting.' });
+        }
+
+        await ShareLink.deleteMany({ agentId: agent._id });
+        await Agent.deleteOne({ _id: agent._id });
+
+        // Phase 8 Task 3.6: AuditLog
+        const product = await Product.findById(agent.productId).lean();
+        if (product) {
+            const { ip, userAgent } = extractRequestMeta(req);
+            await logAudit({
+                action: AUDIT_ACTIONS.AGENT_DELETED,
+                workspaceId: product.workspaceId,
+                actorId: req.user.sub,
+                target: { type: 'Agent', id: String(agent._id) },
+                before: { name: agent.name, status: agent.status },
+                ip,
+                userAgent
+            });
+        }
+
+        res.json({ ok: true, agentId: String(agent._id) });
     } catch (err) {
         next(err);
     }

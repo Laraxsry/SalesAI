@@ -45,3 +45,8 @@ export async function retry(fn, { attempts = 3, baseMs = 200 } = {}) {
     }
     throw lastErr;
 }
+
+// Phase 8: Security utilities
+export { redactPII, redactFields } from './pii-redactor.js';
+export { logAudit, extractRequestMeta, AUDIT_ACTIONS } from './audit.js';
+

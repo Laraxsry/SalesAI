@@ -41,6 +41,18 @@ export function resolveTenant(req, res, next) {
  */
 export async function resolveMember(req, res, next) {
     try {
+        // API Key ile geliniyorsa Membership kontrolüne gerek yok
+        if (req.authType === 'api-key') {
+            if (req.workspaceId !== req.user.workspaceId) {
+                return res.status(403).json({ error: 'API key does not belong to this workspace' });
+            }
+            // API key'in scope'larına göre sanal bir rol atayalım
+            const scopes = req.apiKey?.scopes || [];
+            const isWrite = scopes.includes('write') || scopes.includes('*');
+            req.member = { role: isWrite ? 'ADMIN' : 'VIEWER', membershipId: null };
+            return next();
+        }
+
         const membership = await Membership.findOne({
             workspaceId: req.workspaceId,
             userId: req.user.sub

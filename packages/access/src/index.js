@@ -10,7 +10,7 @@ export const ROLES = Object.freeze({
 
 const PERMISSIONS = {
     OWNER: ['*'],
-    ADMIN: ['product:*', 'knowledge:*', 'agent:*', 'member:read', 'analytics:read'],
+    ADMIN: ['product:*', 'knowledge:*', 'agent:*', 'member:read', 'analytics:read', 'audit:read'],
     EDITOR: ['product:read', 'knowledge:*', 'agent:read,update', 'analytics:read'],
     VIEWER: ['product:read', 'knowledge:read', 'agent:read', 'analytics:read']
 };

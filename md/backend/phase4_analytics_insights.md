@@ -58,8 +58,16 @@
      (`apps/api/src/routes/sessions.js`).
 
 6. **Knowledge-gap loop** *(Postman kümülatif rapor aggregation ile doğrulandı)*
-   - [x] Aggregate unanswered questions into a "knowledge gaps" report per product:
-     `GET /analytics/knowledge-gaps?productId=` (SessionSummary.unanswered[] → count aggregate).
+   - [x] Aggregate unanswered questions across `SessionSummary` documents.
+   - [x] Expose `GET /analytics/knowledge-gaps` (product scope, sorted by count).
+
+7. **Console CRUD Management** *(Walkthrough Bölüm 8 - Postman ve Otomatik Testlerle doğrulandı)*
+   - [x] `PATCH /agents/:id` — Persona/tone/avatar gibi alanların partial update edilmesi. *(Postman testleri ile partial veri güncellemesinin veritabanına sorunsuz yansıdığı onaylandı).*
+   - [x] `DELETE /agents/:id` — Agent silme, bağlı share-link'lerin cascade silinmesi (live guard dahil). *(Live session esnasında 409 Conflict hatasının başarıyla fırlatıldığı ve normal silmede ShareLink kayıtlarının temizlendiği doğrulandı).*
+   - [x] `PATCH /products/:id` — Product adı/açıklaması partial update (Workspace üyelik guard). *(Tenant ve workspace scope kontrolünün başarıyla çalıştığı teyit edildi).*
+   - [x] `DELETE /products/:id` — Product silme, bağlı agent/link cascade silinmesi (live guard dahil). *(Altındaki ajanlardan birinde dahi live session varsa ürünün silinmesi engelleniyor, engelsiz durumda ajanlarla beraber başarılı cascade sağlanıyor).*
+   - [x] `DELETE /sessions/:id` — Session silme, GDPR gereği bağlı mesajların cascade silinmesi (live guard dahil). *(Ended durumundaki session silindiğinde messages koleksiyonundaki bağlı tüm kayıtların sıfırlandığı teyit edildi).*
+   - **(Güvenlik / Validasyon Notu):** `/:id` içeren tüm CRUD ve endpoint'lerde, geçersiz MongoDB ObjectId formatı gelmesi durumunda 500 `CastError` fırlatması yerine, doğrudan `404 Not Found` döndürecek regex tabanlı alfasayısal karakter (24 hex) validasyonu eklendi.
 
 ---
 
@@ -82,8 +90,10 @@
 - [x] A conversation that asks to book a demo creates a scored `Lead` (demo_intent +30).
 - [x] Transcript search returns matching turns scoped to the caller's workspace.
 - [x] The knowledge-gaps report lists real unanswered questions.
+- [x] Missing Console CRUD endpoints (PATCH/DELETE for Agent/Product, DELETE for Session) handle cascade deletes properly. *(Tüm DELETE rotalarının ShareLink, Message ve Agent bağlı verilerini temizlediği doğrulandı).*
+- [x] Resources cannot be deleted while an active live session exists (409 Guard). *(Agent, Product ve Session bazında status='live' kalkanı başarıyla devrede).*
 
-*(Yukarıdaki tüm kabul kriterleri bizzat oluşturulan Walkthrough ile manuel olarak uçtan uca doğrulanmıştır. 17.07.2026)*
+*(Yukarıdaki tüm kabul kriterleri bizzat oluşturulan Walkthrough ve CRUD Manual Test Guide ile Postman üzerinden uçtan uca doğrulanmıştır. 22.07.2026)*
 
 ---
 
@@ -113,3 +123,8 @@ node backend_tests/phase4_analytics_insights.mjs
 - GET /analytics/leads → lead listesi + minScore filtresi
 - GET /analytics/knowledge-gaps → unanswered sorular
 - PATCH /sessions/:id/end → session bitişi + idempotent guard
+- PATCH /agents/:id → persona update
+- DELETE /agents/:id → cascade silme + live guard
+- PATCH /products/:id → update
+- DELETE /products/:id → cascade silme + live guard
+- DELETE /sessions/:id → cascade mesaj silme + live guard

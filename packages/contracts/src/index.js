@@ -130,6 +130,53 @@ export const AgentConfigInput = z.object({
         .default({})
 });
 
+/**
+ * Partial update schema for PATCH /agents/:id.
+ * All fields optional — only provided fields are updated.
+ */
+export const AgentUpdateInput = z.object({
+    name: z.string().min(1).optional(),
+    persona: z
+        .object({
+            tone: z.string().optional(),
+            language: z.string().optional(),
+            goals: z.array(z.string()).optional(),
+            guardrails: z.array(z.string()).optional()
+        })
+        .optional(),
+    avatarProvider: AvatarProvider.optional(),
+    screenModes: z.array(ScreenMode).optional(),
+    toolAccess: z
+        .object({
+            enabled: z.boolean().optional(),
+            baseUrl: z.string().url().optional(),
+            openApiUrl: z.string().url().optional(),
+            mcpUrl: z.string().url().optional()
+        })
+        .optional()
+}).refine(data => Object.keys(data).length > 0, {
+    message: 'En az bir alan güncellenmeli'
+});
+
+/**
+ * Partial update schema for PATCH /products/:id.
+ * All fields optional — only provided fields are updated.
+ */
+export const ProductUpdateInput = z.object({
+    name: z.string().min(1).optional(),
+    description: z.string().optional(),
+    websiteUrl: z.string().url().refine(isSafeProductUrl, {
+        message: 'websiteUrl must be a public http(s) URL'
+    }).optional(),
+    tourAllowedDomains: z.array(
+        z.string().url().refine(isSafeProductUrl, {
+            message: 'tourAllowedDomains entries must be public http(s) URLs'
+        })
+    ).optional()
+}).refine(data => Object.keys(data).length > 0, {
+    message: 'En az bir alan güncellenmeli'
+});
+
 // ─── Realtime session ─────────────────────────────────────────
 export const CreateSessionInput = z.object({
     shareToken: z.string(),

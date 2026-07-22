@@ -31,9 +31,14 @@ const AgentSchema = new Schema(
             baseUrl: { type: String },
             openApiUrl: { type: String },
             mcpUrl: { type: String }
-        }
+        },
+        // Phase 8: PII & Data Retention
+        // false (varsayılan): transcript PII-redacted olarak saklanır (GDPR uyumu)
+        // true: ham transcript saklanır (workspace OWNER/ADMIN onayı gerektirir)
+        rawTranscriptEnabled: { type: Boolean, default: false }
     },
     { timestamps: true }
 );
 
 export const Agent = model('Agent', AgentSchema);
+

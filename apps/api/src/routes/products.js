@@ -1,7 +1,7 @@
 import { Router } from 'express';
 import { validate } from '@repo/validation';
-import { ProductInput } from '@repo/contracts';
-import { Product, Workspace, Membership } from '@repo/database';
+import { ProductInput, ProductUpdateInput } from '@repo/contracts';
+import { Product, Workspace, Membership, Agent, ShareLink, Session } from '@repo/database';
 import { requireAuth } from '@repo/auth';
 import { requirePermission } from '@repo/access';
 import { resolveTenant, resolveMember } from '../middleware/tenant.js';
@@ -123,6 +123,90 @@ productsRouter.get('/', requireAuth, async (req, res, next) => {
                 createdAt: p.createdAt
             }))
         );
+    } catch (err) {
+        next(err);
+    }
+});
+
+/**
+ * PATCH /products/:id
+ *
+ * Ürün adı, açıklaması veya websiteUrl'ini günceller.
+ * Workspace üyeliği zorunludur.
+ */
+productsRouter.patch('/:id', requireAuth, validate({ body: ProductUpdateInput }), async (req, res, next) => {
+    try {
+        const product = await Product.findById(req.params.id);
+        if (!product) return res.status(404).json({ error: 'Product not found' });
+
+        // Workspace üyeliği kontrolü
+        const membership = await Membership.findOne({
+            workspaceId: product.workspaceId,
+            userId: req.user.sub
+        });
+        if (!membership) return res.status(403).json({ error: 'Not a member of this workspace' });
+
+        const update = {};
+        if (req.body.name !== undefined) update.name = req.body.name;
+        if (req.body.description !== undefined) update.description = req.body.description;
+        if (req.body.websiteUrl !== undefined) update.websiteUrl = req.body.websiteUrl;
+        if (req.body.tourAllowedDomains !== undefined) update.tourAllowedDomains = req.body.tourAllowedDomains;
+
+        const updated = await Product.findByIdAndUpdate(
+            req.params.id,
+            { $set: update },
+            { new: true, runValidators: true }
+        );
+
+        res.json({
+            id: String(updated._id),
+            workspaceId: String(updated.workspaceId),
+            name: updated.name,
+            description: updated.description,
+            websiteUrl: updated.websiteUrl,
+            tourAllowedDomains: updated.tourAllowedDomains,
+            updatedAt: updated.updatedAt
+        });
+    } catch (err) {
+        next(err);
+    }
+});
+
+/**
+ * DELETE /products/:id
+ *
+ * Ürünü ve bağlı tüm agent'ları + shareLink'leri cascade siler.
+ * Herhangi bir agent'ta live session varsa 409 döner.
+ */
+productsRouter.delete('/:id', requireAuth, async (req, res, next) => {
+    try {
+        const product = await Product.findById(req.params.id);
+        if (!product) return res.status(404).json({ error: 'Product not found' });
+
+        // Workspace üyeliği kontrolü
+        const membership = await Membership.findOne({
+            workspaceId: product.workspaceId,
+            userId: req.user.sub
+        });
+        if (!membership) return res.status(403).json({ error: 'Not a member of this workspace' });
+
+        // Bu ürüne bağlı agent'ları bul
+        const agents = await Agent.find({ productId: product._id }, '_id');
+        const agentIds = agents.map(a => a._id);
+
+        // Live session guard
+        if (agentIds.length > 0) {
+            const liveSession = await Session.findOne({ agentId: { $in: agentIds }, status: 'live' });
+            if (liveSession) {
+                return res.status(409).json({ error: 'Product has an agent with an active live session. End it before deleting.' });
+            }
+            await ShareLink.deleteMany({ agentId: { $in: agentIds } });
+            await Agent.deleteMany({ productId: product._id });
+        }
+
+        await Product.deleteOne({ _id: product._id });
+
+        res.json({ ok: true, productId: String(product._id), deletedAgents: agentIds.length });
     } catch (err) {
         next(err);
     }

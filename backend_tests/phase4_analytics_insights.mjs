@@ -5,7 +5,7 @@
  *  1. Kaynak kodu doğrulaması — analyze-session.js (gpt-4o-mini, SessionSummary persist, publishEvent)
  *  2. Kaynak kodu doğrulaması — extract-lead.js (signal tespiti: email, demo, tour, duration)
  *  3. Kaynak kodu doğrulaması — rollup-analytics.js (idempotent upsert pattern)
- *  4. Kaynak kodu doğrulaması — worker-general/main.js (analyze-session case, rollup-hourly)
+ *  4. Kaynak kodu doğrulaması — worker-general/main.js (analyze-session case, rollup-hourly, dispatch-webhooks)
  *  5. Kaynak kodu doğrulaması — RT_EVENTS (session:summary, lead:captured sabitleri)
  *  6. HTTP testi — GET /analytics/agents/:id (KPI + completion/unanswered rate)
  *  7. HTTP testi — GET /analytics/agents/:id/summary (SessionSummary listesi)
@@ -13,6 +13,12 @@
  *  9. HTTP testi — GET /analytics/leads (leads listesi)
  * 10. HTTP testi — GET /analytics/knowledge-gaps (unanswered sorular)
  * 11. HTTP testi — PATCH /sessions/:id/end (session bitişi + enqueue)
+ * 12. Kaynak kodu doğrulaması — dispatch-webhooks.js (HMAC, retry, dead-letter)
+ * 13. HTTP testi — POST /integrations/webhooks (webhook oluşturma)
+ * 14. HTTP testi — GET /integrations/webhooks (listeleme + secret maskeleme)
+ * 15. HTTP testi — POST /integrations/webhooks/:id/test (test payload gönderme)
+ * 16. HTTP testi — PATCH /integrations/webhooks/:id (güncelleme)
+ * 17. HTTP testi — DELETE /integrations/webhooks/:id (silme)
  */
 
 import '@repo/config-env/load';
@@ -762,10 +768,179 @@ async function run() {
             fail('DELETE /sessions/:id 404 guard hatası', e.message);
         }
 
+        // ── Test 21 (Kaynak): dispatch-webhooks.js doğrulaması ───────────────
+        console.log('\n📌 21. dispatch-webhooks.js → Kaynak Kodu Doğrulaması');
+        try {
+            const dispatchSrc = readFileSync(
+                join(ROOT, 'apps/worker-general/src/handlers/dispatch-webhooks.js'), 'utf-8'
+            );
+            if (dispatchSrc.includes('createHmac') && dispatchSrc.includes('sha256'))
+                ok('HMAC-SHA256 imzalama kodu var');
+            else
+                fail('HMAC-SHA256 imzalama kodu eksik!');
+
+            if (dispatchSrc.includes('deliverWithRetry') && dispatchSrc.includes('delays'))
+                ok('Retry mekanizması (exponential backoff) var');
+            else
+                fail('Retry mekanizması eksik!');
+
+            if (dispatchSrc.includes('DeadLetterJob'))
+                ok('Dead-letter queue kaydı var — kalıcı hatalarda güvenli kayıt');
+            else
+                fail('Dead-letter queue kaydı yok!');
+
+            if (dispatchSrc.includes('X-SalesAI-Signature'))
+                ok('Signature header (X-SalesAI-Signature) ekleniyor');
+            else
+                fail('Signature header eksik!');
+
+            if (dispatchSrc.includes('wh.events.includes(event)'))
+                ok('Event filtresi var — yalnızca ilgili webhook\'ler tetikleniyor');
+            else
+                fail('Event filtresi yok!');
+        } catch (e) {
+            fail('dispatch-webhooks.js okunamadı', e.message);
+        }
+
+        // ── Test 22: POST /integrations/webhooks ──────────────────────────────
+        console.log('\n📌 22. POST /integrations/webhooks → Webhook Oluşturma');
+        let testHookId;
+        try {
+            const createHookRes = await fetch(`http://localhost:${PORT}/api/v1/integrations/webhooks`, {
+                method: 'POST',
+                headers: { ...headers, 'Content-Type': 'application/json', 'x-workspace-id': String(testIds.workspaceId) },
+                body: JSON.stringify({
+                    url: 'https://webhook.site/test-salesai-' + Date.now(),
+                    events: ['lead.captured'],
+                    active: true
+                })
+            });
+            if (createHookRes.status === 201) {
+                const hookData = await createHookRes.json();
+                testHookId = hookData._id;
+                ok('Webhook oluşturuldu (201 Created)');
+                if (hookData._id && hookData.url && hookData.secret)
+                    ok('Webhook _id, url ve secret döndü');
+                else
+                    fail('Webhook response eksik alan içeriyor', JSON.stringify(hookData));
+            } else {
+                const err = await createHookRes.json().catch(() => ({}));
+                fail('Webhook oluşturulamadı', `${createHookRes.status}: ${JSON.stringify(err)}`);
+            }
+        } catch (e) {
+            fail('POST /integrations/webhooks hatası', e.message);
+        }
+
+        // ── Test 23: GET /integrations/webhooks ───────────────────────────────
+        console.log('\n📌 23. GET /integrations/webhooks → Listeleme + Secret Maskeleme');
+        try {
+            const listRes = await fetch(
+                `http://localhost:${PORT}/api/v1/integrations/webhooks`,
+                { headers: { ...headers, 'x-workspace-id': String(testIds.workspaceId) } }
+            );
+            if (listRes.status === 200) {
+                const list = await listRes.json();
+                ok(`Webhook listesi döndü (${list.length} adet)`);
+                const anyHook = list[0];
+                if (anyHook && anyHook.secret && anyHook.secret.includes('••••'))
+                    ok('Secret maskelendi — güvenlik');
+                else if (anyHook)
+                    warn('Secret maskelenememiş olabilir, kontrol edin');
+            } else {
+                fail('Webhook listeleme başarısız', String(listRes.status));
+            }
+        } catch (e) {
+            fail('GET /integrations/webhooks hatası', e.message);
+        }
+
+        // ── Test 24: POST /integrations/webhooks/:id/test ─────────────────────
+        console.log('\n📌 24. POST /integrations/webhooks/:id/test → Test Payload Gönderme');
+        try {
+            if (testHookId) {
+                const testRes = await fetch(
+                    `http://localhost:${PORT}/api/v1/integrations/webhooks/${testHookId}/test`,
+                    {
+                        method: 'POST',
+                        headers: { ...headers, 'x-workspace-id': String(testIds.workspaceId) }
+                    }
+                );
+                if (testRes.status === 200) {
+                    const testBody = await testRes.json();
+                    ok('Test endpoint yanıt verdi (200 OK)');
+                    if (testBody.payload && testBody.payload.event === 'test')
+                        ok("Test payload doğru formatında (event: 'test')");
+                    else
+                        fail('Test payload formatı yanlış', JSON.stringify(testBody));
+                    if (testBody.delivery)
+                        ok('Delivery sonucu döndü — bağlantı sağlığı izlenebiliyor');
+                } else {
+                    fail('Test payload gönderme başarısız', String(testRes.status));
+                }
+            } else {
+                warn('Hook ID olmadığından test payload testi atlandı');
+            }
+        } catch (e) {
+            fail('POST /integrations/webhooks/:id/test hatası', e.message);
+        }
+
+        // ── Test 25: PATCH /integrations/webhooks/:id ─────────────────────────
+        console.log('\n📌 25. PATCH /integrations/webhooks/:id → Güncelleme (aktifliği kapat)');
+        try {
+            if (testHookId) {
+                const patchRes = await fetch(
+                    `http://localhost:${PORT}/api/v1/integrations/webhooks/${testHookId}`,
+                    {
+                        method: 'PATCH',
+                        headers: { ...headers, 'Content-Type': 'application/json', 'x-workspace-id': String(testIds.workspaceId) },
+                        body: JSON.stringify({ active: false })
+                    }
+                );
+                if (patchRes.status === 200) {
+                    const patched = await patchRes.json();
+                    if (patched.active === false)
+                        ok('Webhook devre dışı bırakıldı (active: false)');
+                    else
+                        fail('Active alanı güncellenmedi', JSON.stringify(patched));
+                } else {
+                    fail('PATCH webhook başarısız', String(patchRes.status));
+                }
+            } else {
+                warn('Hook ID olmadığından PATCH testi atlandı');
+            }
+        } catch (e) {
+            fail('PATCH /integrations/webhooks/:id hatası', e.message);
+        }
+
+        // ── Test 26: DELETE /integrations/webhooks/:id ────────────────────────
+        console.log('\n📌 26. DELETE /integrations/webhooks/:id → Silme');
+        try {
+            if (testHookId) {
+                const delRes = await fetch(
+                    `http://localhost:${PORT}/api/v1/integrations/webhooks/${testHookId}`,
+                    {
+                        method: 'DELETE',
+                        headers: { ...headers, 'x-workspace-id': String(testIds.workspaceId) }
+                    }
+                );
+                if (delRes.status === 200) {
+                    const delBody = await delRes.json();
+                    if (delBody.ok) ok('Webhook başarıyla silindi');
+                    else fail('Silme yanıtı ok:false', JSON.stringify(delBody));
+                } else {
+                    fail('DELETE webhook başarısız', String(delRes.status));
+                }
+            } else {
+                warn('Hook ID olmadığından DELETE testi atlandı');
+            }
+        } catch (e) {
+            fail('DELETE /integrations/webhooks/:id hatası', e.message);
+        }
+
+
     } catch (e) {
         fail('HTTP test sırasında beklenmeyen hata', e.stack || e.message);
     } finally {
-        // ── Cleanup ────────────────────────────────────────────────────────────
+        // ── Cleanup ─────────────────────────────────────────────────────────────────────
         try {
             if (testIds.summary1Id) await SessionSummary.deleteOne({ _id: testIds.summary1Id });
             if (testIds.summary2Id) await SessionSummary.deleteOne({ _id: testIds.summary2Id });

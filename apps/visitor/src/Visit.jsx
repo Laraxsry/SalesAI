@@ -26,14 +26,30 @@ export function Visit() {
     const [error, setError] = useState(null);
     const [ended, setEnded] = useState(false);
 
+    const [debugAuth, setDebugAuth] = useState('');
+    const [started, setStarted] = useState(false);
+    const isDebug = searchParams.get('debug') === '1';
+
     useEffect(() => {
+        if (isDebug && !started) return;
+
         let ignore = false;
         async function start() {
             try {
+                let body = { shareToken: token };
+                if (isDebug && debugAuth) {
+                    try {
+                        body.transientAuth = JSON.parse(debugAuth);
+                    } catch (e) {
+                        if (!ignore) setError('Geçersiz JSON formatı');
+                        return;
+                    }
+                }
+
                 const res = await fetch(`${API}/api/v1/sessions`, {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ shareToken: token })
+                    body: JSON.stringify(body)
                 });
                 const data = await res.json();
                 if (!res.ok) throw new Error(data.error || 'Bağlantı kurulamadı');
@@ -46,7 +62,29 @@ export function Visit() {
         return () => {
             ignore = true;
         };
-    }, [token]);
+    }, [token, isDebug, started, debugAuth]);
+
+    if (isDebug && !started) {
+        return (
+            <div className="flex h-full flex-col items-center justify-center gap-4 bg-bg px-6">
+                <Logo />
+                <p className="text-sm text-text-muted">Test için çerezlerinizi JSON olarak yapıştırın:</p>
+                <textarea 
+                    className="w-full max-w-lg h-48 p-2 text-xs bg-bg-muted border border-border rounded"
+                    value={debugAuth}
+                    onChange={(e) => setDebugAuth(e.target.value)}
+                    placeholder='{"cookies": [{"name": "__Secure-1PSID", "value": "...", "domain": ".youtube.com", "path": "/", "secure": true}]}'
+                />
+                <button 
+                    onClick={() => setStarted(true)}
+                    className="px-4 py-2 bg-primary text-white rounded text-sm hover:bg-primary-hover"
+                >
+                    Çerezlerle Oturum Başlat
+                </button>
+            </div>
+        );
+    }
+
 
     // Checked before `error`: ending the call can make an in-flight LiveKit
     // connect() reject with a "client initiated disconnect" error — once the

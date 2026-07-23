@@ -50,7 +50,7 @@
    - [x] Score leads from engagement signals (duration, tour completion, buying
      questions): email +20, demo_intent +30, tour_completed +30, long_session +20.
    - [x] Expose `GET /analytics/leads` (workspaceId scope, status/minScore filtreleri).
-   - [ ] Optional webhook/CRM push (`POST /integrations/crm/lead`) — Phase 5+ için ertelendi.
+   - [x] Optional webhook/CRM push — `POST/GET/PATCH/DELETE /integrations/webhooks` ile workspace başına yapılandırılabilir outbound webhook altyapısı eklendi. HMAC-SHA256 imzalama, 3x retry (backoff), dead-letter kaydı ve manuel test endpoint’i ile tamamlandı.
 
 5. **Transcript search** *(Postman full-text search ile doğrulandı)*
    - [x] `GET /sessions/search?q=` full-text over `messages` ($text search),
@@ -111,12 +111,13 @@
 node backend_tests/phase4_analytics_insights.mjs
 ```
 
-11 test (5 kaynak kodu, 6 HTTP/DB):
+26 test (6 kaynak kodu, 20 HTTP/DB):
 - analyze-session.js kaynak doğrulama (gpt-4o-mini, persist, publishEvent)
 - extract-lead.js kaynak doğrulama (sinyal tespiti, scoring, upsert)
 - rollup-analytics.js kaynak doğrulama (idempotent upsert)
 - worker-general/main.js kaynak doğrulama (job case'leri, cron)
 - RT_EVENTS doğrulama (session:summary, lead:captured)
+- dispatch-webhooks.js kaynak doğrulama (HMAC, retry, dead-letter)
 - GET /analytics/agents/:id → KPI + time series
 - GET /analytics/agents/:id/summary → SessionSummary listesi
 - GET /analytics/products/:id/topics → topics aggregation
@@ -128,3 +129,10 @@ node backend_tests/phase4_analytics_insights.mjs
 - PATCH /products/:id → update
 - DELETE /products/:id → cascade silme + live guard
 - DELETE /sessions/:id → cascade mesaj silme + live guard
+- POST /integrations/webhooks → webhook oluşturma
+- GET /integrations/webhooks → listeleme + secret maskeleme
+- POST /integrations/webhooks/:id/test → test payload gönderme
+- PATCH /integrations/webhooks/:id → güncelleme
+- DELETE /integrations/webhooks/:id → silme
+
+*(Son test: **82/82 başarılı** — 23.07.2026)*

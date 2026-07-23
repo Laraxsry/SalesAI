@@ -6,6 +6,10 @@ import { publishEvent, RT_EVENTS } from '@repo/realtime';
 import { extractFromUrl } from '../extractors/url.js';
 import { createRequire } from 'node:module';
 const require = createRequire(import.meta.url);
+// Node.js 22+ için pdf-parse (pdfjs-dist) DOMMatrix polyfill'i
+if (typeof global.DOMMatrix === 'undefined') {
+    global.DOMMatrix = class DOMMatrix {};
+}
 const pdfParse = require('pdf-parse');
 import mammoth from 'mammoth';
 import ffmpeg from 'fluent-ffmpeg';

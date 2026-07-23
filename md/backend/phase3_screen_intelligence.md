@@ -23,7 +23,7 @@
    - [x] Tool handlers: `start_guided_tour`, `navigate_to`, `highlight`.
    - [x] Publish frames into LiveKit as a video track — Playwright PNG → `sharp` RGBA → `VideoSource.captureFrame()` @ ~1 FPS; `LocalVideoTrack` published as `screen_share`.
    - [x] Optional Browserbase + Stagehand backend (planlanmış, implemente edilmemiş).
-   - [x] Authentication: demo account / session desteği yok.
+   - [x] Authentication: Session Handover / Token Injection (PAT mimarisi) ile Playwright context'ine token enjekte edildi. Single-use güvenlik modeli (okunduktan sonra veritabanından silinme) uygulandı.
 
 2. **Customer-shared screen (mode B)**
    - [x] Detect the visitor's screen-share track in the room (`trackSubscribed` event var).
@@ -56,7 +56,7 @@
 
 - **Headless browser scale** — memory/CPU heavy; pool + offload (Browserbase).
 - **Vision cost on frames** — sample sparsely, downscale, only on demand.
-- **Cross-origin/auth on the product** — needs a demo session strategy.
+- **Cross-origin/auth on the product** — Çözüm Planı: Frontend Widget üzerinden alınacak güvenli 'Oturum Token'ı (PAT mantığı), arka plandaki Playwright tarayıcısına (`browserContext.addCookies` / `evaluate`) enjekte edilecek.
 
 ---
 

@@ -5,6 +5,7 @@ import { Logger } from '@repo/logger';
 import { analyzeSession } from './handlers/analyze-session.js';
 import { rollupAnalytics } from './handlers/rollup-analytics.js';
 import { purgeExpiredData } from './handlers/purge-expired-data.js';
+import { dispatchWebhooks } from './handlers/dispatch-webhooks.js';
 
 async function main() {
     await connectDB();
@@ -90,6 +91,11 @@ async function main() {
                 }
                 return;
             }
+
+            // Phase 4: Webhook/CRM push — her lead.captured olayında tetiklenir
+            case 'dispatch-webhooks':
+                await dispatchWebhooks(job.data);
+                return;
 
             default:
                 Logger.warn('Unknown general job', { name: job.name });

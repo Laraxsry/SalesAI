@@ -62,14 +62,15 @@ embedRouter.post(
     ...embedSessionRateLimits,
     async (req, res, next) => {
         try {
-            const { visitorName, pageUrl } = req.body;
+            const { visitorName, pageUrl, transientAuth } = req.body;
             const result = await mintSession({
                 link: req.embed.link,
                 agent: req.embed.agent,
                 visitorName,
                 source: 'widget',
                 pageUrl: pageUrl || req.headers.referer,
-                referrer: req.headers.referer
+                referrer: req.headers.referer,
+                transientAuth
             });
             res.json({ ...result, config: publicConfig(req.embed.embedConfig) });
         } catch (err) {

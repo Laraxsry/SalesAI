@@ -25,7 +25,9 @@ const SessionSchema = new Schema(
         // segmentation in Phase 4 analytics.
         source: { type: String, enum: ['link', 'widget'], default: 'link', index: true },
         pageUrl: { type: String },
-        referrer: { type: String }
+        referrer: { type: String },
+        // Phase 3: Single-use transient auth tokens (cookies/localStorage) for session handover.
+        transientAuth: { type: Schema.Types.Mixed }
     },
     { timestamps: true }
 );

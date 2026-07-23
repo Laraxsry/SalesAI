@@ -78,14 +78,22 @@ async function runSession(ctx) {
     // cloud backend; default stays local Playwright.
     const backend = process.env.COBROWSE_PROVIDER === 'browserbase' ? 'stagehand' : 'playwright';
     const startUrl = product.websiteUrl || 'https://salesai.dev';
-    // Seller-provided demo session (cookies/localStorage) so the tour can
-    // land on authenticated screens. No fallback fake credentials — an
-    // unconfigured product just tours unauthenticated, same as before.
+
+    // Phase 3: Session Handover
+    // If the visitor passed their active session (transientAuth), use it
+    // and IMMEDIATELY delete it from the database so it cannot be read again.
+    let tourAuth = product.demoSession || null;
+    if (session.transientAuth) {
+        tourAuth = session.transientAuth;
+        log.info('Using transientAuth for session handover, deleting from DB for security', { sessionId: String(session._id) });
+        await Session.updateOne({ _id: session._id }, { $unset: { transientAuth: 1 } });
+    }
+
     const tour = new GuidedTour({
         startUrl,
         backend,
         allowedDomains: product.tourAllowedDomains || [],
-        auth: product.demoSession || null
+        auth: tourAuth
     });
 
     let isTourActive = false;
@@ -151,7 +159,7 @@ async function runSession(ctx) {
 
                 return { ok: true, status: 'Tour started. Visitor can now see the browser. Use navigate_to or highlight next.' };
             } catch (e) {
-                log.error('GuidedTour open failed', { error: e.message });
+                log.error('GuidedTour open failed: ' + e.message, { error: e.message });
                 await tour.close().catch(() => {});
                 isTourActive = false;
                 return { ok: false, error: e.message };

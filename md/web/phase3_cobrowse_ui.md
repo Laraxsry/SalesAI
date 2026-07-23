@@ -56,3 +56,11 @@ flowchart LR
 - [x] Sharing a screen switches to the customer-share layout with a viewing
   indicator, and the agent gives accurate, position-aware guidance.
 - [x] Returning to plain Q&A restores the avatar-only layout.
+
+---
+
+## Authentication / Session Handover (Token Injection)
+
+- **Note to Frontend Team**: The backend architecture for injecting the visitor's authentication context (cookies/localStorage) into the agent's Playwright browser is fully implemented (Single-Use transientAuth).
+- In production, the widget needs to extract the visitor's cookies (either via Chrome Extension or JS where permitted) and pass them in the `POST /sessions` body as `transientAuth: { cookies: [...] }`.
+- For now, a debug UI has been added to `apps/visitor/src/Visit.jsx` accessible via `?debug=1` parameter to manually paste cookies for testing.

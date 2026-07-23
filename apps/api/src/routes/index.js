@@ -19,6 +19,9 @@ import { invitationsRouter } from './invitations.js';
 import { membershipsRouter } from './memberships.js';
 import { billingRouter } from './billing.js';
 
+// Phase 4: Webhook / CRM Integrations
+import { integrationsRouter } from './integrations.js';
+
 /** Mounts all API routers under /api/v1. */
 export function registerRoutes(app) {
     // Phase 0: Foundation
@@ -46,5 +49,8 @@ export function registerRoutes(app) {
     app.use('/api/v1/api-keys', apiKeysRouter);
     app.use('/api/v1/audit-logs', auditLogsRouter);
     app.use('/api/v1/privacy', privacyRouter);
+
+    // Phase 4: Webhook / CRM Integrations
+    app.use('/api/v1/integrations', integrationsRouter);
 }
 

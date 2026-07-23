@@ -65,8 +65,9 @@ export async function resolveShareLink(token) {
  * @param {'link'|'widget'} [params.source='link']
  * @param {string} [params.pageUrl] - Phase 5: the page the widget was opened from
  * @param {string} [params.referrer] - Phase 5: Referer header at session start
+ * @param {object} [params.transientAuth] - Phase 3: Single-use cookies/localStorage for session handover
  */
-export async function mintSession({ link, agent, visitorName, source = 'link', pageUrl, referrer }) {
+export async function mintSession({ link, agent, visitorName, source = 'link', pageUrl, referrer, transientAuth }) {
     const roomName = `s_${shortId()}`;
     const identity = `visitor_${shortId(8)}`;
 
@@ -78,7 +79,8 @@ export async function mintSession({ link, agent, visitorName, source = 'link', p
         status: 'live',
         source,
         pageUrl,
-        referrer
+        referrer,
+        transientAuth
     });
     await ShareLink.updateOne({ _id: link._id }, { $inc: { sessionCount: 1 } });
 

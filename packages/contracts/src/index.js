@@ -93,6 +93,27 @@ export const ProductInput = z.object({
     ).default([])
 });
 
+// ─── Integrations / Webhooks ──────────────────────────────────
+// Supported event types for webhook filtering
+export const WEBHOOK_EVENTS = /** @type {const} */ ([
+    'lead.captured',
+    'session.started',
+    'session.ended',
+    'session.summary'
+]);
+
+export const WebhookInput = z.object({
+    /** Public HTTPS endpoint. Private/loopback IPs are blocked (SSRF guard). */
+    url: z.string().url().refine(isSafeProductUrl, {
+        message: 'url must be a public http(s) URL (no private IPs or localhost)'
+    }),
+    /** Optional custom HMAC-SHA256 signing secret. Auto-generated if omitted. */
+    secret: z.string().min(8).optional(),
+    /** Specific event types to subscribe to. Empty array = subscribe to all. */
+    events: z.array(z.enum(WEBHOOK_EVENTS)).default([]),
+    active: z.boolean().default(true)
+});
+
 // ─── Knowledge sources ────────────────────────────────────────
 export const KnowledgeSourceInput = z.object({
     productId: z.string(),
@@ -178,9 +199,15 @@ export const ProductUpdateInput = z.object({
 });
 
 // ─── Realtime session ─────────────────────────────────────────
+export const AuthMaterial = z.object({
+    cookies: z.array(z.any()).optional(),
+    localStorage: z.record(z.string()).optional()
+});
+
 export const CreateSessionInput = z.object({
     shareToken: z.string(),
-    visitorName: z.string().optional()
+    visitorName: z.string().optional(),
+    transientAuth: AuthMaterial.optional()
 });
 
 // Body for POST /embed/:token/session — the share token itself travels in the
@@ -189,7 +216,8 @@ export const EmbedSessionInput = z.object({
     visitorName: z.string().optional(),
     // The loader knows its own SPA route better than the Referer header does;
     // still optional since a plain page load has nothing more specific to send.
-    pageUrl: z.string().url().optional()
+    pageUrl: z.string().url().optional(),
+    transientAuth: AuthMaterial.optional()
 });
 
 export const SessionToken = z.object({

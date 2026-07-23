@@ -18,12 +18,12 @@ export const sessionsRouter = Router();
  */
 sessionsRouter.post('/', requestTimeout(10_000), validate({ body: CreateSessionInput }), async (req, res, next) => {
     try {
-        const { shareToken, visitorName } = req.body;
+        const { shareToken, visitorName, transientAuth } = req.body;
         const resolved = await resolveShareLink(shareToken);
         if (!resolved.ok) return res.status(resolved.status).json({ error: resolved.error });
 
         const { link, agent } = resolved;
-        const result = await mintSession({ link, agent, visitorName, source: 'link' });
+        const result = await mintSession({ link, agent, visitorName, source: 'link', transientAuth });
         res.json(result);
     } catch (err) {
         next(err);

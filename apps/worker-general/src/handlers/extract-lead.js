@@ -1,6 +1,7 @@
 import { Lead } from '@repo/database';
 import { publishEvent } from '@repo/realtime';
 import { Logger } from '@repo/logger';
+import { enqueue, QUEUES } from '@repo/queue';
 
 /**
  * Kural tabanlı lead extraction ve scoring.
@@ -113,6 +114,20 @@ export async function extractLead({ session, messages, analysis, workspaceId }) 
         });
     } catch (err) {
         Logger.warn('[extract-lead] publishEvent başarısız (non-fatal)', { error: err?.message });
+    }
+
+    // ── 9. Webhook / CRM push — fire-and-forget ──────────────────────────
+    // Dispatch is non-fatal: if the queue is unavailable the lead is still
+    // captured; webhook delivery simply won't happen for this event.
+    try {
+        await enqueue(QUEUES.GENERAL, 'dispatch-webhooks', {
+            event: 'lead.captured',
+            leadId: String(lead._id),
+            sessionId: String(session._id),
+            workspaceId: String(workspaceId)
+        });
+    } catch (err) {
+        Logger.warn('[extract-lead] dispatch-webhooks enqueue başarısız (non-fatal)', { error: err?.message });
     }
 
     return lead;

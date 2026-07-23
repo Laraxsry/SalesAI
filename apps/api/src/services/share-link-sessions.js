@@ -1,6 +1,7 @@
 import { ShareLink, Agent, Session } from '@repo/database';
 import { createAccessToken, livekitUrl, dispatchAgent } from '@repo/livekit';
 import { shortId } from '@repo/utils';
+import { getWorkspaceUsageAndQuotas } from './billing-service.js';
 
 /**
  * Shared session-minting logic for POST /sessions and POST /embed/:token/session.
@@ -35,6 +36,18 @@ export async function resolveShareLink(token) {
     const agent = await Agent.findById(link.agentId);
     if (!agent || agent.status !== 'active') {
         return { ok: false, status: 409, error: 'Agent is not active' };
+    }
+
+    if (agent.workspaceId) {
+        const usageInfo = await getWorkspaceUsageAndQuotas(agent.workspaceId);
+        const voiceData = usageInfo.meters?.agentVoiceMinutes;
+        if (voiceData && voiceData.isOverQuota) {
+            return {
+                ok: false,
+                status: 402,
+                error: 'Quota exceeded: Workspace has reached its limit for agent voice minutes.'
+            };
+        }
     }
 
     return { ok: true, link, agent };

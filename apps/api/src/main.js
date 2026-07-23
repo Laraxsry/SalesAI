@@ -52,9 +52,11 @@ async function main() {
         credentials: true
     });
 
-    // The embed router uses per-agent allowlists and must not be short-circuited by the global CORS middleware.
-    // Skip the global CORS for embed paths so that apps/api/src/middleware/embed-origin.js can enforce per-request checks.
+    // Skip global CORS for embed paths
     app.use((req, res, next) => (req.path.startsWith('/api/v1/embed') ? next() : corsMiddleware(req, res, next)));
+
+    // Phase 6: Stripe Webhook raw body parser (signature verification)
+    app.use('/api/v1/billing/webhook', express.raw({ type: 'application/json' }));
     app.use(express.json({ limit: '5mb' }));
 
     // Phase 8 Task 6.6: Public endpoint rate limiting

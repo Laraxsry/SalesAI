@@ -10,9 +10,9 @@ export const ROLES = Object.freeze({
 
 const PERMISSIONS = {
     OWNER: ['*'],
-    ADMIN: ['product:*', 'knowledge:*', 'agent:*', 'member:read', 'analytics:read', 'audit:read'],
-    EDITOR: ['product:read', 'knowledge:*', 'agent:read,update', 'analytics:read'],
-    VIEWER: ['product:read', 'knowledge:read', 'agent:read', 'analytics:read']
+    ADMIN: ['product:*', 'knowledge:*', 'agent:*', 'member:read', 'billing:read', 'analytics:read', 'audit:read'],
+    EDITOR: ['product:read', 'knowledge:*', 'agent:read,update', 'analytics:read', 'member:read', 'billing:read'],
+    VIEWER: ['product:read', 'knowledge:read', 'agent:read', 'analytics:read', 'member:read', 'billing:read']
 };
 
 /** Returns true if a role grants a permission like "agent:update". */

@@ -17,7 +17,14 @@ export { Lead } from './Lead.js';
 export { EmbedConfig } from './EmbedConfig.js';
 export { EmbedDomain } from './EmbedDomain.js';
 
+// Phase 6: Team, Billing & Quotas
+export { Plan } from './Plan.js';
+export { Subscription } from './Subscription.js';
+export { Invitation } from './Invitation.js';
+export { UsageRecord } from './UsageRecord.js';
+
 // Phase 8: Security, Compliance & Scale
 export { AuthSession } from './AuthSession.js';
 export { ApiKey } from './ApiKey.js';
 export { AuditLog, AUDIT_ACTIONS } from './AuditLog.js';
+

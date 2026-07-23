@@ -1,6 +1,9 @@
+import crypto from 'node:crypto';
 import { Router } from 'express';
-import { Workspace, Membership } from '@repo/database';
+import { Workspace, Membership, Invitation, User } from '@repo/database';
 import { requireAuth } from '@repo/auth';
+import { requirePermission } from '@repo/access';
+import { resolveTenant, resolveMember } from '../middleware/tenant.js';
 import { shortId } from '@repo/utils';
 
 export const workspacesRouter = Router();
@@ -111,3 +114,177 @@ workspacesRouter.get('/', requireAuth, async (req, res, next) => {
         next(err);
     }
 });
+
+/**
+ * POST /workspaces/:id/invitations
+ *
+ * Workspace'e yeni bir üye davet eder. İmzalı bir davet token'ı üretir.
+ * Body: { "email": "user@example.com", "role": "EDITOR" }
+ */
+workspacesRouter.post(
+    '/:id/invitations',
+    requireAuth,
+    (req, _res, next) => { req.body = req.body || {}; req.body.workspaceId = req.params.id; next(); },
+    resolveTenant,
+    resolveMember,
+    requirePermission('member:manage'),
+    async (req, res, next) => {
+        try {
+            const { email, role = 'EDITOR' } = req.body;
+            if (!email || !email.trim()) {
+                return res.status(422).json({ error: 'email is required' });
+            }
+
+            const validRoles = ['ADMIN', 'EDITOR', 'VIEWER'];
+            if (!validRoles.includes(role)) {
+                return res.status(422).json({ error: `Invalid role. Must be one of: ${validRoles.join(', ')}` });
+            }
+
+            const cleanEmail = email.trim().toLowerCase();
+
+            // Zaten davet edilmiş mi?
+            const existingInv = await Invitation.findOne({
+                workspaceId: req.workspaceId,
+                email: cleanEmail,
+                status: 'pending'
+            });
+
+            if (existingInv) {
+                return res.status(409).json({ error: 'An active invitation for this email already exists' });
+            }
+
+            const token = crypto.randomBytes(24).toString('hex');
+            const expiresAt = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000); // 7 gün
+
+            const invitation = await Invitation.create({
+                workspaceId: req.workspaceId,
+                email: cleanEmail,
+                role,
+                token,
+                invitedBy: req.user.sub,
+                expiresAt,
+                status: 'pending'
+            });
+
+            res.status(201).json({
+                id: String(invitation._id),
+                workspaceId: String(invitation.workspaceId),
+                email: invitation.email,
+                role: invitation.role,
+                token: invitation.token,
+                status: invitation.status,
+                expiresAt: invitation.expiresAt
+            });
+        } catch (err) {
+            next(err);
+        }
+    }
+);
+
+/**
+ * GET /workspaces/:id/invitations
+ *
+ * Workspace'in tüm bekleyen davetlerini listeler.
+ */
+workspacesRouter.get(
+    '/:id/invitations',
+    requireAuth,
+    (req, _res, next) => { req.query.workspaceId = req.params.id; next(); },
+    resolveTenant,
+    resolveMember,
+    requirePermission('member:read'),
+    async (req, res, next) => {
+        try {
+            const invitations = await Invitation.find({
+                workspaceId: req.workspaceId,
+                status: 'pending'
+            }).sort({ createdAt: -1 });
+
+            res.json(
+                invitations.map((inv) => ({
+                    id: String(inv._id),
+                    email: inv.email,
+                    role: inv.role,
+                    status: inv.status,
+                    token: inv.token,
+                    expiresAt: inv.expiresAt,
+                    createdAt: inv.createdAt
+                }))
+            );
+        } catch (err) {
+            next(err);
+        }
+    }
+);
+
+/**
+ * DELETE /workspaces/:id/invitations/:invitationId
+ *
+ * Bir daveti iptal/iptal eder (status: 'revoked').
+ */
+workspacesRouter.delete(
+    '/:id/invitations/:invitationId',
+    requireAuth,
+    (req, _res, next) => { req.query.workspaceId = req.params.id; next(); },
+    resolveTenant,
+    resolveMember,
+    requirePermission('member:manage'),
+    async (req, res, next) => {
+        try {
+            const invitation = await Invitation.findOne({
+                _id: req.params.invitationId,
+                workspaceId: req.workspaceId
+            });
+
+            if (!invitation) {
+                return res.status(404).json({ error: 'Invitation not found' });
+            }
+
+            invitation.status = 'revoked';
+            await invitation.save();
+
+            res.json({ ok: true, message: 'Invitation revoked' });
+        } catch (err) {
+            next(err);
+        }
+    }
+);
+
+/**
+ * GET /workspaces/:id/members
+ *
+ * Workspace'in tüm üyelerini listeler (User detayları ile).
+ */
+workspacesRouter.get(
+    '/:id/members',
+    requireAuth,
+    (req, _res, next) => { req.query.workspaceId = req.params.id; next(); },
+    resolveTenant,
+    resolveMember,
+    requirePermission('member:read'),
+    async (req, res, next) => {
+        try {
+            const memberships = await Membership.find({ workspaceId: req.workspaceId });
+            const userIds = memberships.map((m) => m.userId);
+            const users = await User.find({ _id: { $in: userIds } }).select('name email avatarUrl');
+
+            const members = memberships.map((m) => {
+                const user = users.find((u) => String(u._id) === String(m.userId));
+                return {
+                    id: String(m._id),
+                    userId: String(m.userId),
+                    role: m.role,
+                    name: user?.name || 'Unknown',
+                    email: user?.email || '',
+                    avatarUrl: user?.avatarUrl,
+                    joinedAt: m.createdAt
+                };
+            });
+
+            res.json(members);
+        } catch (err) {
+            next(err);
+        }
+    }
+);
+

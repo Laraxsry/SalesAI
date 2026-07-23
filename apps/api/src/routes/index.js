@@ -14,12 +14,22 @@ import { apiKeysRouter } from './api-keys.js';
 import { auditLogsRouter } from './audit-logs.js';
 import { privacyRouter } from './privacy.js';
 
+// Phase 6: Team, Billing & Quotas
+import { invitationsRouter } from './invitations.js';
+import { membershipsRouter } from './memberships.js';
+import { billingRouter } from './billing.js';
+
 /** Mounts all API routers under /api/v1. */
 export function registerRoutes(app) {
     // Phase 0: Foundation
     app.use('/api/v1/auth', authRouter);
     app.use('/api/v1/workspaces', workspacesRouter);
     app.use('/api/v1/products', productsRouter);
+
+    // Phase 6: Team, Billing & Quotas
+    app.use('/api/v1/invitations', invitationsRouter);
+    app.use('/api/v1/memberships', membershipsRouter);
+    app.use('/api/v1/billing', billingRouter);
 
     // Phase 1+: Knowledge, Agents, Sessions
     app.use('/api/v1/sessions', sessionsRouter);

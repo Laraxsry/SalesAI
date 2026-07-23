@@ -1,3 +1,4 @@
+import { context, propagation } from '@opentelemetry/api';
 import { ShareLink, Agent, Session } from '@repo/database';
 import { createAccessToken, livekitUrl, dispatchAgent } from '@repo/livekit';
 import { shortId } from '@repo/utils';
@@ -90,11 +91,18 @@ export async function mintSession({ link, agent, visitorName, source = 'link', p
 
     // Dispatch the named agent-worker into the room so it joins automatically.
     // If the agent-worker is not running, this will silently fail and log a warning.
+    //
+    // Stashes the current OpenTelemetry trace context in the dispatch metadata
+    // (Phase 7 — same mechanism @repo/queue's enqueue() uses for BullMQ jobs),
+    // so the agent-worker's own spans and logs nest under this request's trace
+    // instead of starting a disconnected one.
+    const traceContext = {};
+    propagation.inject(context.active(), traceContext);
     try {
         await dispatchAgent({
             roomName,
             agentName: process.env.LIVEKIT_AGENT_NAME || 'salesai-agent',
-            metadata: { sessionId: String(session._id), agentId: String(agent._id) }
+            metadata: { sessionId: String(session._id), agentId: String(agent._id), __traceContext: traceContext }
         });
     } catch (dispatchErr) {
         // Non-fatal: visitor can still join; agent-worker may connect later.

@@ -15,6 +15,8 @@ import { shortId } from '@repo/utils';
 import { logAudit, extractRequestMeta, AUDIT_ACTIONS } from '@repo/utils';
 import IORedis from 'ioredis';
 import { nanoid } from 'nanoid';
+import { requestTimeout } from '../middleware/request-timeout.js';
+import { authRateLimit } from '../middleware/public-rate-limits.js';
 
 export const authRouter = Router();
 
@@ -74,7 +76,7 @@ async function getRemainingLockoutSeconds(email) {
  * 2. User + kişisel workspace + OWNER membership oluşturur
  * 3. JWT token çifti döner
  */
-authRouter.post('/register', validate({ body: RegisterInput }), async (req, res, next) => {
+authRouter.post('/register', authRateLimit, requestTimeout(5000), validate({ body: RegisterInput }), async (req, res, next) => {
     try {
         const { email, password, name } = req.body;
 
@@ -127,7 +129,7 @@ authRouter.post('/register', validate({ body: RegisterInput }), async (req, res,
  * Phase 8: Rate limiting (5 başarısız → 15 dk lockout) + AuthSession + AuditLog.
  * 2FA aktif kullanıcılarda mfaToken döner; tam token için /auth/2fa/verify gerekir.
  */
-authRouter.post('/login', validate({ body: LoginInput }), async (req, res, next) => {
+authRouter.post('/login', requestTimeout(5000), validate({ body: LoginInput }), async (req, res, next) => {
     try {
         const { email, password } = req.body;
         const { ip, userAgent } = extractRequestMeta(req);
@@ -226,7 +228,7 @@ authRouter.post('/login', validate({ body: LoginInput }), async (req, res, next)
  * - Bulunamazsa: reuse saldırısı → tüm family iptal edilir
  * - Bulunursa: eski revoke edilir, yeni yazılır
  */
-authRouter.post('/refresh', async (req, res, next) => {
+authRouter.post('/refresh', authRateLimit, requestTimeout(5000), async (req, res, next) => {
     try {
         const { refreshToken } = req.body;
         if (!refreshToken) {

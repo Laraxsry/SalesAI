@@ -5,14 +5,18 @@ import { Session, Message } from '@repo/database';
 import { requireAuth } from '@repo/auth';
 import { enqueue, QUEUES } from '@repo/queue';
 import { resolveShareLink, mintSession } from '../services/share-link-sessions.js';
+import { requestTimeout } from '../middleware/request-timeout.js';
+import { lightPublicRateLimit } from '../middleware/public-rate-limits.js';
 
 export const sessionsRouter = Router();
 
 /**
  * Public: a customer opens a share link -> we create a room + LiveKit token.
  * The agent-worker is dispatched to the same room to drive the conversation.
+ * Rate limiting for this route is applied at the path-prefix level in
+ * main.js (Phase 8's sessionRateLimit) — not duplicated here.
  */
-sessionsRouter.post('/', validate({ body: CreateSessionInput }), async (req, res, next) => {
+sessionsRouter.post('/', requestTimeout(10_000), validate({ body: CreateSessionInput }), async (req, res, next) => {
     try {
         const { shareToken, visitorName } = req.body;
         const resolved = await resolveShareLink(shareToken);
@@ -27,7 +31,7 @@ sessionsRouter.post('/', validate({ body: CreateSessionInput }), async (req, res
 });
 
 /** Get session transcript (messages). Public access. */
-sessionsRouter.get('/:id/transcript', async (req, res, next) => {
+sessionsRouter.get('/:id/transcript', lightPublicRateLimit, requestTimeout(5000), async (req, res, next) => {
     try {
         const session = await Session.findById(req.params.id);
         if (!session) return res.status(404).json({ error: 'Session not found' });

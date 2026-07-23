@@ -1,5 +1,7 @@
 import { Router } from 'express';
 import { loadSdkBundle } from '../services/sdk-bundle.js';
+import { requestTimeout } from '../middleware/request-timeout.js';
+import { lightPublicRateLimit } from '../middleware/public-rate-limits.js';
 
 export const sdkRouter = Router();
 
@@ -24,7 +26,7 @@ export const sdkRouter = Router();
  * seller adopts a new loader version by copying a fresh snippet, not
  * automatically.
  */
-sdkRouter.get('/salesai.js', (req, res) => {
+sdkRouter.get('/salesai.js', lightPublicRateLimit, requestTimeout(5000), (req, res) => {
     const bundle = loadSdkBundle();
     if (!bundle) return res.status(503).json({ error: 'SDK bundle not available' });
 

@@ -9,6 +9,12 @@ const EMIT_CHANNEL = 'rt:emit';
  * Creates a Socket.IO server with a Redis adapter so it scales across pods.
  * Used for console live updates (ingestion progress, session events).
  *
+ * Returns `{ io, close }` rather than the bare `io` instance — the adapter's
+ * `pub`/`sub` Redis connections are created and owned here, so the caller
+ * has no other way to close them during a graceful shutdown. `close()`
+ * closes the Socket.IO server (disconnecting clients) and quits both Redis
+ * connections.
+ *
  * @param {import('http').Server} httpServer
  * @param {{ cors?: object }} [opts]
  */
@@ -29,7 +35,13 @@ export function createRealtimeServer(httpServer, opts = {}) {
     sub.on('error', () => {});
     io.adapter(createAdapter(pub, sub));
 
-    return io;
+    async function close() {
+        await new Promise((resolve) => io.close(() => resolve()));
+        pub.disconnect();
+        sub.disconnect();
+    }
+
+    return { io, close };
 }
 
 /** Socket.IO event names emitted to the console UI. */
@@ -60,4 +72,81 @@ export async function publishEvent(event, payload) {
     } finally {
         redis.disconnect();
     }
+}
+
+/**
+ * Dedicated channel for operational metric observations (Phase 7), separate
+ * from EMIT_CHANNEL: RT_EVENTS/publishEvent are visitor/console-facing
+ * realtime UI events; this is internal telemetry consumed only by apps/api's
+ * Prometheus registry. Exported so subscribers don't hardcode the literal.
+ */
+export const METRICS_CHANNEL = 'rt:metrics';
+
+/** Metric names published via publishMetric(), shared vocabulary between agent-worker and apps/api. */
+export const SESSION_METRICS = Object.freeze({
+    SESSION_JOIN_MS: 'session_join_ms',
+    FIRST_AUDIO_MS: 'first_audio_ms',
+    TOOL_CALL_MS: 'tool_call_ms',
+    SESSION_COST_USD: 'session_cost_usd'
+});
+
+// Lazily created and reused rather than one-shot per call like publishEvent()
+// — tool-call/first-audio metrics can fire many times within a single
+// session, and reopening a Redis connection per observation would be wasteful.
+let metricsPublisher;
+function getMetricsPublisher() {
+    if (!metricsPublisher) {
+        const url = process.env.REDIS_URL || 'redis://localhost:6379';
+        metricsPublisher = new IORedis(url, { maxRetriesPerRequest: null, enableReadyCheck: false });
+        metricsPublisher.on('error', () => {});
+    }
+    return metricsPublisher;
+}
+
+/**
+ * Publishes a single metric observation from any process (agent-worker,
+ * workers…) for apps/api to fold into its Prometheus registry (Phase 7).
+ * Fire-and-forget: a dropped metric observation should never affect the
+ * session it was measuring, so failures are swallowed rather than thrown.
+ *
+ * @param {string} name - one of SESSION_METRICS
+ * @param {number} value - the observed value (unit is name-specific, e.g. milliseconds)
+ * @param {object} [labels] - low-cardinality labels only (e.g. tool name, provider) — never sessionId/roomName/userId
+ */
+export function publishMetric(name, value, labels = {}) {
+    return getMetricsPublisher()
+        .publish(METRICS_CHANNEL, JSON.stringify({ name, value, labels }))
+        .catch(() => {});
+}
+
+/**
+ * Dedicated channel for usage observations that must durably become a real
+ * `UsageRecord` (Phase 6 billing ledger) — separate from METRICS_CHANNEL,
+ * whose observations only ever become in-memory Prometheus histograms. A
+ * dropped metric is an acceptable loss; a dropped usage/billing event is not,
+ * so this is kept as its own concern even though the transport looks similar.
+ */
+export const USAGE_CHANNEL = 'rt:usage';
+
+let usagePublisher;
+function getUsagePublisher() {
+    if (!usagePublisher) {
+        const url = process.env.REDIS_URL || 'redis://localhost:6379';
+        usagePublisher = new IORedis(url, { maxRetriesPerRequest: null, enableReadyCheck: false });
+        usagePublisher.on('error', () => {});
+    }
+    return usagePublisher;
+}
+
+/**
+ * Publishes one usage observation (Phase 7 cost tracking, Phase 6 billing)
+ * from any process for apps/api to fold into the real `UsageRecord`/
+ * `Subscription` ledger via billing-service's `recordUsage()`.
+ *
+ * @param {{workspaceId:string, meter:string, quantity:number, estCost?:number, sessionId?:string, agentId?:string}} usage
+ */
+export function publishUsage(usage) {
+    return getUsagePublisher()
+        .publish(USAGE_CHANNEL, JSON.stringify(usage))
+        .catch(() => {});
 }

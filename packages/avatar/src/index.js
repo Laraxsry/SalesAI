@@ -1,3 +1,4 @@
+import { withFallback } from '@repo/resilience';
 import { VoiceOnlyAvatar } from './providers/voice-only.js';
 import { TavusAvatar } from './providers/tavus.js';
 import { SimliAvatar } from './providers/simli.js';
@@ -32,3 +33,31 @@ export function getAvatarProvider(name = process.env.AVATAR_PROVIDER || 'voice-o
 }
 
 export const AVATAR_PROVIDERS = ['voice-only', 'tavus', 'simli', 'heygen', 'did'];
+
+/**
+ * Starts the configured avatar with automatic fallback to voice-only
+ * (Phase 7 — generalizes the try/catch that used to live directly in
+ * apps/agent-worker/src/agent.js).
+ *
+ * `voice-only` is always the last link in the chain and never fails (it has
+ * nothing to attach — see providers/voice-only.js), so this call cannot
+ * itself throw: the visitor always ends up in a working conversation, at
+ * worst without a talking-face video.
+ *
+ * @param {{ name: string, agentSession: unknown, room: unknown }} params
+ * @returns {Promise<{ provider: object, attached: object }>} the avatar
+ *   strategy that actually started, and its start() return value.
+ */
+export async function startAvatarWithFallback({ name, agentSession, room }) {
+    const chain = [...new Set([name, 'voice-only'])];
+    let started;
+    const attached = await withFallback({
+        capability: 'avatar',
+        providers: chain,
+        invoke: async (providerName) => {
+            started = getAvatarProvider(providerName);
+            return started.start({ agentSession, room });
+        }
+    });
+    return { provider: started, attached };
+}

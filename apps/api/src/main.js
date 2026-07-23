@@ -1,16 +1,26 @@
 import '@repo/config-env/load';
+import './tracing.js'; // must run before express/mongoose/ioredis are imported below
 import http from 'node:http';
 import express from 'express';
 import cors from 'cors';
 import helmet from 'helmet';
 import rateLimit from 'express-rate-limit';
 import { Logger } from '@repo/logger';
-import { connectDB } from '@repo/database';
+import { connectDB, disconnectDB } from '@repo/database';
 import { ensureBucket } from '@repo/storage';
 import { createRealtimeServer } from '@repo/realtime';
+import { connection as queueConnection } from '@repo/queue';
 import IORedis from 'ioredis';
 import { registerRoutes } from './routes/index.js';
 import { errorHandler } from './middleware/error-handler.js';
+import { checkMongo, checkRedis, checkLiveKit, summarizeReadiness } from './services/readiness.js';
+import {
+    register, metricsMiddleware, observeQueueMetrics, closeQueueMetrics, subscribeSessionMetrics
+} from './services/metrics.js';
+import { subscribeUsageEvents } from './services/usage-bridge.js';
+import { backpressureMiddleware } from './middleware/backpressure.js';
+import { shutdownTracing } from './tracing.js';
+import { registerGracefulShutdown } from './shutdown.js';
 
 const PORT = Number(process.env.API_PORT || 5001);
 
@@ -58,6 +68,12 @@ async function main() {
     // Phase 6: Stripe Webhook raw body parser (signature verification)
     app.use('/api/v1/billing/webhook', express.raw({ type: 'application/json' }));
     app.use(express.json({ limit: '5mb' }));
+    app.use(metricsMiddleware);
+
+    // Phase 7: backpressure — shed new requests with 503 when the event loop
+    // is clearly struggling, rather than accepting unlimited work. Runs after
+    // metricsMiddleware so shed requests are still counted in RED metrics.
+    app.use(backpressureMiddleware());
 
     // Phase 8 Task 6.6: Public endpoint rate limiting
     // POST /sessions ve /embed/* — abuse ve DDoS koruması
@@ -71,15 +87,43 @@ async function main() {
     app.use('/api/v1/sessions', sessionRateLimit);
     app.use('/api/v1/embed', sessionRateLimit);
 
+    // Liveness: process is up and can respond. No dependency checks —
+    // must stay fast even if Mongo/Redis/LiveKit are struggling.
     app.get('/health', (_req, res) => res.json({ ok: true, service: 'api' }));
+
+    // Scraped by Prometheus (see infra/docker-compose.yaml + infra/prometheus.yml).
+    app.get('/metrics', async (_req, res) => {
+        res.set('Content-Type', register.contentType);
+        res.send(await register.metrics());
+    });
+
+    // Readiness: safe to receive traffic. Checked concurrently so one slow
+    // dependency doesn't add its timeout on top of the others'.
+    app.get('/ready', async (_req, res) => {
+        const results = await Promise.all([checkMongo(), checkRedis(), checkLiveKit()]);
+        const { ok, checks } = summarizeReadiness(results);
+        res.status(ok ? 200 : 503).json({ ok, checks });
+    });
+
+    // Phase 7: queue depth + job latency (observed directly from BullMQ) and
+    // session-level latency (published by agent-worker over Redis pub/sub —
+    // see services/metrics.js for why).
+    observeQueueMetrics();
+    const sessionMetricsSub = subscribeSessionMetrics();
+
+    // Phase 7: relays agent-worker-observed usage (voice minutes, vision
+    // frames, estimated cost) into the real Phase 6 billing ledger — see
+    // services/usage-bridge.js for why this can't call recordUsage() directly.
+    const usageEventsSub = subscribeUsageEvents();
+
     registerRoutes(app);
 
     // Global error handler — tüm yakalanmamış hataları yakalar
     app.use(errorHandler);
 
     const server = http.createServer(app);
-    const io = createRealtimeServer(server);
-    app.set('io', io);
+    const realtime = createRealtimeServer(server);
+    app.set('io', realtime.io);
 
     server.listen(PORT, () => Logger.info(`API listening on :${PORT}`));
 
@@ -93,8 +137,24 @@ async function main() {
     redisSub.on('message', (_ch, raw) => {
         try {
             const { event, payload } = JSON.parse(raw);
-            io.emit(event, payload);
+            realtime.io.emit(event, payload);
         } catch { /* malformed — ignore */ }
+    });
+
+    // Phase 7: graceful shutdown — drain in-flight HTTP/Socket.IO connections,
+    // then close every resource this process opened, concurrently.
+    registerGracefulShutdown({
+        server,
+        realtime,
+        tasks: [
+            { name: 'mongodb', fn: disconnectDB },
+            { name: 'redis-sub', fn: () => redisSub.quit() },
+            { name: 'queue-redis', fn: () => queueConnection.quit() },
+            { name: 'queue-metrics', fn: closeQueueMetrics },
+            { name: 'session-metrics-sub', fn: () => sessionMetricsSub.quit() },
+            { name: 'usage-events-sub', fn: () => usageEventsSub.quit() },
+            { name: 'otel-tracing', fn: shutdownTracing }
+        ]
     });
 }
 

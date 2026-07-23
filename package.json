@@ -18,6 +18,8 @@
     "test": "npm run test --workspaces --if-present",
     "format": "prettier --write \"**/*.{js,jsx,ts,tsx,json,md}\"",
     "kill-ports": "node scripts/kill-ports.js",
+    "chaos:test": "node scripts/chaos-test.js",
+    "loadtest": "k6 run scripts/load-test.js",
     "infra:up": "docker compose -f infra/docker-compose.yaml up -d",
     "infra:down": "docker compose -f infra/docker-compose.yaml down",
     "db:indexes": "npm run db:indexes -w @repo/database",

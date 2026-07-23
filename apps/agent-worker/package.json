@@ -7,7 +7,8 @@
   "scripts": {
     "dev": "node src/agent.js dev",
     "start": "node src/agent.js start",
-    "lint": "eslint ."
+    "lint": "eslint .",
+    "test": "vitest run"
   },
   "dependencies": {
     "@livekit/agents": "^1.4.11",
@@ -15,6 +16,12 @@
     "@livekit/agents-plugin-silero": "^1.4.11",
     "@livekit/agents-plugin-tavus": "^1.5.0",
     "@livekit/rtc-node": "^0.13.29",
+    "@opentelemetry/api": "^1.9.1",
+    "@opentelemetry/auto-instrumentations-node": "^0.78.0",
+    "@opentelemetry/exporter-trace-otlp-http": "^0.221.0",
+    "@opentelemetry/resources": "^1.30.1",
+    "@opentelemetry/sdk-node": "^0.221.0",
+    "@opentelemetry/semantic-conventions": "^1.30.0",
     "@repo/agent": "*",
     "@repo/avatar": "*",
     "@repo/config-env": "*",
@@ -25,7 +32,10 @@
     "sharp": "^0.34.5"
   },
   "devDependencies": {
+    "@opentelemetry/core": "^1.30.1",
     "@repo/eslint-config": "*",
-    "eslint": "^9.17.0"
+    "@repo/testing": "*",
+    "eslint": "^9.17.0",
+    "vitest": "^2.1.8"
   }
 }

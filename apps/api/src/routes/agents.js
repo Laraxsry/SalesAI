@@ -7,6 +7,8 @@ import { shareToken, buildEmbedSnippet, logAudit, extractRequestMeta, AUDIT_ACTI
 import { retrieve } from '@repo/rag';
 import { getLLM } from '@repo/ai';
 import { getSdkVersion } from '../services/sdk-bundle.js';
+import { requestTimeout } from '../middleware/request-timeout.js';
+import { chatRateLimit } from '../middleware/public-rate-limits.js';
 
 export const agentsRouter = Router();
 
@@ -268,7 +270,7 @@ agentsRouter.get('/:id/sessions', requireAuth, async (req, res, next) => {
  * 
  * Body: { messages: [{ role: 'user', content: 'What is this product?' }] }
  */
-agentsRouter.post('/:id/chat', async (req, res, next) => {
+agentsRouter.post('/:id/chat', chatRateLimit, requestTimeout(30_000), async (req, res, next) => {
     try {
         const agent = await Agent.findById(req.params.id);
         if (!agent) return res.status(404).json({ error: 'Agent not found' });

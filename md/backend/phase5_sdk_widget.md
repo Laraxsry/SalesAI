@@ -20,35 +20,37 @@
 
 ## Tasks
 
-1. **Widget configuration**
-   - `POST /agents/:id/embed` saves an `EmbedConfig`: theme, launcher position,
+1. [x] **Widget configuration**
+   - [x] `POST /agents/:id/embed` saves an `EmbedConfig`: theme, launcher position,
      greeting, allowed domains, rate caps, and whether mic auto-prompts.
-   - `GET /embed/:token/config` (public) returns non-secret render config for the
+   - [x] `GET /embed/:token/config` (public) returns non-secret render config for the
      loader, validated against the requesting `Origin`/`Referer`.
 
-2. **Embed session tokens**
-   - `POST /embed/:token/session` mints a session exactly like `POST /sessions`
+2. [x] **Embed session tokens**
+   - [x] `POST /embed/:token/session` mints a session exactly like `POST /sessions`
      but verifies the origin is in `EmbedDomain` and applies embed rate limits.
-   - Return `{ roomName, token, livekitUrl, config }`.
+     (Reuses the existing `ShareLink` token rather than a separate embed token.)
+   - [x] Return `{ roomName, token, livekitUrl, config }`.
 
-3. **Loader script** ([`@repo/sdk`](../../packages/sdk))
-   - Ship `salesai.js` (built to `sdk/dist`) served from a CDN route
+3. [x] **Loader script** ([`@repo/sdk`](../../packages/sdk))
+   - [x] Ship `salesai.js` (built to `sdk/dist`) served from a CDN route
      (`GET /sdk/salesai.js`) with long cache + versioned URL.
-   - The loader injects a launcher button and an iframe pointing at the visitor
+   - [x] The loader injects a launcher button and an iframe pointing at the visitor
      app in `?embed=1` mode with the embed token.
 
-4. **Origin & CORS enforcement**
-   - Middleware resolves the agent from the embed token, checks the `Origin`
+4. [x] **Origin & CORS enforcement**
+   - [x] Middleware resolves the agent from the embed token, checks the `Origin`
      against `EmbedDomain`, and sets per-origin CORS headers.
-   - Wildcard subdomains supported (`*.acme.com`); localhost allowed in dev only.
+   - [x] Wildcard subdomains supported (`*.acme.com`); localhost allowed in dev only.
 
 5. **Abuse protection**
-   - Per-IP + per-origin rate limiting (Redis token bucket).
-   - Optional hCaptcha/Turnstile challenge before session creation for
-     high-traffic embeds; bot heuristics on session start.
+   - [x] Per-IP + per-origin rate limiting (Redis token bucket).
+   - [ ] Optional hCaptcha/Turnstile challenge before session creation for
+     high-traffic embeds; bot heuristics on session start. (bot heuristics done —
+     `apps/api/src/middleware/bot-heuristics.js`; captcha deferred until web Phase 6)
 
-6. **Analytics attribution**
-   - Tag embed sessions with `source: 'widget'`, `pageUrl`, and referrer so
+6. [x] **Analytics attribution**
+   - [x] Tag embed sessions with `source: 'widget'`, `pageUrl`, and referrer so
      Phase 4 analytics can segment web vs. widget traffic.
 
 ---
@@ -75,11 +77,11 @@ GET    /sdk/salesai.js                     # versioned loader script (CDN-cached
 
 ## Acceptance criteria
 
-- A snippet on an allowlisted domain opens the widget and starts a session.
-- Requests from a non-allowlisted origin are rejected with a clear error.
-- The loader is versioned and cached; upgrading the version invalidates cache.
-- Embed sessions are rate-limited and tagged `source: widget` in analytics.
-- `?embed=1` visitor UI renders cleanly inside the iframe (see web Phase 6).
+- [x] A snippet on an allowlisted domain opens the widget and starts a session.
+- [x] Requests from a non-allowlisted origin are rejected with a clear error.
+- [x] The loader is versioned and cached; upgrading the version invalidates cache.
+- [x] Embed sessions are rate-limited and tagged `source: widget` in analytics.
+- [ ] `?embed=1` visitor UI renders cleanly inside the iframe (see web Phase 6).
 
 ---
 

@@ -1,0 +1,10 @@
+global:
+  scrape_interval: 15s
+
+scrape_configs:
+  # The API doesn't expose /metrics yet (Phase 7 code work) — this target
+  # will show as "down" in Prometheus until that route is added. That's
+  # expected right now, not a misconfiguration.
+  - job_name: salesai-api
+    static_configs:
+      - targets: ['host.docker.internal:5001']

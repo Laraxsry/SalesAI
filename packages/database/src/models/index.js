@@ -23,6 +23,9 @@ export { Subscription } from './Subscription.js';
 export { Invitation } from './Invitation.js';
 export { UsageRecord } from './UsageRecord.js';
 
+// Phase 7: Multi-provider Hardening & Observability
+export { DeadLetterJob } from './DeadLetterJob.js';
+
 // Phase 8: Security, Compliance & Scale
 export { AuthSession } from './AuthSession.js';
 export { ApiKey } from './ApiKey.js';

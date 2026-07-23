@@ -14,6 +14,7 @@
     "@repo/ai": "*",
     "@repo/database": "*",
     "@repo/logger": "*",
+    "@repo/resilience": "*",
     "ioredis": "^5.11.1"
   },
   "devDependencies": {

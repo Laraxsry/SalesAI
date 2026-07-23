@@ -3,7 +3,9 @@ import { validate } from '@repo/validation';
 import { EmbedSessionInput } from '@repo/contracts';
 import { resolveEmbedContext } from '../middleware/embed-context.js';
 import { enforceEmbedOrigin } from '../middleware/embed-origin.js';
+import { blockSuspiciousBots } from '../middleware/bot-heuristics.js';
 import { rateLimit, ipKey } from '../middleware/rate-limit.js';
+import { requestTimeout } from '../middleware/request-timeout.js';
 import { mintSession } from '../services/share-link-sessions.js';
 
 export const embedRouter = Router();
@@ -42,7 +44,7 @@ function publicConfig(embedConfig) {
  * Public: render config for the loader script. No secrets — this is fetched
  * by anonymous visitor browsers before any origin-specific session exists.
  */
-embedRouter.get('/:token/config', (req, res) => {
+embedRouter.get('/:token/config', requestTimeout(5000), (req, res) => {
     res.json(publicConfig(req.embed.embedConfig));
 });
 
@@ -54,7 +56,9 @@ embedRouter.get('/:token/config', (req, res) => {
  */
 embedRouter.post(
     '/:token/session',
+    requestTimeout(10_000),
     validate({ body: EmbedSessionInput }),
+    blockSuspiciousBots,
     ...embedSessionRateLimits,
     async (req, res, next) => {
         try {

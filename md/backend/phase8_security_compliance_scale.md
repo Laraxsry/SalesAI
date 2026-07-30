@@ -181,9 +181,9 @@
      > **Neden:** Key rotation sırasında downtime olmamalı.
 
    **Acceptance criteria (Task 4):**
-   - [ ] `NODE_ENV=production` + `SECRETS_BACKEND=aws` → app secrets `.env` okumadan çalışır.
-   - [ ] `toolAccess` provider key DB'de şifreli saklanır; plaintext görünmez.
-   - [ ] `SIGHUP` veya scheduled refresh → yeni secret hot-reload olur, process restart gerekmez.
+   - [x] `NODE_ENV=production` + `SECRETS_BACKEND=aws` → app secrets `.env` okumadan çalışır.
+   - [x] `toolAccess` provider key DB'de şifreli saklanır; plaintext görünmez.
+   - [x] `SIGHUP` veya scheduled refresh → yeni secret hot-reload olur, process restart gerekmez.
 
 ---
 
@@ -224,10 +224,10 @@
      > **Neden:** Felaket kurtarma senaryolarında RTO/RPO hedeflerini karşılamak için.
 
    **Acceptance criteria (Task 5):**
-   - [ ] `docker build` her app için sorunsuz çalışır; container non-root çalışır.
-   - [ ] GitHub Actions PR'da lint+test geçer; merge'de image registry'ye push edilir.
-   - [ ] `kubectl apply` ile deploy; health probe geçene kadar eski pod ayakta kalır.
-   - [ ] 2 API pod ayakta — Socket.IO event'i ikisine de iletilir.
+   - [x] `docker build` her app için sorunsuz çalışır; container non-root çalışır.
+   - [x] GitHub Actions PR'da lint+test geçer; merge'de image registry'ye push edilir.
+   - [x] `kubectl apply` ile deploy; health probe geçene kadar eski pod ayakta kalır.
+   - [x] 2 API pod ayakta — Socket.IO event'i ikisine de iletilir.
 
 ---
 
@@ -260,10 +260,10 @@
      > **Neden:** Otomatik tarama yeterli değil; manuel test ile gap'leri kapat.
 
    **Acceptance criteria (Task 6):**
-   - [ ] `npm audit` CI'da çalışır; yüksek CVE varsa pipeline kırmızı.
-   - [ ] Trivy taraması CI'a entegre; `CRITICAL` bulgu deploy'u engeller.
-   - [ ] Pre-commit + CI'da secret scanning aktif.
-   - [ ] `/sessions` endpoint'i dakikada 20 isteği aşınca 429 döner.
+   - [x] `npm audit` CI'da çalışır; yüksek CVE varsa pipeline kırmızı.
+   - [x] Trivy taraması CI'a entegre; `CRITICAL` bulgu deploy'u engeller.
+   - [x] Pre-commit + CI'da secret scanning aktif.
+   - [x] `/sessions` endpoint'i dakikada 20 isteği aşınca 429 döner.
 
 ---
 
@@ -310,12 +310,12 @@ GET    /api/v1/audit-logs               # filtrelenmiş, sayfalı (requireAuth +
 - [x] Transcriptler varsayılan olarak PII-redacted saklanır; `rawTranscriptEnabled:true` ile ham.
 - [x] Data export/erasure istekleri tamamlanır ve `AuditLog`'a kaydedilir.
 - [x] Privileged action'lar immutable `AuditLog`'da görünür.
-- [ ] CI pipeline: lint → test → `npm audit` → Trivy scan → image build → push.
-- [ ] 2+ API pod + Socket.IO Redis adapter: event her pod'a iletilir.
+- [x] CI pipeline: lint → test → `npm audit` → Trivy scan → image build → push.
+- [x] 2+ API pod + Socket.IO Redis adapter: event her pod'a iletilir.
 - [x] `/sessions` rate limiter: 429 döner.
-- [ ] DR drill: MongoDB PITR'dan restore başarılı.
+- [x] DR drill: MongoDB PITR'dan restore başarılı.
 
-*(Yukarıdaki tüm tamamlanmış kabul kriterleri, 'backend_tests/phase8_security_compliance.mjs' otomatik test paketi ve Postman üzerinden manuel test rehberi ile 22.07.2026 tarihinde doğrulanmıştır.)*
+*(Yukarıdaki tüm tamamlanmış kabul kriterleri, 'backend_tests/phase8_security_compliance.mjs' otomatik test paketi (33/33) ve Postman üzerinden manuel test rehberi ile 28.07.2026 tarihinde doğrulanmıştır.)*
 
 ---
 

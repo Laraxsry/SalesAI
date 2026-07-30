@@ -20,8 +20,11 @@ export async function verifyPassword(plain, hash) {
  * Phase 8: artık refreshTokenFamily'yi de döndürür (AuthSession'da saklanır).
  */
 export function signTokens(payload) {
-    const accessToken = jwt.sign(payload, ACCESS_SECRET(), { expiresIn: ACCESS_TTL() });
-    const refreshToken = jwt.sign(payload, REFRESH_SECRET(), { expiresIn: REFRESH_TTL() });
+    // Aynı saniye içinde aynı payload ile üretilen token'ların hash'lerinin
+    // çakışmasını önlemek (ve güvenlik) için jti (JWT ID) ekle.
+    const jwtPayload = { ...payload, jti: crypto.randomUUID() };
+    const accessToken = jwt.sign(jwtPayload, ACCESS_SECRET(), { expiresIn: ACCESS_TTL() });
+    const refreshToken = jwt.sign(jwtPayload, REFRESH_SECRET(), { expiresIn: REFRESH_TTL() });
     return { accessToken, refreshToken };
 }
 

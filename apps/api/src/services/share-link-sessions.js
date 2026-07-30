@@ -111,5 +111,5 @@ export async function mintSession({ link, agent, visitorName, source = 'link', p
         console.warn('[sessions] agent dispatch failed (worker may not be running):', dispatchErr?.message);
     }
 
-    return { roomName, token, livekitUrl: livekitUrl() };
+    return { sessionId: String(session._id), roomName, token, livekitUrl: livekitUrl() };
 }

@@ -5,6 +5,7 @@ import { Product, Workspace, Membership, Agent, ShareLink, Session } from '@repo
 import { requireAuth } from '@repo/auth';
 import { requirePermission } from '@repo/access';
 import { resolveTenant, resolveMember } from '../middleware/tenant.js';
+import { encryptField, decryptField } from '@repo/utils';
 
 export const productsRouter = Router();
 
@@ -83,6 +84,7 @@ productsRouter.get('/:id', requireAuth, async (req, res, next) => {
             description: product.description,
             websiteUrl: product.websiteUrl,
             tourAllowedDomains: product.tourAllowedDomains,
+            demoSession: product.demoSession ? JSON.parse(decryptField(product.demoSession)) : undefined,
             createdAt: product.createdAt
         });
     } catch (err) {
@@ -151,6 +153,9 @@ productsRouter.patch('/:id', requireAuth, validate({ body: ProductUpdateInput })
         if (req.body.description !== undefined) update.description = req.body.description;
         if (req.body.websiteUrl !== undefined) update.websiteUrl = req.body.websiteUrl;
         if (req.body.tourAllowedDomains !== undefined) update.tourAllowedDomains = req.body.tourAllowedDomains;
+        if (req.body.demoSession !== undefined) {
+            update.demoSession = req.body.demoSession === null ? null : encryptField(JSON.stringify(req.body.demoSession));
+        }
 
         const updated = await Product.findByIdAndUpdate(
             req.params.id,
@@ -165,6 +170,7 @@ productsRouter.patch('/:id', requireAuth, validate({ body: ProductUpdateInput })
             description: updated.description,
             websiteUrl: updated.websiteUrl,
             tourAllowedDomains: updated.tourAllowedDomains,
+            demoSession: updated.demoSession ? JSON.parse(decryptField(updated.demoSession)) : undefined,
             updatedAt: updated.updatedAt
         });
     } catch (err) {

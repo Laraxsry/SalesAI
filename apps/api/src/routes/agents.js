@@ -82,6 +82,17 @@ agentsRouter.get('/:id', requireAuth, async (req, res, next) => {
     try {
         const agent = await Agent.findById(req.params.id);
         if (!agent) return res.status(404).json({ error: 'Agent not found' });
+
+        // Aktif agent için mevcut ShareLink'i bul ve shareUrl hesapla
+        let shareUrl = null;
+        if (agent.status === 'active') {
+            const link = await ShareLink.findOne({ agentId: agent._id }).sort({ createdAt: -1 });
+            if (link) {
+                const base = process.env.VISITOR_PUBLIC_URL || 'http://localhost:5174';
+                shareUrl = `${base}/v/${link.token}`;
+            }
+        }
+
         res.json({ ...agent.toObject(), shareUrl });
     } catch (err) {
         next(err);

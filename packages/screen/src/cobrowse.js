@@ -201,6 +201,22 @@ export class GuidedTour {
      * DOM, not an argument we can pre-validate, so this is a post-hoc check.
      */
     async click(selector) {
+        // Güvenlik Katmanı: Read-Only Mode (Zararlı işlemleri engelle)
+        const isDangerous = await this.page.evaluate((sel) => {
+            const el = document.querySelector(sel);
+            if (!el) return false;
+            const tag = el.tagName.toLowerCase();
+            const type = el.getAttribute('type')?.toLowerCase();
+            // Form elemanlarına ve submit butonlarına tıklamayı engelle
+            if (tag === 'input' || tag === 'textarea' || tag === 'select') return true;
+            if (tag === 'button' && type === 'submit') return true;
+            return false;
+        }, selector);
+
+        if (isDangerous) {
+            throw new Error(`[GuidedTour] Security constraint: Clicking on form inputs or submit buttons is disabled in read-only mode.`);
+        }
+
         await this.page.click(selector);
         await this.assertCurrentPageTrusted('click');
     }

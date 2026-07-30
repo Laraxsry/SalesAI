@@ -2,6 +2,7 @@ import crypto from 'crypto';
 import { Workspace, Lead, Session } from '@repo/database';
 import { Logger } from '@repo/logger';
 import { DeadLetterJob } from '@repo/database';
+import { safeFetch } from '@repo/utils';
 
 const log = Logger.child({ module: 'dispatch-webhooks' });
 
@@ -35,7 +36,7 @@ async function deliverOne(endpoint, payload) {
     const timer = setTimeout(() => controller.abort(), SEND_TIMEOUT_MS);
 
     try {
-        const res = await fetch(endpoint.url, {
+        const res = await safeFetch(endpoint.url, {
             method: 'POST',
             headers: {
                 'Content-Type': 'application/json',

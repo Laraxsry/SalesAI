@@ -74,6 +74,43 @@ sessionsRouter.patch('/:id/end', requireAuth, async (req, res, next) => {
 });
 
 /**
+ * Public: Visitor sayfasından (token olmadan) session'ı bitir.
+ * Güvenlik: roomName, session oluşturulurken verilen LiveKit oda adıyla eşleşmeli.
+ *
+ * POST /sessions/:id/end
+ * Body: { roomName: string }
+ * Auth: Yok (public) — roomName ile doğrulanır
+ */
+sessionsRouter.post('/:id/end', lightPublicRateLimit, requestTimeout(5000), async (req, res, next) => {
+    try {
+        if (!req.params.id.match(/^[0-9a-fA-F]{24}$/)) return res.status(404).json({ error: 'Session not found' });
+
+        const session = await Session.findById(req.params.id);
+        if (!session) return res.status(404).json({ error: 'Session not found' });
+
+        // roomName ile doğrula — sadece bu session'ın sahibi bitirebilir
+        const { roomName } = req.body;
+        if (!roomName || session.roomName !== roomName) {
+            return res.status(403).json({ error: 'Invalid roomName' });
+        }
+
+        if (session.status === 'ended') {
+            return res.json({ ok: true, sessionId: String(session._id), alreadyEnded: true });
+        }
+
+        await Session.updateOne({ _id: session._id }, { status: 'ended', endedAt: new Date() });
+
+        // Post-call analiz → lead extraction tetikle
+        enqueue(QUEUES.GENERAL, 'analyze-session', { sessionId: String(session._id) })
+            .catch(err => console.warn('[sessions] analyze-session enqueue failed (non-fatal):', err?.message));
+
+        res.json({ ok: true, sessionId: String(session._id) });
+    } catch (err) {
+        next(err);
+    }
+});
+
+/**
  * Phase 4: Transcript full-text araması.
  * GET /sessions/search?q=...&agentId=...&from=...&to=...&sentiment=...
  *

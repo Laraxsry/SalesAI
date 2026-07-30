@@ -68,7 +68,8 @@ export const workspacesApi = {
 export const productsApi = {
     list: (workspaceId) => apiFetch(`/products?workspaceId=${workspaceId}`),
     get: (id) => apiFetch(`/products/${id}`),
-    create: (payload) => apiFetch('/products', { method: 'POST', body: payload })
+    create: (payload) => apiFetch('/products', { method: 'POST', body: payload }),
+    update: (id, payload) => apiFetch(`/products/${id}`, { method: 'PATCH', body: payload })
 };
 
 export const knowledgeApi = {

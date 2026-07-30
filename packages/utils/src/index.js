@@ -65,4 +65,6 @@ export async function retry(fn, { attempts = 3, baseMs = 200 } = {}) {
 // Phase 8: Security utilities
 export { redactPII, redactFields } from './pii-redactor.js';
 export { logAudit, extractRequestMeta, AUDIT_ACTIONS } from './audit.js';
-
+export * from './safeFetch.js';
+// Phase 8 Task 4.2: Field-level envelope encryption
+export { encryptField, decryptField, validateEncryptionKey } from './crypto.js';

@@ -36,8 +36,10 @@ function Captions({ segments }) {
     );
 }
 
+const API = import.meta.env.VITE_API_URL || 'http://localhost:5001';
+
 /** Rendered inside <LiveKitRoom>; everything here relies on LiveKit's room context. */
-export function VisitRoom({ embed, onEnd }) {
+export function VisitRoom({ embed, sessionId, roomName, onEnd }) {
     const { state, audioTrack, videoTrack, agentTranscriptions } = useVoiceAssistant();
     const { localParticipant, isMicrophoneEnabled, isScreenShareEnabled } = useLocalParticipant();
     // useVoiceAssistant only surfaces mic/camera; the guided-tour browser is
@@ -64,7 +66,19 @@ export function VisitRoom({ embed, onEnd }) {
         localParticipant.setScreenShareEnabled(!isScreenShareEnabled).catch(() => {});
     }
 
-    function endCall() {
+    async function endCall() {
+        // Önce API'ye session'ın bittiğini bildir → analyze-session + lead extraction tetiklenir
+        if (sessionId && roomName) {
+            try {
+                await fetch(`${API}/api/v1/sessions/${sessionId}/end`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ roomName })
+                });
+            } catch {
+                // Non-fatal — stale session cron job 5 dakika sonra temizler
+            }
+        }
         room.disconnect();
         onEnd();
     }

@@ -936,6 +936,55 @@ async function run() {
             fail('DELETE /integrations/webhooks/:id hatası', e.message);
         }
 
+        // ── Test 27: PATCH /analytics/leads/:id/status ───────────────────────
+        console.log('\n📌 27. PATCH /analytics/leads/:id/status → Lead Durum Güncelleme');
+        try {
+            // new → contacted geçişi
+            const patchLeadRes = await fetch(
+                `http://localhost:${PORT}/api/v1/analytics/leads/${testIds.leadId}/status`,
+                {
+                    method: 'PATCH',
+                    headers,
+                    body: JSON.stringify({ status: 'contacted' })
+                }
+            );
+            const patchLeadBody = await patchLeadRes.json();
+
+            if (patchLeadRes.status === 200) ok('PATCH /analytics/leads/:id/status → 200 OK');
+            else fail('Status güncelleme başarısız', `${patchLeadRes.status}: ${JSON.stringify(patchLeadBody)}`);
+
+            if (patchLeadBody.status === 'contacted') ok("Lead status 'contacted' olarak güncellendi");
+            else fail('Status değeri yanlış', `Beklenen: contacted, Gelen: ${patchLeadBody.status}`);
+
+            // contacted → won geçişi
+            const wonRes = await fetch(
+                `http://localhost:${PORT}/api/v1/analytics/leads/${testIds.leadId}/status`,
+                { method: 'PATCH', headers, body: JSON.stringify({ status: 'won' }) }
+            );
+            const wonBody = await wonRes.json();
+            if (wonRes.status === 200 && wonBody.status === 'won') ok("Lead status 'won' olarak güncellendi");
+            else fail("'won' geçişi başarısız", `${wonRes.status}: ${JSON.stringify(wonBody)}`);
+
+            // status alanı eksikse 400 dönmeli
+            const missingStatusRes = await fetch(
+                `http://localhost:${PORT}/api/v1/analytics/leads/${testIds.leadId}/status`,
+                { method: 'PATCH', headers, body: JSON.stringify({}) }
+            );
+            if (missingStatusRes.status === 400) ok('Status eksikken → 400 Bad Request (validation guard)');
+            else warn(`Status validation guard beklenmedi: ${missingStatusRes.status} (400 beklendi)`);
+
+            // Olmayan ID için 404 dönmeli
+            const fakeLeadId = new mongoose.Types.ObjectId();
+            const notFoundLeadRes = await fetch(
+                `http://localhost:${PORT}/api/v1/analytics/leads/${fakeLeadId}/status`,
+                { method: 'PATCH', headers, body: JSON.stringify({ status: 'new' }) }
+            );
+            if (notFoundLeadRes.status === 404) ok('Olmayan lead → 404 Not Found');
+            else warn(`Lead 404 guard: ${notFoundLeadRes.status} (404 beklendi)`);
+        } catch (e) {
+            fail('PATCH /analytics/leads/:id/status hatası', e.message);
+        }
+
 
     } catch (e) {
         fail('HTTP test sırasında beklenmeyen hata', e.stack || e.message);

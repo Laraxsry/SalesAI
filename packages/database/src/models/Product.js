@@ -11,7 +11,11 @@ const ProductSchema = new Schema(
         // Only settable by the seller in the console — never derived from a
         // visitor conversation, since that's the trust boundary the SSRF
         // guard in @repo/screen relies on.
-        tourAllowedDomains: [{ type: String }]
+        tourAllowedDomains: [{ type: String }],
+        
+        // Phase 3: Single demo session injected into the agent's browser
+        // Always encrypted before saving to DB.
+        demoSession: { type: Schema.Types.Mixed }
     },
     { timestamps: true }
 );

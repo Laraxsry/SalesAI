@@ -29,6 +29,9 @@ async function main() {
     await ensureBucket();
 
     const app = express();
+    // Phase 8: Güvenlik - Reverse proxy arkasında doğru client IP'sini al
+    app.set('trust proxy', 1);
+
     // Phase 8 Task 1.11: Güçlendirilmiş güvenlik başlıkları
     app.use(helmet({
         // HSTS: tarayıcılar 1 yıl boyunca HTTPS üzerinden iletişim kurar
@@ -92,7 +95,12 @@ async function main() {
     app.get('/health', (_req, res) => res.json({ ok: true, service: 'api' }));
 
     // Scraped by Prometheus (see infra/docker-compose.yaml + infra/prometheus.yml).
-    app.get('/metrics', async (_req, res) => {
+    app.get('/metrics', async (req, res) => {
+        // PENTEST A05.3: Sadece localhost / docker internal network'ten erişime izin ver
+        const isInternal = req.ip === '127.0.0.1' || req.ip === '::1' || req.ip === '::ffff:127.0.0.1' || (req.ip && req.ip.startsWith('::ffff:172.'));
+        if (!isInternal && process.env.NODE_ENV === 'production') {
+            return res.status(403).send('Forbidden: Internal metrics endpoint');
+        }
         res.set('Content-Type', register.contentType);
         res.send(await register.metrics());
     });

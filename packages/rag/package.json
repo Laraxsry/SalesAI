@@ -15,7 +15,8 @@
     "@repo/database": "*",
     "@repo/logger": "*",
     "@repo/resilience": "*",
-    "ioredis": "^5.11.1"
+    "ioredis": "^5.11.1",
+    "ssrf-req-filter": "^1.1.1"
   },
   "devDependencies": {
     "@repo/eslint-config": "*",

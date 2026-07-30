@@ -53,6 +53,7 @@ export function Visit() {
                 });
                 const data = await res.json();
                 if (!res.ok) throw new Error(data.error || 'Bağlantı kurulamadı');
+                // conn: { sessionId, roomName, token, livekitUrl }
                 if (!ignore) setConn(data);
             } catch (err) {
                 if (!ignore) setError(err.message);
@@ -124,7 +125,12 @@ export function Visit() {
             onError={(err) => setError(err.message)}
             style={{ height: '100%' }}
         >
-            <VisitRoom embed={embed} onEnd={() => setEnded(true)} />
+            <VisitRoom
+                embed={embed}
+                sessionId={conn.sessionId}
+                roomName={conn.roomName}
+                onEnd={() => setEnded(true)}
+            />
         </LiveKitRoom>
     );
 }

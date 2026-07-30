@@ -50,7 +50,8 @@
    - [x] Score leads from engagement signals (duration, tour completion, buying
      questions): email +20, demo_intent +30, tour_completed +30, long_session +20.
    - [x] Expose `GET /analytics/leads` (workspaceId scope, status/minScore filtreleri).
-   - [x] Optional webhook/CRM push — `POST/GET/PATCH/DELETE /integrations/webhooks` ile workspace başına yapılandırılabilir outbound webhook altyapısı eklendi. HMAC-SHA256 imzalama, 3x retry (backoff), dead-letter kaydı ve manuel test endpoint’i ile tamamlandı.
+   - [x] `PATCH /analytics/leads/:id/status` — Lead durumu güncelleme (new → contacted → won/lost workflow).
+   - [x] Optional webhook/CRM push — `POST/GET/PATCH/DELETE /integrations/webhooks` ile workspace başına yapılandırılabilir outbound webhook altyapısı eklendi. HMAC-SHA256 imzalama, 3x retry (backoff), dead-letter kaydı ve manuel test endpoint’i ile tamamlandı. *(Walkthrough üzerindeki manuel test adımları ile tüm webhook akışı doğrulandı)*
 
 5. **Transcript search** *(Postman full-text search ile doğrulandı)*
    - [x] `GET /sessions/search?q=` full-text over `messages` ($text search),
@@ -134,5 +135,6 @@ node backend_tests/phase4_analytics_insights.mjs
 - POST /integrations/webhooks/:id/test → test payload gönderme
 - PATCH /integrations/webhooks/:id → güncelleme
 - DELETE /integrations/webhooks/:id → silme
+- PATCH /analytics/leads/:id/status → durum güncelleme (new/contacted/won/lost) + 400 ve 404 guard
 
-*(Son test: **82/82 başarılı** — 23.07.2026)*
+*(Son test: **87/87 başarılı** — 27.07.2026)*

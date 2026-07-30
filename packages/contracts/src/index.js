@@ -90,7 +90,8 @@ export const ProductInput = z.object({
         z.string().url().refine(isSafeProductUrl, {
             message: 'tourAllowedDomains entries must be public http(s) URLs'
         })
-    ).default([])
+    ).default([]),
+    demoSession: z.any().optional()
 });
 
 // ─── Integrations / Webhooks ──────────────────────────────────
@@ -193,7 +194,8 @@ export const ProductUpdateInput = z.object({
         z.string().url().refine(isSafeProductUrl, {
             message: 'tourAllowedDomains entries must be public http(s) URLs'
         })
-    ).optional()
+    ).optional(),
+    demoSession: z.any().optional()
 }).refine(data => Object.keys(data).length > 0, {
     message: 'En az bir alan güncellenmeli'
 });

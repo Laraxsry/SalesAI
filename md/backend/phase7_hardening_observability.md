@@ -106,7 +106,19 @@
      false FAIL; live-verified — vector-store leg genuinely PASSed against
      real Qdrant/Mongo, LLM leg correctly SKIPped due to a real empty
      `ANTHROPIC_API_KEY` in this environment)
-   - [ ] Nightly grounding eval (golden set) gates deploys on quality regression.
+   - [x] Nightly grounding eval (golden set) gates deploys on quality regression.
+     (`packages/rag/scripts/eval.js` now pins a single fixed LLM provider —
+     not `getLLM()`'s resilient fallback chain, so a provider failover
+     doesn't get confused with an actual regression — and exits non-zero
+     when avg faithfulness/relevancy falls below threshold;
+     `.github/workflows/nightly-eval.yml` runs it nightly via cron +
+     `workflow_dispatch`; needs `OPENAI_API_KEY`/`ANTHROPIC_API_KEY`/
+     `MONGODB_URI` added to the repo's GitHub Actions secrets and the
+     workflow file pushed before it does anything — inert until then, no
+     accidental token spend. Live-verified locally: gate genuinely failed
+     (exit 1) on real low relevancy scores — this dev DB has no real
+     ingested knowledge for the golden set's product IDs, so low scores
+     here reflect missing local data, not a code regression)
 
 ---
 

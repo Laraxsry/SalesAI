@@ -1,0 +1,39 @@
+# Phase 7 — "Nightly grounding eval (golden set) gates deploys on quality
+# regression". Runs packages/rag/scripts/eval.js against the golden-set
+# dataset every night; a failing run means the average faithfulness/relevancy
+# score dropped below threshold since last time — a signal that a recent
+# prompt/retrieval/model change regressed answer quality, not a report of
+# what's currently in production.
+#
+# Note for whoever wires this up: this workflow does nothing on its own. It
+# only starts actually running once (a) this file is pushed to the repo's
+# default branch — GitHub Actions ignores workflow files anywhere else — and
+# (b) OPENAI_API_KEY, ANTHROPIC_API_KEY, and MONGODB_URI are added as real
+# values under this repo's Settings -> Secrets and variables -> Actions.
+# Until both are done, nothing here consumes any API quota, on a schedule or
+# otherwise — it's inert configuration, not a running job.
+name: Nightly grounding eval
+
+on:
+  schedule:
+    - cron: '0 2 * * *' # 02:00 UTC daily
+  workflow_dispatch: {} # allows a manual run from the Actions tab, for testing this workflow itself
+
+jobs:
+  eval:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+
+      - run: npm ci
+
+      - name: Run golden-set grounding eval
+        run: npm run eval -w @repo/rag
+        env:
+          OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
+          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+          MONGODB_URI: ${{ secrets.MONGODB_URI }}

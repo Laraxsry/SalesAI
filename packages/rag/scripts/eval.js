@@ -11,6 +11,21 @@ dotenv.config({ path: path.resolve(here, '../../../.env') });
 
 const DATASET_PATH = path.resolve(here, 'eval-dataset.json');
 
+// Pinned to a single, fixed provider rather than getLLM()'s resilient
+// fallback chain (openai -> anthropic) — if the primary provider happens to
+// be down on a given night and traffic silently falls back to the secondary,
+// that night's scores would reflect "a different model answered today", not
+// "did our prompt/retrieval code regress". A regression signal has to compare
+// the same model against itself night over night to mean anything.
+const EVAL_PROVIDER = process.env.EVAL_LLM_PROVIDER || 'openai';
+
+// Below this average, the run is considered a quality regression (Phase 7 —
+// "nightly grounding eval gates deploys"). Starting point, not a settled
+// number — recalibrate once the golden set is bigger and real nightly scores
+// exist to tune against.
+const MIN_AVG_FAITHFULNESS = Number(process.env.EVAL_MIN_FAITHFULNESS || 0.7);
+const MIN_AVG_RELEVANCY = Number(process.env.EVAL_MIN_RELEVANCY || 0.7);
+
 async function evaluatePair(pair, llm) {
     console.log(`\nEvaluating Q: "${pair.question}"`);
     
@@ -70,8 +85,8 @@ ACTUAL_ANSWER: ${actualAnswer}
 async function main() {
     await connectDB();
     const dataset = JSON.parse(fs.readFileSync(DATASET_PATH, 'utf-8'));
-    const llm = getLLM();
-    
+    const llm = getLLM(EVAL_PROVIDER);
+
     console.log(`Loaded ${dataset.length} pairs from eval-dataset.json`);
     
     const results = [];
@@ -84,21 +99,34 @@ async function main() {
         results.push(res);
     }
 
-    if (results.length > 0) {
-        console.log('\n=== EVALUATION REPORT ===');
-        let avgF = 0, avgR = 0;
-        for (const r of results) {
-            console.log(`Q: ${r.question}`);
-            console.log(`  Faithfulness: ${r.faithfulness} (${r.fReason})`);
-            console.log(`  Relevancy:    ${r.relevancy} (${r.rReason})`);
-            avgF += r.faithfulness;
-            avgR += r.relevancy;
-        }
-        console.log(`\nAverage Faithfulness: ${avgF / results.length}`);
-        console.log(`Average Relevancy:    ${avgR / results.length}`);
+    if (results.length === 0) {
+        console.warn('\nNo real pairs evaluated (dataset only has placeholder entries) — nothing to gate on.');
+        await mongoose.disconnect();
+        process.exit(0);
     }
 
+    console.log('\n=== EVALUATION REPORT ===');
+    let avgF = 0, avgR = 0;
+    for (const r of results) {
+        console.log(`Q: ${r.question}`);
+        console.log(`  Faithfulness: ${r.faithfulness} (${r.fReason})`);
+        console.log(`  Relevancy:    ${r.relevancy} (${r.rReason})`);
+        avgF += r.faithfulness;
+        avgR += r.relevancy;
+    }
+    avgF /= results.length;
+    avgR /= results.length;
+    console.log(`\nAverage Faithfulness: ${avgF} (min ${MIN_AVG_FAITHFULNESS})`);
+    console.log(`Average Relevancy:    ${avgR} (min ${MIN_AVG_RELEVANCY})`);
+
     await mongoose.disconnect();
+
+    const regressed = avgF < MIN_AVG_FAITHFULNESS || avgR < MIN_AVG_RELEVANCY;
+    if (regressed) {
+        console.error('\nQUALITY REGRESSION: average score(s) fell below the configured threshold.');
+        process.exit(1);
+    }
+    console.log('\nOK: all scores at or above threshold.');
     process.exit(0);
 }
 

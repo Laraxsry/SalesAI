@@ -28,6 +28,31 @@
      client yüklediği dosyanın gerçek MIME tipini gönderir, worker uzantı yerine bunu kullanır.
    - [x] MinIO bucket (`salesai-uploads`) API ayağa kalkarken `ensureBucket()` ile otomatik oluşturuluyor
      (önceden bucket yoksa presigned URL çalışmıyordu).
+   - [ ] `Product.websiteUrl` girildiğinde, aynı URL otomatik olarak bir `KnowledgeSource`
+     (`type: 'url'`) olarak da oluşturulup ingestion kuyruğuna alınsın. Şu an `websiteUrl`
+     sadece Guided Tour'un gideceği adresi belirliyor (`apps/agent-worker/src/agent.js`)
+     ve hiçbir şekilde crawl/chunk/embed edilmiyor — seller ayrıca Knowledge'a aynı
+     linki elle eklemezse agent siteyi gösterebilir ama içeriği hakkında hiçbir şey
+     bilmez. `POST /products` ve `PATCH /products/:id`'de `websiteUrl` set/güncellendiğinde
+     karşılık gelen `KnowledgeSource`'u otomatik create/update edip `enqueue('ingestion', ...)`
+     çağırmalı (idempotent: aynı URL için tekrar kaynak oluşturmamalı, var olanı re-ingest etmeli).
+   - [x] `KnowledgeSource type: 'url'/'api'` crawl'ı artık `Product.demoSession`'ı (tur ile
+     aynı cookie/localStorage materyali) kullanıyor — önceden `extractFromUrl()` tamamen
+     kimliksiz bir Playwright context açıyordu, auth gerektiren sayfalarda login ekranını/
+     public görünümü indeksliyordu. `apps/worker-ingestion/src/extractors/url.js` artık
+     opsiyonel `auth` parametresi alıyor, `handlers/ingest-source.js` bunu `Product.demoSession`'dan
+     çözüp geçiyor.
+   - [x] `extractFromUrl()` artık tek sayfa yerine **aynı-origin BFS crawl** yapıyor:
+     kök URL'den başlayıp sayfadaki `<a href>` linklerini (SPA route'ları dahil, gerçek
+     `<a>` etiketine render edilen client-side router linkleri de yakalanıyor) `URL_CRAWL_MAX_PAGES`
+     (varsayılan 10, env ile ayarlanabilir) sayfaya kadar takip ediyor, tek bir authenticated
+     browser context'i (auth bir kez enjekte edilip tüm sayfalarda cookie/localStorage kalıcı
+     kalıyor) üzerinden. Her sayfa `checkSSRFUrl` ile ayrıca doğrulanıyor (kötü/ulaşılamaz link
+     crawl'ı durdurmuyor, sadece atlanıyor). Sonuç, `[Page: <url>]` etiketiyle tek bir `text`'te
+     birleştirilip mevcut `ingestSource()` akışına (tek çağrı, değişmeden) veriliyor —
+     `ingestSource()`'un `deleteBySource()` çağırması nedeniyle sayfa başına ayrı `ingestSource()`
+     çağrısı yapılmadı (önceki sayfanın chunk'larını silerdi). Seller artık panelin tek bir
+     giriş URL'ini vermesi yeterli; alt-route'ları tek tek eklemesine gerek yok.
 
 2. **Ingestion worker** ([`worker-ingestion`](../../apps/worker-ingestion))
    - Extraction by modality (see `handlers/ingest-source.js`):
@@ -35,6 +60,16 @@
        video: ffmpeg audio -> transcribe (Whisper); url: fetch + strip;
      - [x] mammoth (docx desteği eklendi); parser seçimi `mimeType` → uzantı önceliğiyle yapılıyor
        (PDF yanlışlıkla .docx olarak yüklense bile doğru parser devreye girer).
+     - [x] Video ingestion artık keyframe/vision adımını da içeriyor: ffmpeg `.screenshots()` ile
+       videodan `VIDEO_MAX_KEYFRAMES` (varsayılan 6, env ile ayarlanabilir — video süresine göre
+       literal 1/sn değil, maliyeti sınırlamak için sabit sayıda eşit aralıklı kare) çıkarılıyor,
+       her kare `sharp` ile 1024px genişliğe küçültülüp JPEG'e çevrilip `describeImage()`'a
+       gönderiliyor (image kaynak tipiyle aynı fonksiyon). Kare açıklamaları başarısız olursa
+       (`Promise.allSettled`) o kare sessizce atlanıyor, tüm ingestion başarısız olmuyor. Transcript +
+       `[Frame N]: ...` açıklamaları tek `text` alanında birleştirilip chunk'lanıyor; `meta.transcript`
+       hâlâ ham transkripti tutuyor. Bu, konuşma/anlatım içermeyen (sessiz ekran kaydı) videolarda
+       Whisper'ın ürettiği alakasız "halüsinasyon" metninin tek bilgi kaynağı olmasını engelliyor —
+       videonun görsel içeriği (hangi ekranlar gezildi) artık bilgi tabanına giriyor.
    - [x] Emits `ingestion:progress` / `ingestion:ready` over Socket.IO (Redis pub/sub üzerinden `publishEvent()` ile her aşamada emit ediliyor).
 
 3. **RAG core** ([`@repo/rag`](../../packages/rag))

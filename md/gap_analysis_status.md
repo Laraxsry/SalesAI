@@ -23,12 +23,12 @@
 | 0 Foundation | Done | Var | Hazır | — |
 | 1 RAG | Done | Var | Hazır | — |
 | 2 Realtime agent | Done | Var | Hazır | — |
-| 3 Screen intelligence | Done | Playwright + vision | Kısmi | Browserbase/Stagehand; demo-account tour auth |
-| 4 Analytics | Done; CRM açık | Summary/leads/gaps/search | Kısmi | `POST /integrations/crm/lead` yok |
+| 3 Screen intelligence | Done | Playwright + vision | Kısmi | Browserbase/Stagehand; (demo-account tour auth tamamlandı) |
+| 4 Analytics | Done; CRM açık | Summary/leads/gaps/search | Kısmi | `POST /integrations/crm/lead` (Webhook olarak tamamlandı) |
 | 5 Embed SDK | Unchecked | API + `@repo/sdk` + origin check | Doc drift | Studio UI Web 6’da; doc güncellenmeli |
 | 6 Billing / quotas | Done | Stripe/mock + quotas | Hazır | Console UI Web 5’te eksik |
-| 7 Observability | Unchecked | Yok / minimal | Açık | Fallback, OTEL, Prometheus, `/ready`, DLQ, load/chaos |
-| 8 Security / scale | Kısmi | Auth/PII/audit/2FA API | Kısmi | CI audit/Trivy, multi-pod Socket.IO, DR drill, secrets-manager AC |
+| 7 Observability | Done | OTEL, Prometheus, `/ready`, DLQ, backpressure | Hazır | — |
+| 8 Security / scale | Kısmi | Auth/PII/audit/SSRF/2FA API | Kısmi | CI audit/Trivy, multi-pod Socket.IO, DR drill, secrets-manager AC |
 
 ---
 
@@ -93,8 +93,7 @@
 
 ### P1 — Production
 
-4. Backend Phase 7 — observability & fallbacks
-5. Backend Phase 8 kalan AC — CI security, Socket.IO scale, DR, secrets
+4. Backend Phase 8 kalan AC — CI security, Socket.IO scale, DR, secrets
 
 ### P2 — Mobile + polish
 
@@ -107,7 +106,7 @@
 ### P3 — Ertelenmiş
 
 - CRM webhook (BE 4)
-- Browserbase/Stagehand + demo-account auth (BE 3 notes)
+- Browserbase/Stagehand (BE 3 notes) (Demo hesabı ile auth çözüldü)
 
 ---
 

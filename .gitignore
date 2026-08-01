@@ -44,6 +44,10 @@ Thumbs.db
 *.swp
 *.swo
 
+# Claude Code local config / scratch files
+.claude/
+.claude/settings.local.json
+
 # vercel / expo
 .vercel
 apps/mobile/.expo/

@@ -25,10 +25,12 @@ export async function describeImage(imageUrl, prompt = 'Describe this image in d
 
 /** Transcribes an audio/video file (extract audio first for video). */
 export async function transcribeAudio(filePath) {
+    // gpt-4o-transcribe only supports 'json'/'text' response formats
+    // (unlike whisper-1, it rejects 'verbose_json').
     const res = await openai().audio.transcriptions.create({
         file: createReadStream(filePath),
         model: 'gpt-4o-transcribe',
-        response_format: 'verbose_json'
+        response_format: 'json'
     });
     return res;
 }

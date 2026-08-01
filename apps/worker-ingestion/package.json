@@ -18,9 +18,12 @@
     "@repo/rag": "*",
     "@repo/realtime": "*",
     "@repo/storage": "*",
+    "@repo/utils": "*",
+    "cheerio": "^1.2.0",
     "fluent-ffmpeg": "^2.1.3",
     "mammoth": "^1.12.0",
-    "pdf-parse": "^2.4.5"
+    "pdf-parse": "^2.4.5",
+    "playwright": "^1.62.0"
   },
   "devDependencies": {
     "@repo/eslint-config": "*",

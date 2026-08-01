@@ -13,6 +13,7 @@ import { buildSystemPrompt, buildTools } from '@repo/agent';
 import { startAvatarWithFallback } from '@repo/avatar';
 import { GuidedTour, analyzeFrame } from '@repo/screen';
 import { getLogger, runWithContext } from '@repo/logger';
+import { decryptField } from '@repo/utils';
 import { publishEvent, publishMetric, publishUsage, RT_EVENTS, SESSION_METRICS } from '@repo/realtime';
 import { extractParentContext } from './trace-context.js';
 import { withToolCallMetrics } from './tool-metrics.js';
@@ -82,7 +83,14 @@ async function runSession(ctx) {
     // Phase 3: Session Handover
     // If the visitor passed their active session (transientAuth), use it
     // and IMMEDIATELY delete it from the database so it cannot be read again.
-    let tourAuth = product.demoSession || null;
+    let tourAuth = null;
+    if (product.demoSession) {
+        try {
+            tourAuth = JSON.parse(decryptField(product.demoSession));
+        } catch (err) {
+            log.warn('Failed to decrypt product.demoSession, tour will be unauthenticated', { productId: String(product._id), error: err.message });
+        }
+    }
     if (session.transientAuth) {
         tourAuth = session.transientAuth;
         log.info('Using transientAuth for session handover, deleting from DB for security', { sessionId: String(session._id) });

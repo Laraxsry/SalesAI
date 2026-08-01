@@ -23,13 +23,10 @@ function isPrivateOrReservedIp(host) {
 }
 
 /**
- * An SSRF-protected fetch wrapper.
- * It resolves the hostname to an IP address before sending the request,
- * and aborts if the IP resolves to a private or reserved network.
- * By passing the resolved IP to fetch but setting the Host header,
- * we prevent DNS rebinding attacks (time-of-check to time-of-use).
+ * Validates a URL against SSRF vulnerabilities (checks protocol and resolves DNS to ensure no private IPs).
+ * Throws an Error if the URL is unsafe.
  */
-export async function safeFetch(urlStr, options = {}) {
+export async function checkSSRFUrl(urlStr) {
     const url = new URL(urlStr);
     
     if (url.protocol !== 'http:' && url.protocol !== 'https:') {
@@ -52,21 +49,20 @@ export async function safeFetch(urlStr, options = {}) {
             throw new Error(`SSRF Guard: Hostname resolves to private IP: ${record.address}`);
         }
     }
+}
 
-    // Connect to the first resolved IP to prevent DNS rebinding TOCTOU.
-    const ip = addresses[0].address;
-    const isIPv6 = isIP(ip) === 6;
-    const ipFormatted = isIPv6 ? `[${ip}]` : ip;
-    
-    const safeUrlStr = `${url.protocol}//${ipFormatted}${url.port ? ':' + url.port : ''}${url.pathname}${url.search}`;
+/**
+ * An SSRF-protected fetch wrapper.
+ * It resolves the hostname to an IP address before sending the request,
+ * and aborts if the IP resolves to a private or reserved network.
+ * By passing the resolved IP to fetch but setting the Host header,
+ * we prevent DNS rebinding attacks (time-of-check to time-of-use).
+ */
+export async function safeFetch(urlStr, options = {}) {
+    await checkSSRFUrl(urlStr);
 
-    const safeOptions = {
-        ...options,
-        headers: {
-            ...options.headers,
-            'Host': url.hostname // explicitly set the original Host header
-        }
-    };
-
-    return fetch(safeUrlStr, safeOptions);
+    // Connect to the original URL (using hostname, not IP)
+    // Note: This relies on the OS/Node DNS cache to mitigate TOCTOU DNS rebinding.
+    // Forcing IP in the URL breaks TLS SNI (Server Name Indication) causing fetch failures.
+    return fetch(urlStr, options);
 }

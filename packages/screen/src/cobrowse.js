@@ -157,7 +157,10 @@ export class GuidedTour {
         }
 
         if (this.startUrl) {
-            await this.page.goto(this.startUrl, { waitUntil: 'networkidle' });
+            // 'networkidle' hangs/crashes on SPAs that keep a live connection
+            // open (polling, websockets, dashboards) — they never go idle.
+            await this.page.goto(this.startUrl, { waitUntil: 'domcontentloaded' });
+            await this.page.waitForTimeout(3000);
             // A same-owner redirect at tour start (root domain -> app
             // subdomain, say) is a one-time hop under the seller's own
             // control, not something a visitor's chat message steered —
@@ -175,7 +178,8 @@ export class GuidedTour {
         if (!targetKey || !this.trustedKeys.has(targetKey)) {
             throw new Error(`[GuidedTour] Navigation outside the product's domain is not allowed: ${url}`);
         }
-        await this.page.goto(url, { waitUntil: 'networkidle' });
+        await this.page.goto(url, { waitUntil: 'domcontentloaded' });
+        await this.page.waitForTimeout(3000);
         // The check above only validated the requested URL; the site itself
         // may then have redirected further (open-redirect abuse). Re-check
         // where the browser actually ended up.

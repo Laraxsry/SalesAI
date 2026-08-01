@@ -27,8 +27,8 @@ flowchart LR
 | `text` | Used as-is |
 | `document` (PDF/DOCX) | `pdf-parse` / `mammoth` -> text |
 | `image` (screenshot/diagram/photo) | Vision model `describeImage()` -> rich caption |
-| `video` | Extract audio (ffmpeg) -> transcribe (`gpt-4o-transcribe` / faster-whisper) + sample ~1 keyframe/sec -> describe; concatenate transcript + frame captions |
-| `url` | Fetch + strip HTML (SPA pages rendered with Playwright); deeper crawl follows internal links |
+| `video` | Extract audio (ffmpeg) -> transcribe (`gpt-4o-transcribe` / faster-whisper) + sample up to `VIDEO_MAX_KEYFRAMES` evenly-spaced keyframes -> describe (`describeImage()`); concatenate transcript + frame captions |
+| `url` | Fetch + strip HTML (SPA pages rendered with Playwright); same-origin BFS crawl follows internal links up to `URL_CRAWL_MAX_PAGES` pages, reusing the product's demo-session auth on every page |
 | `api` | Read OpenAPI/MCP descriptors; index endpoint docs; also enables **live tool access** |
 
 Implemented in `apps/worker-ingestion` ->

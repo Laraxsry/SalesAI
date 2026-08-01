@@ -29,6 +29,7 @@
     "@repo/logger": "*",
     "@repo/realtime": "*",
     "@repo/screen": "*",
+    "@repo/utils": "*",
     "sharp": "^0.34.5"
   },
   "devDependencies": {

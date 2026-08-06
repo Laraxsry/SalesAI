@@ -2,7 +2,7 @@ import { useState } from 'react';
 import { useParams, Link } from 'react-router-dom';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { Button } from '@repo/ui';
-import { ArrowLeft, Bot, Rocket, Pause, Copy, Check, ExternalLink, AlertCircle } from 'lucide-react';
+import { ArrowLeft, Bot, Rocket, Pause, Copy, Check, ExternalLink, AlertCircle, MessageSquare, Code } from 'lucide-react';
 import { agentsApi } from '../lib/api.js';
 
 const STATUS_STYLE = {
@@ -76,12 +76,6 @@ export function AgentDetail() {
 
     if (isLoading) return <p className="text-sm text-text-muted">Yükleniyor…</p>;
     if (!agent) return <p className="text-sm text-red-400">Agent bulunamadı</p>;
-
-    // Embed Studio (widget loader + theming) is a later phase — for now the
-    // simplest working embed is an iframe onto the visitor app's embed mode.
-    const embedSnippet = agent.shareUrl
-        ? `<iframe src="${agent.shareUrl}?embed=1" style="border:0;width:400px;height:600px" allow="microphone"></iframe>`
-        : null;
 
     return (
         <div>
@@ -161,6 +155,20 @@ export function AgentDetail() {
                         {busy ? 'Duraklatılıyor…' : 'Duraklat'}
                     </Button>
                 )}
+                <Link
+                    to={`/agents/${id}/sessions`}
+                    className="inline-flex h-10 items-center justify-center gap-2 rounded-[var(--radius-input)] bg-transparent px-4 text-sm font-semibold text-text-muted transition-all hover:bg-surface-raised hover:text-text"
+                >
+                    <MessageSquare size={16} />
+                    Oturumlar
+                </Link>
+                <Link
+                    to={`/agents/${id}/embed`}
+                    className="inline-flex h-10 items-center justify-center gap-2 rounded-[var(--radius-input)] bg-transparent px-4 text-sm font-semibold text-text-muted transition-all hover:bg-surface-raised hover:text-text"
+                >
+                    <Code size={16} />
+                    Embed Studio
+                </Link>
             </div>
 
             {agent.shareUrl && (
@@ -177,14 +185,6 @@ export function AgentDetail() {
                             <span className="truncate">{agent.shareUrl}</span>
                         </a>
                         <CopyButton text={agent.shareUrl} />
-                    </div>
-
-                    <h3 className="mb-2 text-sm font-semibold text-text">Embed snippet</h3>
-                    <div className="flex items-start gap-2">
-                        <pre className="flex-1 overflow-x-auto rounded-[var(--radius-input)] border border-border bg-bg px-3 py-2 text-xs text-text-muted">
-                            {embedSnippet}
-                        </pre>
-                        <CopyButton text={embedSnippet} />
                     </div>
                 </div>
             )}

@@ -1,5 +1,21 @@
 import { z } from 'zod';
-import { isIP } from 'node:net';
+
+/**
+ * Returns 4, 6, or 0 (not an IP literal) — a browser-safe stand-in for
+ * node:net's `isIP`. This module is shared between the API (Node) and the
+ * console/visitor apps (browser via Vite), and node:net can't be bundled
+ * client-side, so the IP-literal check is reimplemented locally rather than
+ * imported.
+ */
+function ipLiteralVersion(host) {
+    if (/^\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3}$/.test(host)) {
+        return host.split('.').every((octet) => Number(octet) <= 255) ? 4 : 0;
+    }
+    if (host.includes(':') && /^[0-9a-fA-F:]+$/.test(host)) {
+        return 6;
+    }
+    return 0;
+}
 
 /**
  * True if `host` is a literal IP in a range that's reserved for
@@ -22,7 +38,7 @@ import { isIP } from 'node:net';
  * network-egress check, out of scope for a synchronous schema validator.
  */
 function isPrivateOrReservedIp(host) {
-    const version = isIP(host);
+    const version = ipLiteralVersion(host);
     if (version === 4) {
         const [a, b] = host.split('.').map(Number);
         if (a === 10) return true;                          // 10.0.0.0/8      — RFC1918 private network
@@ -209,7 +225,28 @@ export const AuthMaterial = z.object({
 export const CreateSessionInput = z.object({
     shareToken: z.string(),
     visitorName: z.string().optional(),
-    transientAuth: AuthMaterial.optional()
+    transientAuth: AuthMaterial.optional(),
+    // Mobile Phase 3: tags the session so it shows up in GET /sessions/mine.
+    visitorId: z.string().optional()
+});
+
+// ─── Mobile Phase 3: Push & Saved Conversations ───────────────────────────
+export const MagicLinkRequestInput = z.object({
+    email: z.string().email(),
+    visitorId: z.string().optional()
+});
+
+export const MagicLinkVerifyInput = z.object({
+    token: z.string().min(1)
+});
+
+export const DeviceRegisterInput = z.object({
+    visitorId: z.string().optional(),
+    // Optional: callers establish the lightweight visitorId identity before
+    // push permission is ever requested (see mobile app/src/visitorIdentity.js),
+    // then call this again with a real token once the user grants permission.
+    expoPushToken: z.string().min(1).optional(),
+    platform: z.enum(['ios', 'android', 'web']).default('ios')
 });
 
 // Body for POST /embed/:token/session — the share token itself travels in the
@@ -247,7 +284,7 @@ export function isValidEmbedDomainPattern(value) {
     if (typeof value !== 'string') return false;
     const host = value.startsWith('*.') ? value.slice(2) : value;
     if (!host || host.length > 253) return false;
-    if (isIP(host) !== 0) return false;
+    if (ipLiteralVersion(host) !== 0) return false;
     return host.split('.').every((label) => label.length <= 63 && HOSTNAME_LABEL.test(label));
 }
 

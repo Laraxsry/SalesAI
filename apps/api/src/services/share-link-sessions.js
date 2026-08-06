@@ -66,8 +66,9 @@ export async function resolveShareLink(token) {
  * @param {string} [params.pageUrl] - Phase 5: the page the widget was opened from
  * @param {string} [params.referrer] - Phase 5: Referer header at session start
  * @param {object} [params.transientAuth] - Phase 3: Single-use cookies/localStorage for session handover
+ * @param {string} [params.visitorId] - Mobile Phase 3: lightweight visitor identity for GET /sessions/mine
  */
-export async function mintSession({ link, agent, visitorName, source = 'link', pageUrl, referrer, transientAuth }) {
+export async function mintSession({ link, agent, visitorName, source = 'link', pageUrl, referrer, transientAuth, visitorId }) {
     const roomName = `s_${shortId()}`;
     const identity = `visitor_${shortId(8)}`;
 
@@ -80,7 +81,8 @@ export async function mintSession({ link, agent, visitorName, source = 'link', p
         source,
         pageUrl,
         referrer,
-        transientAuth
+        transientAuth,
+        visitorId: visitorId || undefined
     });
     await ShareLink.updateOne({ _id: link._id }, { $inc: { sessionCount: 1 } });
 
@@ -111,5 +113,8 @@ export async function mintSession({ link, agent, visitorName, source = 'link', p
         console.warn('[sessions] agent dispatch failed (worker may not be running):', dispatchErr?.message);
     }
 
-    return { sessionId: String(session._id), roomName, token, livekitUrl: livekitUrl() };
+    // avatarProvider rides along so visitor clients (web + mobile) can branch
+    // their render (video surface vs. voice-only orb) without a second round
+    // trip to fetch the agent — the session response is otherwise self-contained.
+    return { sessionId: String(session._id), roomName, token, livekitUrl: livekitUrl(), avatarProvider: agent.avatarProvider };
 }

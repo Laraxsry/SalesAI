@@ -46,7 +46,7 @@ export default function DashboardScreen() {
             if (wsData.length > 0) {
                 const initialWS = wsData[0];
                 setActiveWorkspace(initialWS);
-                await loadWorkspaceData(initialWS._id);
+                await loadWorkspaceData(initialWS.id);
             } else {
                 setLoading(false);
             }
@@ -166,7 +166,7 @@ export default function DashboardScreen() {
     const handleRefresh = () => {
         setRefreshing(true);
         if (activeWorkspace && activeProduct) {
-            loadProductAndLeadsData(activeWorkspace._id, activeProduct.id);
+            loadProductAndLeadsData(activeWorkspace.id, activeProduct.id);
         } else {
             loadInitialContext();
         }
@@ -242,6 +242,11 @@ export default function DashboardScreen() {
     }
 
     const liveSessions = sessions.filter(s => s.status === 'live');
+    // Client-side UX affordance only — matches the gap in the backend today
+    // (agent pause/activate and lead-status routes don't enforce RBAC either),
+    // so this prevents accidental taps rather than being a real security
+    // boundary. Role comes straight from GET /workspaces (no extra call).
+    const isViewer = activeWorkspace?.role === 'VIEWER';
 
     return (
         <View style={styles.container}>
@@ -384,23 +389,26 @@ export default function DashboardScreen() {
                                     <Text style={styles.leadCompany}>Company: {item.contact.company}</Text>
                                 ) : null}
 
-                                {/* Lead Status Actions */}
+                                {/* Lead Status Actions — read-only for VIEWER role */}
                                 <View style={styles.leadActionsRow}>
-                                    <TouchableOpacity 
-                                        style={[styles.leadStatusBtn, item.status === 'new' && styles.leadStatusBtnActive]}
+                                    <TouchableOpacity
+                                        style={[styles.leadStatusBtn, item.status === 'new' && styles.leadStatusBtnActive, isViewer && styles.leadStatusBtnDisabled]}
                                         onPress={() => updateLeadStatus(item, 'new')}
+                                        disabled={isViewer}
                                     >
                                         <Text style={[styles.leadStatusBtnText, item.status === 'new' && styles.leadStatusBtnActiveText]}>New</Text>
                                     </TouchableOpacity>
-                                    <TouchableOpacity 
-                                        style={[styles.leadStatusBtn, item.status === 'contacted' && styles.leadStatusBtnActive]}
+                                    <TouchableOpacity
+                                        style={[styles.leadStatusBtn, item.status === 'contacted' && styles.leadStatusBtnActive, isViewer && styles.leadStatusBtnDisabled]}
                                         onPress={() => updateLeadStatus(item, 'contacted')}
+                                        disabled={isViewer}
                                     >
                                         <Text style={[styles.leadStatusBtnText, item.status === 'contacted' && styles.leadStatusBtnActiveText]}>Contacted</Text>
                                     </TouchableOpacity>
-                                    <TouchableOpacity 
-                                        style={[styles.leadStatusBtn, item.status === 'converted' && styles.leadStatusBtnActive]}
+                                    <TouchableOpacity
+                                        style={[styles.leadStatusBtn, item.status === 'converted' && styles.leadStatusBtnActive, isViewer && styles.leadStatusBtnDisabled]}
                                         onPress={() => updateLeadStatus(item, 'converted')}
+                                        disabled={isViewer}
                                     >
                                         <Text style={[styles.leadStatusBtnText, item.status === 'converted' && styles.leadStatusBtnActiveText]}>Won</Text>
                                     </TouchableOpacity>
@@ -447,6 +455,7 @@ export default function DashboardScreen() {
                                     <Switch
                                         value={item.status === 'active'}
                                         onValueChange={() => toggleAgentStatus(item)}
+                                        disabled={isViewer}
                                         trackColor={{ false: '#2d2d44', true: '#10b981' }}
                                         thumbColor="#ffffff"
                                     />
@@ -474,18 +483,18 @@ export default function DashboardScreen() {
                         <Text style={[styles.sectionTitle, { marginTop: 24 }]}>Workspaces</Text>
                         <View style={styles.settingsCard}>
                             {workspaces.map((ws) => (
-                                <TouchableOpacity 
-                                    key={ws._id} 
-                                    style={[styles.workspaceItem, activeWorkspace?._id === ws._id && styles.workspaceItemActive]}
+                                <TouchableOpacity
+                                    key={ws.id}
+                                    style={[styles.workspaceItem, activeWorkspace?.id === ws.id && styles.workspaceItemActive]}
                                     onPress={() => {
                                         setActiveWorkspace(ws);
-                                        loadWorkspaceData(ws._id);
+                                        loadWorkspaceData(ws.id);
                                     }}
                                 >
-                                    <Text style={[styles.workspaceText, activeWorkspace?._id === ws._id && styles.workspaceTextActive]}>
-                                        {ws.name}
+                                    <Text style={[styles.workspaceText, activeWorkspace?.id === ws.id && styles.workspaceTextActive]}>
+                                        {ws.name} {ws.role ? `(${ws.role})` : ''}
                                     </Text>
-                                    {activeWorkspace?._id === ws._id && <Text style={styles.activeIndicatorText}>Active</Text>}
+                                    {activeWorkspace?.id === ws.id && <Text style={styles.activeIndicatorText}>Active</Text>}
                                 </TouchableOpacity>
                             ))}
                         </View>
@@ -821,6 +830,9 @@ const styles = StyleSheet.create({
     },
     leadStatusBtnActiveText: {
         color: '#ffffff',
+    },
+    leadStatusBtnDisabled: {
+        opacity: 0.4,
     },
     contactActionsRow: {
         borderTopWidth: 1,

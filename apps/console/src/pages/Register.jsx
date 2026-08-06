@@ -1,5 +1,6 @@
 import { useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
+import { useTranslation } from 'react-i18next';
 import { Button, Input, Logo } from '@repo/ui';
 import { Mail, Lock, User, AlertCircle } from 'lucide-react';
 import { authApi } from '../lib/api.js';
@@ -7,6 +8,7 @@ import { useAuthStore } from '../store/auth.js';
 import { AuthLayout } from '../lib/AuthLayout.jsx';
 
 export function Register() {
+    const { t } = useTranslation();
     const navigate = useNavigate();
     const setSession = useAuthStore((s) => s.setSession);
 
@@ -37,13 +39,13 @@ export function Register() {
                 <Logo />
             </div>
 
-            <h1 className="text-2xl font-bold tracking-tight text-text">Hesap oluştur</h1>
-            <p className="mt-1.5 text-sm text-text-muted">30 saniyede workspace'ini kur, ücretsiz başla.</p>
+            <h1 className="text-2xl font-bold tracking-tight text-text">{t('auth.registerTitle')}</h1>
+            <p className="mt-1.5 text-sm text-text-muted">{t('auth.registerSubtitle')}</p>
 
             <form onSubmit={onSubmit} className="mt-8">
                 <Input
                     id="name"
-                    label="İsim"
+                    label={t('auth.name')}
                     type="text"
                     icon={User}
                     autoComplete="name"
@@ -55,7 +57,7 @@ export function Register() {
 
                 <Input
                     id="email"
-                    label="Email"
+                    label={t('auth.email')}
                     type="email"
                     icon={Mail}
                     autoComplete="email"
@@ -67,7 +69,7 @@ export function Register() {
 
                 <Input
                     id="password"
-                    label="Şifre"
+                    label={t('auth.password')}
                     type="password"
                     icon={Lock}
                     autoComplete="new-password"
@@ -79,20 +81,20 @@ export function Register() {
                 />
 
                 {error && (
-                    <div className="mb-4 flex items-center gap-2 rounded-[var(--radius-input)] border border-red-500/30 bg-red-500/10 px-3 py-2.5 text-sm text-red-400">
-                        <AlertCircle size={16} className="shrink-0" />
+                    <div role="alert" className="mb-4 flex items-center gap-2 rounded-[var(--radius-input)] border border-red-500/30 bg-red-500/10 px-3 py-2.5 text-sm text-red-400">
+                        <AlertCircle size={16} className="shrink-0" aria-hidden="true" />
                         {error}
                     </div>
                 )}
 
                 <Button type="submit" size="lg" disabled={loading} className="w-full">
-                    {loading ? 'Oluşturuluyor…' : 'Ücretsiz kayıt ol'}
+                    {loading ? t('auth.registering') : t('auth.registerButton')}
                 </Button>
 
                 <p className="mt-6 text-center text-sm text-text-muted">
-                    Zaten hesabın var mı?{' '}
+                    {t('auth.haveAccount')}{' '}
                     <Link to="/login" className="font-semibold text-brand-light hover:text-brand">
-                        Giriş yap
+                        {t('auth.loginButton')}
                     </Link>
                 </p>
             </form>

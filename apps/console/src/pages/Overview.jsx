@@ -1,33 +1,33 @@
 import { useState } from 'react';
 import { Link } from 'react-router-dom';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
+import { useForm } from 'react-hook-form';
+import { zodResolver } from '@hookform/resolvers/zod';
+import { ProductInput } from '@repo/contracts';
 import { Button, Input } from '@repo/ui';
 import { Plus, Package, ExternalLink, X, AlertCircle } from 'lucide-react';
 import { productsApi } from '../lib/api.js';
 import { useAuthStore } from '../store/auth.js';
 
 function NewProductModal({ onClose, onCreated }) {
-    const [name, setName] = useState('');
-    const [description, setDescription] = useState('');
-    const [websiteUrl, setWebsiteUrl] = useState('');
     const [error, setError] = useState('');
-    const [loading, setLoading] = useState(false);
+    const {
+        register,
+        handleSubmit,
+        formState: { errors, isSubmitting }
+    } = useForm({ resolver: zodResolver(ProductInput), defaultValues: { name: '', description: '', websiteUrl: '' } });
 
-    async function onSubmit(e) {
-        e.preventDefault();
+    async function onSubmit(values) {
         setError('');
-        setLoading(true);
         try {
             const product = await productsApi.create({
-                name,
-                description: description || undefined,
-                websiteUrl: websiteUrl || undefined
+                name: values.name,
+                description: values.description || undefined,
+                websiteUrl: values.websiteUrl || undefined
             });
             onCreated(product);
         } catch (err) {
             setError(err.message);
-        } finally {
-            setLoading(false);
         }
     }
 
@@ -36,34 +36,33 @@ function NewProductModal({ onClose, onCreated }) {
             <div className="w-full max-w-md rounded-[var(--radius-card)] border border-border bg-surface p-6">
                 <div className="mb-6 flex items-center justify-between">
                     <h2 className="text-lg font-semibold text-text">Yeni ürün</h2>
-                    <button onClick={onClose} className="text-text-muted hover:text-text">
+                    <button onClick={onClose} aria-label="Kapat" className="text-text-muted hover:text-text">
                         <X size={18} />
                     </button>
                 </div>
 
-                <form onSubmit={onSubmit}>
+                <form onSubmit={handleSubmit(onSubmit)}>
                     <Input
                         id="product-name"
                         label="Ürün adı"
                         placeholder="CRM Yazılımım"
-                        required
-                        value={name}
-                        onChange={(e) => setName(e.target.value)}
+                        error={errors.name?.message}
+                        {...register('name')}
                     />
                     <Input
                         id="product-description"
                         label="Açıklama (opsiyonel)"
                         placeholder="Kısa bir açıklama"
-                        value={description}
-                        onChange={(e) => setDescription(e.target.value)}
+                        error={errors.description?.message}
+                        {...register('description')}
                     />
                     <Input
                         id="product-url"
                         label="Website URL (opsiyonel)"
                         type="url"
                         placeholder="https://urunum.com"
-                        value={websiteUrl}
-                        onChange={(e) => setWebsiteUrl(e.target.value)}
+                        error={errors.websiteUrl?.message}
+                        {...register('websiteUrl')}
                     />
 
                     {error && (
@@ -77,8 +76,8 @@ function NewProductModal({ onClose, onCreated }) {
                         <Button type="button" variant="ghost" onClick={onClose}>
                             Vazgeç
                         </Button>
-                        <Button type="submit" disabled={loading}>
-                            {loading ? 'Oluşturuluyor…' : 'Oluştur'}
+                        <Button type="submit" disabled={isSubmitting}>
+                            {isSubmitting ? 'Oluşturuluyor…' : 'Oluştur'}
                         </Button>
                     </div>
                 </form>

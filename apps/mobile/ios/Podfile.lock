@@ -1,9 +1,9 @@
 PODS:
   - EXApplication (56.0.3):
     - ExpoModulesCore
-  - EXConstants (56.0.21):
+  - EXConstants (56.0.22):
     - ExpoModulesCore
-  - Expo (56.0.16):
+  - Expo (56.0.17):
     - ExpoModulesCore
     - ExpoModulesJSI
     - hermes-engine
@@ -29,7 +29,7 @@ PODS:
     - ReactCommon/turbomodule/core
     - ReactNativeDependencies
     - Yoga
-  - ExpoAsset (56.0.20):
+  - ExpoAsset (56.0.21):
     - ExpoModulesCore
   - ExpoDomWebView (56.0.6):
     - ExpoModulesCore
@@ -43,11 +43,11 @@ PODS:
     - ExpoModulesCore
   - ExpoKeepAwake (56.0.3):
     - ExpoModulesCore
-  - ExpoLinking (56.0.15):
+  - ExpoLinking (56.0.16):
     - ExpoModulesCore
   - ExpoLogBox (56.0.14):
     - React-Core
-  - ExpoModulesCore (56.0.21):
+  - ExpoModulesCore (56.0.22):
     - ExpoModulesJSI
     - hermes-engine
     - RCTRequired
@@ -74,17 +74,19 @@ PODS:
   - ExpoModulesJSI (56.0.12):
     - React-Core
     - ReactCommon
-  - ExpoModulesWorklets (56.0.21):
+  - ExpoModulesWorklets (56.0.22):
     - ExpoModulesCore
     - ExpoModulesJSI
-  - ExpoNotifications (56.0.21):
+  - ExpoNotifications (56.0.22):
     - ExpoModulesCore
-  - ExpoRouter (56.2.15):
+  - ExpoRouter (56.2.16):
     - ExpoModulesCore
     - RNScreens
+  - ExpoSecureStore (56.0.4):
+    - ExpoModulesCore
   - ExpoSymbols (56.0.6):
     - ExpoModulesCore
-  - ExpoUI (56.0.22):
+  - ExpoUI (56.0.23):
     - ExpoModulesCore
     - ExpoModulesWorklets
     - React-RCTFabric
@@ -115,7 +117,7 @@ PODS:
     - ReactCommon/turbomodule/core
     - ReactNativeDependencies
     - Yoga
-  - livekit-react-native-webrtc (144.1.1):
+  - livekit-react-native-webrtc (144.1.2):
     - React-Core
     - WebRTC-SDK (= 144.7559.10)
   - LiveKitExpoPlugin (1.0.2):
@@ -2087,6 +2089,7 @@ DEPENDENCIES:
   - ExpoModulesWorklets (from `../../../node_modules/expo-modules-core/ExpoModulesWorklets.podspec`)
   - ExpoNotifications (from `../../../node_modules/expo-notifications/ios`)
   - ExpoRouter (from `../../../node_modules/expo-router/ios`)
+  - ExpoSecureStore (from `../../../node_modules/expo-secure-store/ios`)
   - ExpoSymbols (from `../../../node_modules/expo-symbols/ios`)
   - "ExpoUI (from `../../../node_modules/@expo/ui/ios`)"
   - FBLazyVector (from `../../../node_modules/react-native/Libraries/FBLazyVector`)
@@ -2211,6 +2214,8 @@ EXTERNAL SOURCES:
     :path: "../../../node_modules/expo-notifications/ios"
   ExpoRouter:
     :path: "../../../node_modules/expo-router/ios"
+  ExpoSecureStore:
+    :path: "../../../node_modules/expo-secure-store/ios"
   ExpoSymbols:
     :path: "../../../node_modules/expo-symbols/ios"
   ExpoUI:
@@ -2381,28 +2386,29 @@ EXTERNAL SOURCES:
 
 SPEC CHECKSUMS:
   EXApplication: e6040c92edc5522accd62852342e6b14742d42c0
-  EXConstants: b761e3534d6066412c7c3276dd4f104d2275e6d4
-  Expo: db3a7098c5a6b97f1805a1c2c9394627caf8d29b
-  ExpoAsset: d69e54981e14baa059c5d9cc9580d06fffc44644
+  EXConstants: 9fff81852f1d2e72502786a66f5ddb6d0eb76436
+  Expo: d61d808084d52a00653a95fa47e861b5c67826a0
+  ExpoAsset: 26f77f0cdaffe419b80e86f02cc5365722bc135e
   ExpoDomWebView: 4e53b05879dc73ba374f76bff93dd64c8a0d91b3
   ExpoFileSystem: 9dc04ec1e11bc3c7b965d7feb2de12c789755c7b
   ExpoFont: 274487aa78f8c65d6551e2558eca3ec6ce3432ce
   ExpoGlassEffect: 7d4233dc0727ee2b28dd757eda70e1b6abf662fd
   ExpoHaptics: 89364cf3c3ca2cfd54cafed42f3be3169bab6d42
   ExpoKeepAwake: 359c47a1d9ccc3a3c519bca6e39562cce230c5bb
-  ExpoLinking: f8a78524352bf2c3baed5b33c8b56cd57c448702
+  ExpoLinking: 58d1cc05b96ead9e921353464ad03651eeb71ab9
   ExpoLogBox: cdad5c9402a186574fb5924ea91df1f08ba9a98a
-  ExpoModulesCore: 3a310ad4538ca884e913948aa84f04b64dea5722
+  ExpoModulesCore: 090c9dcbca42711217adc00ea37ce8f84041d1e6
   ExpoModulesJSI: e62656cfaffb5aeb3fdc1dd2bc49f77e87ed2261
-  ExpoModulesWorklets: 58bf4b7f263b5cad3f6017a68148789878ffd5a3
-  ExpoNotifications: 6f8639a697373661879b36fc2173860826300a1d
-  ExpoRouter: 4de33711ec1e4ae28a0c7dae4412669d48cb0283
+  ExpoModulesWorklets: 3aaf91bb08abf910858592221480d6519f0daa1e
+  ExpoNotifications: ac87d6f9e52a4c855775e73f692ac1e95ca63f27
+  ExpoRouter: 4033a8c0bf7f0338327bdacb29bfe8c725fb456d
+  ExpoSecureStore: f1bd083c1b7b8d4142013ffcc0082d377d9f49f4
   ExpoSymbols: 377747de25bcb1ab68ec68f23d81fb81d43eae83
-  ExpoUI: 41ec84b8a9c2de820ae3e2e209d66e683be0e435
+  ExpoUI: fc8fed8b0c8b48ab4945efeb225685439a4fba30
   FBLazyVector: 24e62c765683b8d89006a88a2c8f5cf019f0074d
-  hermes-engine: 635bd8d6b2f53c1e46da65af1f83c30b6f94e0bf
+  hermes-engine: 7b94195418a4c2ae5afb385216ad856bb25db41b
   livekit-react-native: 8b8f3cb64195b11c40d3b724aa07c44d0eed20dc
-  livekit-react-native-webrtc: 9f52dbcc5edee327cdc8c9b458b6d6fd8ece1561
+  livekit-react-native-webrtc: 5ff3e8d229a3fcd34f99fe4cb1c2c93f92017b0c
   LiveKitExpoPlugin: 244fe0ae6c8226121a2257a2408749ea10c5e11c
   RCTDeprecation: a4c521821fab57cbb125b36effe84d897d0dfa12
   RCTRequired: 9f3a7e5645d4bc3f551593de7550bb66ab6e42bc
@@ -2412,7 +2418,7 @@ SPEC CHECKSUMS:
   React: e2dc35338068bbd299c66f043ae0d7f25de8499e
   React-callinvoker: 28b25d21b124c26cebaea713ba7d801b9351dc48
   React-Core: 02ed7d2ffb70437bdf2aba074a13078a7b0b9ff0
-  React-Core-prebuilt: c34e8fbc84313c0b2b480d3caf9e09f624a7d233
+  React-Core-prebuilt: d8c4ee7460f6f0098ff5958ec6d77eb1b9388bae
   React-CoreModules: b3a5a42dadcde3b5d47b325bd912eb2ced89e146
   React-cxxreact: fe8f88dda044e5905e99a00f41b7a874c3908716
   React-debug: 92944dc4d89f56d640e75498266cbde557a48189
@@ -2475,7 +2481,7 @@ SPEC CHECKSUMS:
   ReactAppDependencyProvider: 25c9c516839be2c5e3d3344f95dc7da5f7e63fc2
   ReactCodegen: dfe41c3f92bdf782bcf9b2c9d7c12cb9cfd82cb7
   ReactCommon: 7dfc3250793bf36cf221096ff59e1179e13eef7f
-  ReactNativeDependencies: b11b2ea50f79d5141caef8f2c1177ee42c3e91a6
+  ReactNativeDependencies: 697a60a03a175df73c5d7d228ab4d86cd58a2c5d
   RNCAsyncStorage: 2ad919e88b8bc2cd80e8697ce66d04d006743283
   RNCMaskedView: eb2b2e538afa907f05a5848a1a1ac26092e6fec9
   RNScreens: f94000b3cb1eb14cbb8d08dd6074fdd6ccf0e6b0

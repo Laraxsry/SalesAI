@@ -18,13 +18,38 @@ export const sessionsRouter = Router();
  */
 sessionsRouter.post('/', requestTimeout(10_000), validate({ body: CreateSessionInput }), async (req, res, next) => {
     try {
-        const { shareToken, visitorName, transientAuth } = req.body;
+        const { shareToken, visitorName, transientAuth, visitorId } = req.body;
         const resolved = await resolveShareLink(shareToken);
         if (!resolved.ok) return res.status(resolved.status).json({ error: resolved.error });
 
         const { link, agent } = resolved;
-        const result = await mintSession({ link, agent, visitorName, source: 'link', transientAuth });
+        const validVisitorId = visitorId && /^[0-9a-fA-F]{24}$/.test(visitorId) ? visitorId : undefined;
+        const result = await mintSession({ link, agent, visitorName, source: 'link', transientAuth, visitorId: validVisitorId });
         res.json(result);
+    } catch (err) {
+        next(err);
+    }
+});
+
+/**
+ * Mobile Phase 3: a visitor's own session history across devices.
+ * Requires a visitor JWT (from POST /auth/magic-link/verify) — registered
+ * next to /search so it's matched before the generic GET /:id below.
+ *
+ * GET /sessions/mine
+ */
+sessionsRouter.get('/mine', requireAuth, async (req, res, next) => {
+    try {
+        if (req.user?.type !== 'visitor') {
+            return res.status(403).json({ error: 'Visitor identity required' });
+        }
+
+        const sessions = await Session.find({ visitorId: req.user.sub })
+            .sort({ startedAt: -1 })
+            .limit(100)
+            .lean();
+
+        res.json(sessions);
     } catch (err) {
         next(err);
     }

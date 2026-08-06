@@ -2,8 +2,15 @@ import { useState, useEffect, useRef } from 'react';
 import { View, Text, StyleSheet, TouchableOpacity, FlatList, ActivityIndicator, KeyboardAvoidingView, Platform, ScrollView } from 'react-native';
 import { StatusBar } from 'expo-status-bar';
 import { useLocalSearchParams, useRouter } from 'expo-router';
+import { io } from 'socket.io-client';
 import { useAuth } from '../_layout';
 import { CONFIG } from '../../../config';
+
+// Session status can't change without a page-visible action (agent-worker
+// isn't wired to publish session:started/ended over Socket.IO yet — only
+// session:transcript and session:summary are), so this is a low-frequency
+// fallback just to notice a live call ending, not the transcript's source of truth.
+const STATUS_POLL_MS = 8000;
 
 export default function SessionMonitorScreen() {
     const { id } = useLocalSearchParams();
@@ -77,14 +84,35 @@ export default function SessionMonitorScreen() {
         fetchMessages(true);
         fetchSummary();
 
-        // Polling interval if session is live
-        const interval = setInterval(() => {
-            fetchSessionDetails();
-            fetchMessages(false);
-            fetchSummary();
-        }, 3000);
+        // Real-time updates: same Socket.IO gateway the web console already
+        // uses (packages/realtime) — agent-worker/worker-general publish
+        // session:transcript per message and session:summary once analysis
+        // finishes, so we append/refetch instead of polling for them.
+        const socket = io(CONFIG.API_URL, { transports: ['websocket'] });
 
-        return () => clearInterval(interval);
+        socket.on('session:transcript', (payload) => {
+            if (payload.sessionId !== id) return;
+            setMessages((prev) =>
+                prev.some((m) => m._id === payload.messageId)
+                    ? prev
+                    : [...prev, { _id: payload.messageId, role: payload.role, text: payload.text, at: payload.createdAt }]
+            );
+        });
+
+        socket.on('session:summary', (payload) => {
+            if (payload.sessionId !== id) return;
+            fetchSummary();
+            fetchSessionDetails(); // summary lands right after the session ends
+        });
+
+        // Low-frequency fallback for the live→ended transition (no
+        // session:started/ended event exists yet — see STATUS_POLL_MS above).
+        const statusInterval = setInterval(fetchSessionDetails, STATUS_POLL_MS);
+
+        return () => {
+            socket.disconnect();
+            clearInterval(statusInterval);
+        };
     }, [id, token]);
 
     // Scroll to bottom when messages list updates
@@ -154,7 +182,7 @@ export default function SessionMonitorScreen() {
             {isLive && viewMode === 'transcript' && (
                 <View style={styles.liveBanner}>
                     <View style={styles.pulseDot} />
-                    <Text style={styles.liveBannerText}>Real-time monitoring active. Polling logs...</Text>
+                    <Text style={styles.liveBannerText}>Real-time monitoring active</Text>
                 </View>
             )}
 

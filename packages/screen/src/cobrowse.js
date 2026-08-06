@@ -239,12 +239,26 @@ export class GuidedTour {
 
     /** Navigate to a URL/path within the product. */
     async goto(url) {
-        assertHttpUrl(url);
-        const targetKey = trustKey(url);
-        if (!targetKey || !this.trustedKeys.has(targetKey)) {
-            throw new Error(`[GuidedTour] Navigation outside the product's domain is not allowed: ${url}`);
+        // The knowledge base (and the LLM) usually knows a page only as an
+        // in-app route — e.g. "/home", matching the product's own
+        // routesConfig.js — not a full absolute URL. Resolve that against
+        // the page we're already on, exactly like a browser resolves a
+        // relative link, before validating. The resolved absolute URL still
+        // goes through the same trust-key check below, so this only adds
+        // relative-path support — it doesn't weaken the SSRF guard.
+        let target = url;
+        try {
+            new URL(url);
+        } catch {
+            target = new URL(url, this.page.url()).href;
         }
-        await this.page.goto(url, { waitUntil: 'domcontentloaded' });
+
+        assertHttpUrl(target);
+        const targetKey = trustKey(target);
+        if (!targetKey || !this.trustedKeys.has(targetKey)) {
+            throw new Error(`[GuidedTour] Navigation outside the product's domain is not allowed: ${target}`);
+        }
+        await this.page.goto(target, { waitUntil: 'domcontentloaded' });
         await this.page.waitForTimeout(3000);
         // The check above only validated the requested URL; the site itself
         // may then have redirected further (open-redirect abuse). Re-check
@@ -252,36 +266,48 @@ export class GuidedTour {
         await this.assertCurrentPageTrusted('navigate_to');
     }
 
-    /** Visually highlight an element (draws an outline) so the customer can follow. */
+    /**
+     * Visually highlight an element (draws an outline) so the customer can
+     * follow. Resolved via Playwright's locator API (not a page.evaluate +
+     * document.querySelector) so Playwright-only selector engines like
+     * `text=`/`role=` — which the LLM is instructed to use — actually work;
+     * raw querySelector only understands plain CSS.
+     */
     async highlight(selector) {
-        await this.page.evaluate((sel) => {
-            const el = document.querySelector(sel);
-            if (el) {
-                el.style.outline = '3px solid #6d5efc';
-                el.scrollIntoView({ behavior: 'smooth', block: 'center' });
-            }
-        }, selector);
+        const locator = this.page.locator(selector).first();
+        try {
+            await locator.waitFor({ state: 'attached', timeout: 3000 });
+        } catch {
+            return; // not found — same silent no-op as before
+        }
+        await locator.evaluate((el) => {
+            el.style.outline = '3px solid #6d5efc';
+            el.scrollIntoView({ behavior: 'smooth', block: 'center' });
+        });
     }
 
     /**
-     * Click an element as part of a tour step. Not currently wired to any
-     * LLM tool (see @repo/agent tools.js) — hardened anyway since it's
-     * public API and a future click-driven tool would inherit this guard
-     * for free. Unlike goto(), the destination comes from the page's own
-     * DOM, not an argument we can pre-validate, so this is a post-hoc check.
+     * Click an element as part of a tour step. Wired to the `click_element`
+     * LLM tool (see @repo/agent tools.js). Unlike goto(), the destination
+     * comes from the page's own DOM, not an argument we can pre-validate,
+     * so this is a post-hoc check.
      */
     async click(selector) {
+        // Selector'ı Playwright'ın locator API'siyle çözüyoruz (document.querySelector
+        // değil) — aksi halde LLM'in kullandığı `text=`/`role=` gibi Playwright-özel
+        // selector motorları çıplak DOM API'sinde geçersiz sayılıp hata fırlatıyordu.
+        const locator = this.page.locator(selector).first();
+        await locator.waitFor({ state: 'visible', timeout: 5000 });
+
         // Güvenlik Katmanı: Read-Only Mode (Zararlı işlemleri engelle)
-        const isDangerous = await this.page.evaluate((sel) => {
-            const el = document.querySelector(sel);
-            if (!el) return false;
+        const isDangerous = await locator.evaluate((el) => {
             const tag = el.tagName.toLowerCase();
             const type = el.getAttribute('type')?.toLowerCase();
             // Form elemanlarına ve submit butonlarına tıklamayı engelle
             if (tag === 'input' || tag === 'textarea' || tag === 'select') return true;
             if (tag === 'button' && type === 'submit') return true;
             return false;
-        }, selector);
+        });
 
         if (isDangerous) {
             throw new Error(`[GuidedTour] Security constraint: Clicking on form inputs or submit buttons is disabled in read-only mode.`);

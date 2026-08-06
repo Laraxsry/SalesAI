@@ -72,7 +72,9 @@
      - [x] text: as-is; document: pdf-parse; image: `describeImage`;
        video: ffmpeg audio -> transcribe (Whisper); url: fetch + strip;
      - [x] mammoth (docx desteği eklendi); parser seçimi `mimeType` → uzantı önceliğiyle yapılıyor
-       (PDF yanlışlıkla .docx olarak yüklense bile doğru parser devreye girer).
+       (PDF yanlışlıkla .docx olarak yüklense bile doğru parser devreye girer; PDF sadece gerçek
+       `%PDF-` imzası varsa denenir; .md/.txt/.mdx düz metin olarak okunur; .zip arşivleri açılıp
+       her desteklenen üye ayrı bir KnowledgeSource olarak ingest edilir — `adm-zip`, entry/boyut limitleri ile). (.json/.xml de düz metin olarak kabul ediliyor artık, hem tekil kaynak hem zip üyesi olarak)
      - [x] Video ingestion artık keyframe/vision adımını da içeriyor: ffmpeg `.screenshots()` ile
        videodan `VIDEO_MAX_KEYFRAMES` (varsayılan 6, env ile ayarlanabilir — video süresine göre
        literal 1/sn değil, maliyeti sınırlamak için sabit sayıda eşit aralıklı kare) çıkarılıyor,

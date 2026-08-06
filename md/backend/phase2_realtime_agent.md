@@ -43,7 +43,7 @@
 
 4. **Avatar providers** ([`@repo/avatar`](../../packages/avatar))
    - [x] Start with `voice-only` (always works) + `tavus` (server-rendered video).
-   - [x] `simli`/`heygen`/`did` wired but gated by env keys.
+   - [x] `simli`/`heygen`/`did` wired but gated by env keys. (simli: now a real server-side integration, ported from `livekit-plugins-simli` — see `packages/avatar/src/providers/simli.js`; heygen/did remain unimplemented stubs)
 
 5. **Worker dispatch**
    - [x] Configure LiveKit to dispatch `agent-worker` on room creation (agent name)

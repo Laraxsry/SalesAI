@@ -18,6 +18,7 @@ import { publishEvent, publishMetric, publishUsage, RT_EVENTS, SESSION_METRICS }
 import { extractParentContext } from './trace-context.js';
 import { withToolCallMetrics } from './tool-metrics.js';
 import { createSessionCostTracker } from './session-cost-tracker.js';
+import { createRealtimeGate } from './realtime-gate.js';
 
 /**
  * Runs the session with the trace context extracted from the LiveKit dispatch
@@ -108,6 +109,12 @@ async function runSession(ctx) {
     let tourPublishInterval = null;
     let tourVideoSource = null;
     let tourVideoTrack = null;
+    // Latest tour frame as a downscaled JPEG data URL, kept in memory only
+    // (never persisted) so `read_tour_screen` can hand the agent's own
+    // guided-tour browser to the vision model on demand — mirrors the
+    // customer-share sampling below, just fed from Playwright instead of a
+    // LiveKit video track.
+    let latestTourFrameBase64 = null;
 
     const tourControls = {
         openAt: async (url) => {
@@ -151,6 +158,16 @@ async function runSession(ctx) {
                         const frame = new VideoFrame(data, info.width, info.height, VideoBufferType.RGBA);
                         const timestampUs = BigInt(Date.now()) * 1000n;
                         tourVideoSource.captureFrame(frame, timestampUs);
+
+                        // Also keep a downscaled JPEG copy for read_tour_screen —
+                        // cheap (just re-encoding the same PNG we already have),
+                        // the actual vision-model cost only happens when the
+                        // tool is called.
+                        const jpegBuffer = await sharp(pngBuffer)
+                            .resize({ width: 1024, withoutEnlargement: true })
+                            .jpeg({ quality: 80 })
+                            .toBuffer();
+                        latestTourFrameBase64 = `data:image/jpeg;base64,${jpegBuffer.toString('base64')}`;
                     } catch (frameErr) {
                         // Non-fatal: log and skip this frame
                         log.warn('Tour frame capture failed', { error: frameErr.message });
@@ -170,6 +187,7 @@ async function runSession(ctx) {
                 log.error('GuidedTour open failed: ' + e.message, { error: e.message });
                 await tour.close().catch(() => {});
                 isTourActive = false;
+                latestTourFrameBase64 = null;
                 return { ok: false, error: e.message };
             }
         },
@@ -218,6 +236,35 @@ async function runSession(ctx) {
                 return { ok: true };
             } catch (e) {
                 log.error('GuidedTour click failed', { error: e.message });
+                return { ok: false, error: e.message };
+            }
+        },
+        readScreen: async (question) => {
+            if (!screenModes.includes('guided-tour')) {
+                return { ok: false, error: 'Guided tour is not enabled for this agent (screenModes).' };
+            }
+            if (!isTourActive) {
+                return { ok: false, error: 'Tour not active. Call start_guided_tour first.' };
+            }
+            if (!latestTourFrameBase64) {
+                return { ok: false, error: 'No tour frame available yet — try again in a second.' };
+            }
+            try {
+                const result = await analyzeFrame(latestTourFrameBase64, question);
+
+                costTracker.addVisionFrame();
+                if (costTracker.checkThreshold()) {
+                    log.error('session cost exceeded alert threshold', costTracker.snapshot());
+                }
+
+                await Message.create({
+                    sessionId: session._id,
+                    role: 'system',
+                    text: `[screen:tour_vision_read] question=${question}`,
+                    meta: { action: 'tour_vision_read', question }
+                }).catch(() => {});
+                return { ok: true, analysis: result };
+            } catch (e) {
                 return { ok: false, error: e.message };
             }
         }
@@ -457,6 +504,7 @@ async function runSession(ctx) {
             // Cleanup: stop tour publish loop and close browser
             if (tourPublishInterval) clearInterval(tourPublishInterval);
             if (customerSampleInterval) clearInterval(customerSampleInterval);
+            latestTourFrameBase64 = null;
             try { await tour.close(); } catch { /* best-effort cleanup */ }
 
             await Session.updateOne({ _id: session._id }, { status: 'ended' });
@@ -500,10 +548,20 @@ async function runSession(ctx) {
         publishMetric(SESSION_METRICS.SESSION_COST_USD, totalCostUsd);
     }));
 
-    await agentSession.start({
-        agent: new voice.Agent({ instructions, tools }),
-        room: ctx.room
+    // The only thing that actually spends money is `agentSession.start()` —
+    // it opens a persistent websocket to the OpenAI Realtime API. See
+    // realtime-gate.js for why this is gated on real visitor audio (COST
+    // WARNING documented there) instead of firing as soon as we join the room.
+    const realtimeGate = createRealtimeGate({
+        onStart: () => {
+            agentSession.start({
+                agent: new voice.Agent({ instructions, tools }),
+                room: ctx.room
+            }).catch((err) => log.error('failed to start realtime session', { error: err.message }));
+        }
     });
+    ctx.room.on('trackSubscribed', (track) => realtimeGate.handleTrackSubscribed(track));
+    realtimeGate.checkAlreadySubscribed(ctx.room);
 }
 
 /**

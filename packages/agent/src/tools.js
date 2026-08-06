@@ -80,6 +80,16 @@ export function buildTools({ productId, tour, screen, stopScreenShare }) {
                 'Stop showing the screen (closes an active guided tour demo, and/or asks the customer to stop sharing their own screen). Call this whenever the customer asks to close, hide, or stop the screen share.',
             parameters: { type: 'object', properties: {} },
             handler: async () => stopScreenShare?.() ?? { ok: false }
+        },
+        {
+            name: 'read_tour_screen',
+            description:
+                "Look at the current guided-tour page you're driving (charts, numbers, table contents, anything not conveyed by clicking/highlighting) to answer a question about what's actually on screen right now.",
+            parameters: {
+                type: 'object',
+                properties: { question: { type: 'string' } }
+            },
+            handler: async ({ question }) => tour?.readScreen?.(question) ?? { ok: false }
         }
     ];
 }

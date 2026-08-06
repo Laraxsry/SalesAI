@@ -1,5 +1,5 @@
 import { Router } from 'express';
-import { ApiKey, Membership } from '@repo/database';
+import { ApiKey } from '@repo/database';
 import { requireAuth, generateApiKey } from '@repo/auth';
 import { logAudit, extractRequestMeta, AUDIT_ACTIONS } from '@repo/utils';
 import { resolveTenant, resolveMember } from '../middleware/tenant.js';

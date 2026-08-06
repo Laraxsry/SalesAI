@@ -4,11 +4,10 @@ import { StatusBar } from 'expo-status-bar';
 import { useRouter } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import { useAuth } from './_layout';
-import { CONFIG } from '../../config';
 
 export default function DashboardScreen() {
     const router = useRouter();
-    const { token, user, logout } = useAuth();
+    const { token, user, logout, apiFetch } = useAuth();
 
     const [activeTab, setActiveTab] = useState('home'); // home, sessions, leads, agents, settings
     const [loading, setLoading] = useState(true);
@@ -36,9 +35,7 @@ export default function DashboardScreen() {
         try {
             setError('');
             // 1. Fetch workspaces
-            const wsRes = await fetch(`${CONFIG.API_URL}/api/v1/workspaces`, {
-                headers: { 'Authorization': `Bearer ${token}` },
-            });
+            const wsRes = await apiFetch('/api/v1/workspaces');
             if (!wsRes.ok) throw new Error('Failed to fetch workspaces');
             const wsData = await wsRes.json();
             setWorkspaces(wsData);
@@ -60,9 +57,7 @@ export default function DashboardScreen() {
     const loadWorkspaceData = async (workspaceId) => {
         try {
             // 2. Fetch products
-            const prodRes = await fetch(`${CONFIG.API_URL}/api/v1/products?workspaceId=${workspaceId}`, {
-                headers: { 'Authorization': `Bearer ${token}` },
-            });
+            const prodRes = await apiFetch(`/api/v1/products?workspaceId=${workspaceId}`);
             if (!prodRes.ok) throw new Error('Failed to fetch products');
             const prodData = await prodRes.json();
             setProducts(prodData);
@@ -84,18 +79,14 @@ export default function DashboardScreen() {
     const loadProductAndLeadsData = async (workspaceId, productId) => {
         try {
             // 3. Fetch leads
-            const leadsRes = await fetch(`${CONFIG.API_URL}/api/v1/analytics/leads?workspaceId=${workspaceId}`, {
-                headers: { 'Authorization': `Bearer ${token}` },
-            });
+            const leadsRes = await apiFetch(`/api/v1/analytics/leads?workspaceId=${workspaceId}`);
             if (leadsRes.ok) {
                 const leadsData = await leadsRes.json();
                 setLeads(leadsData.leads || []);
             }
 
             // 4. Fetch agents for active product
-            const agentsRes = await fetch(`${CONFIG.API_URL}/api/v1/agents?productId=${productId}`, {
-                headers: { 'Authorization': `Bearer ${token}` },
-            });
+            const agentsRes = await apiFetch(`/api/v1/agents?productId=${productId}`);
             if (!agentsRes.ok) throw new Error('Failed to fetch agents');
             const agentsData = await agentsRes.json();
             setAgents(agentsData);
@@ -110,18 +101,14 @@ export default function DashboardScreen() {
 
             for (const agent of agentsData) {
                 // Fetch sessions
-                const sessRes = await fetch(`${CONFIG.API_URL}/api/v1/agents/${agent._id}/sessions`, {
-                    headers: { 'Authorization': `Bearer ${token}` },
-                });
+                const sessRes = await apiFetch(`/api/v1/agents/${agent._id}/sessions`);
                 if (sessRes.ok) {
                     const sessData = await sessRes.json();
                     allSessions.push(...sessData.map(s => ({ ...s, agentName: agent.name })));
                 }
 
                 // Fetch KPIs
-                const kpiRes = await fetch(`${CONFIG.API_URL}/api/v1/analytics/agents/${agent._id}`, {
-                    headers: { 'Authorization': `Bearer ${token}` },
-                });
+                const kpiRes = await apiFetch(`/api/v1/analytics/agents/${agent._id}`);
                 if (kpiRes.ok) {
                     const kpiData = await kpiRes.json();
                     totalSessionsSum += kpiData.totalSessions || 0;
@@ -177,9 +164,8 @@ export default function DashboardScreen() {
         const nextStatus = agent.status === 'active' ? 'paused' : 'active';
         const endpoint = agent.status === 'active' ? 'pause' : 'activate';
         try {
-            const res = await fetch(`${CONFIG.API_URL}/api/v1/agents/${agent._id}/${endpoint}`, {
+            const res = await apiFetch(`/api/v1/agents/${agent._id}/${endpoint}`, {
                 method: 'POST',
-                headers: { 'Authorization': `Bearer ${token}` },
             });
             if (!res.ok) throw new Error(`Failed to update status to ${nextStatus}`);
             
@@ -194,12 +180,9 @@ export default function DashboardScreen() {
     // Update lead status
     const updateLeadStatus = async (lead, nextStatus) => {
         try {
-            const res = await fetch(`${CONFIG.API_URL}/api/v1/analytics/leads/${lead._id}/status`, {
+            const res = await apiFetch(`/api/v1/analytics/leads/${lead._id}/status`, {
                 method: 'PATCH',
-                headers: { 
-                    'Authorization': `Bearer ${token}`,
-                    'Content-Type': 'application/json'
-                },
+                headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({ status: nextStatus }),
             });
             if (!res.ok) throw new Error('Failed to update lead status');

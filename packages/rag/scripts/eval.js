@@ -55,7 +55,7 @@ ANSWER: ${actualAnswer}
     try {
         const cleaned = fResp.text.replace(/```json/g, '').replace(/```/g, '').trim();
         faithfulness = JSON.parse(cleaned);
-    } catch(e) { console.error('Failed to parse faithfulness JSON'); }
+    } catch { console.error('Failed to parse faithfulness JSON'); }
 
     // 4. Eval: Relevancy (Does the answer match the expected answer?)
     const relevancyPrompt = `
@@ -71,7 +71,7 @@ ACTUAL_ANSWER: ${actualAnswer}
     try {
         const cleaned = rResp.text.replace(/```json/g, '').replace(/```/g, '').trim();
         relevancy = JSON.parse(cleaned);
-    } catch(e) { console.error('Failed to parse relevancy JSON'); }
+    } catch { console.error('Failed to parse relevancy JSON'); }
 
     return {
         question: pair.question,

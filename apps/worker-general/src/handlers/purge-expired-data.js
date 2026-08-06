@@ -1,4 +1,4 @@
-import { Session, Message, SessionEvent, SessionSummary, Membership, Workspace } from '@repo/database';
+import { Session, Message, SessionEvent, SessionSummary, Workspace } from '@repo/database';
 import { Logger } from '@repo/logger';
 import { logAudit, AUDIT_ACTIONS } from '@repo/utils';
 
@@ -21,7 +21,7 @@ export async function purgeExpiredData() {
 
     // Tüm workspace'leri al (retentionDays ile)
     const workspaces = await Workspace.find({}, '_id retentionDays ownerId').lean();
-    let totalPurged = { sessions: 0, messages: 0, events: 0, summaries: 0 };
+    const totalPurged = { sessions: 0, messages: 0, events: 0, summaries: 0 };
 
     for (const workspace of workspaces) {
         const retentionDays = workspace.retentionDays || 365;

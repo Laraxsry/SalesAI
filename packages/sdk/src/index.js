@@ -45,6 +45,8 @@ const DEFAULT_VISITOR_BASE = 'https://app.salesai.com';
 
 const READY_MESSAGE = 'salesai:embed:ready';
 const SESSION_MESSAGE = 'salesai:embed:session';
+const CLOSE_MESSAGE = 'salesai:embed:close';
+const RESIZE_MESSAGE = 'salesai:embed:resize';
 
 const DEFAULT_THEME = { primaryColor: '#4f46e5' };
 const DEFAULT_LAUNCHER = { position: 'bottom-right', label: 'Talk to sales' };
@@ -78,9 +80,10 @@ function buildLauncherButton({ theme, launcher, onClick }) {
 }
 
 /** Builds the expanded conversation iframe (no session credentials in the URL). */
-function buildConversationFrame({ visitorBaseUrl, shareToken, position }) {
+function buildConversationFrame({ visitorBaseUrl, shareToken, position, parentOrigin }) {
     const frame = document.createElement('iframe');
-    frame.src = `${visitorBaseUrl}/v/${encodeURIComponent(shareToken)}?embed=1`;
+    frame.src = `${visitorBaseUrl}/v/${encodeURIComponent(shareToken)}?embed=1&parentOrigin=${encodeURIComponent(parentOrigin)}`;
+    frame.title = 'SalesAI görüşmesi';
     frame.allow = 'camera; microphone; display-capture; autoplay';
     frame.style.cssText = `
         border: 0;
@@ -93,6 +96,12 @@ function buildConversationFrame({ visitorBaseUrl, shareToken, position }) {
         border-radius: 16px;
         box-shadow: 0 12px 40px rgba(0,0,0,.35);
     `;
+    if (window.matchMedia('(max-width: 640px)').matches) {
+        frame.style.inset = '0';
+        frame.style.width = '100%';
+        frame.style.height = '100%';
+        frame.style.borderRadius = '0';
+    }
     return frame;
 }
 
@@ -110,6 +119,7 @@ export function init({
     let launcherEl;
     let frameEl;
     let messageListener;
+    let sessionAbortController;
     // Config hasn't loaded yet when the launcher first renders, so it starts
     // with sane defaults and is re-rendered in place once the fetch resolves
     // (unless the visitor already clicked through to a conversation).
@@ -134,6 +144,7 @@ export function init({
     }
 
     function renderLauncher() {
+        if (!shadowRoot) return;
         launcherEl?.remove();
         launcherEl = buildLauncherButton({
             theme: resolvedConfig.theme,
@@ -143,43 +154,76 @@ export function init({
         shadowRoot.appendChild(launcherEl);
     }
 
+    function closeConversation() {
+        if (!shadowRoot) return;
+        frameEl?.remove();
+        frameEl = null;
+        if (messageListener) {
+            window.removeEventListener('message', messageListener);
+            messageListener = null;
+        }
+        renderLauncher();
+    }
+
     /** Mints an embed session (origin + rate-limit checked) and swaps the launcher for the conversation iframe. */
     async function openConversation() {
+        if (!launcherEl || launcherEl.disabled) return;
         launcherEl.disabled = true;
         const originalLabel = launcherEl.textContent;
         launcherEl.textContent = '…';
 
         let session;
         try {
+            sessionAbortController = new AbortController();
             const res = await fetch(`${apiBaseUrl}/api/v1/embed/${encodeURIComponent(shareToken)}/session`, {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ pageUrl: location.href })
+                body: JSON.stringify({ pageUrl: location.href }),
+                signal: sessionAbortController.signal
             });
             if (!res.ok) throw new Error(`Session request failed: ${res.status}`);
             session = await res.json();
         } catch {
-            launcherEl.disabled = false;
-            launcherEl.textContent = originalLabel;
+            if (launcherEl) {
+                launcherEl.disabled = false;
+                launcherEl.textContent = originalLabel;
+            }
             return;
+        } finally {
+            sessionAbortController = null;
         }
+
+        if (!shadowRoot || !launcherEl) return;
 
         launcherEl.remove();
         launcherEl = null;
-
-        frameEl = buildConversationFrame({ visitorBaseUrl, shareToken, position: resolvedConfig.launcher.position });
-        shadowRoot.appendChild(frameEl);
 
         messageListener = (event) => {
             if (event.origin !== visitorOrigin || event.source !== frameEl.contentWindow) return;
             if (event.data?.type === READY_MESSAGE) {
                 frameEl.contentWindow.postMessage({ type: SESSION_MESSAGE, session }, visitorOrigin);
+            } else if (event.data?.type === CLOSE_MESSAGE) {
+                closeConversation();
+            } else if (event.data?.type === RESIZE_MESSAGE && !window.matchMedia('(max-width: 640px)').matches) {
+                const height = Math.min(Math.max(Number(event.data.height) || 560, 360), 760);
+                frameEl.style.height = `${height}px`;
             }
         };
         window.addEventListener('message', messageListener);
+
+        // Register the listener before attaching the iframe so its initial
+        // ready message cannot win a race against the parent page.
+        frameEl = buildConversationFrame({
+            visitorBaseUrl,
+            shareToken,
+            position: resolvedConfig.launcher.position,
+            parentOrigin: location.origin
+        });
+        shadowRoot.appendChild(frameEl);
     }
 
     function mount() {
+        if (shadowRoot) return api;
         const host = document.createElement('div');
         shadowRoot = host.attachShadow({ mode: 'open' });
         document.body.appendChild(host);
@@ -190,6 +234,7 @@ export function init({
     }
 
     function unmount() {
+        sessionAbortController?.abort();
         if (messageListener) window.removeEventListener('message', messageListener);
         shadowRoot?.host?.remove();
         shadowRoot = null;
@@ -197,7 +242,7 @@ export function init({
         frameEl = null;
     }
 
-    const api = { mount, unmount };
+    const api = { mount, unmount, close: closeConversation };
     return api;
 }
 

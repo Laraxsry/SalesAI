@@ -15,7 +15,7 @@ const STATUS_POLL_MS = 8000;
 export default function SessionMonitorScreen() {
     const { id } = useLocalSearchParams();
     const router = useRouter();
-    const { token } = useAuth();
+    const { token, apiFetch } = useAuth();
     const flatListRef = useRef(null);
 
     const [loading, setLoading] = useState(true);
@@ -28,9 +28,7 @@ export default function SessionMonitorScreen() {
     const fetchSessionDetails = async () => {
         if (!token) return;
         try {
-            const res = await fetch(`${CONFIG.API_URL}/api/v1/sessions/${id}`, {
-                headers: { 'Authorization': `Bearer ${token}` },
-            });
+            const res = await apiFetch(`/api/v1/sessions/${id}`);
             if (res.ok) {
                 const data = await res.json();
                 setSession(data);
@@ -44,7 +42,7 @@ export default function SessionMonitorScreen() {
         if (!token) return;
         try {
             // Using public route for transcripts
-            const res = await fetch(`${CONFIG.API_URL}/api/v1/sessions/${id}/transcript`);
+            const res = await apiFetch(`/api/v1/sessions/${id}/transcript`);
             if (!res.ok) throw new Error('Failed to load transcripts');
             const data = await res.json();
             setMessages(data);
@@ -61,9 +59,7 @@ export default function SessionMonitorScreen() {
     const fetchSummary = async () => {
         if (!token) return;
         try {
-            const res = await fetch(`${CONFIG.API_URL}/api/v1/sessions/${id}/summary`, {
-                headers: { 'Authorization': `Bearer ${token}` },
-            });
+            const res = await apiFetch(`/api/v1/sessions/${id}/summary`);
             if (res.ok) {
                 const data = await res.json();
                 setSummary(data);

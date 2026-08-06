@@ -1,7 +1,7 @@
 import { Router } from 'express';
 import { validate } from '@repo/validation';
 import { ProductInput, ProductUpdateInput } from '@repo/contracts';
-import { Product, Workspace, Membership, Agent, ShareLink, Session } from '@repo/database';
+import { Product, Membership, Agent, ShareLink, Session } from '@repo/database';
 import { requireAuth } from '@repo/auth';
 import { requirePermission } from '@repo/access';
 import { resolveTenant, resolveMember } from '../middleware/tenant.js';

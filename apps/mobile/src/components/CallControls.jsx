@@ -47,7 +47,7 @@ export function CallControls({
                 activeOpacity={0.8}
             >
                 <MuteIcon color="#ffffff" />
-                <Text style={styles.controlText}>{isMuted ? 'Unmute' : 'Mute'}</Text>
+                <Text style={styles.controlText}>{isMuted ? 'Sesi Aç' : 'Sessiz'}</Text>
             </TouchableOpacity>
 
             <TouchableOpacity
@@ -65,7 +65,7 @@ export function CallControls({
                 activeOpacity={0.8}
             >
                 <ScreenShareIcon active={isSharingScreen} />
-                <Text style={styles.controlText}>Share</Text>
+                <Text style={styles.controlText}>Paylaş</Text>
             </TouchableOpacity>
 
             <TouchableOpacity
@@ -74,7 +74,7 @@ export function CallControls({
                 activeOpacity={0.8}
             >
                 <PhoneIcon />
-                <Text style={styles.controlText}>End</Text>
+                <Text style={styles.controlText}>Bitir</Text>
             </TouchableOpacity>
         </View>
     );

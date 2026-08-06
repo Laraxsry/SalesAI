@@ -20,14 +20,15 @@ async function getHiddenRemoteIds() {
  * and — once the visitor has synced via magic-link (see visitorIdentity.js)
  * — merged with GET /sessions/mine so history follows them across devices.
  */
-export async function saveConversation({ token, agentName }) {
+export async function saveConversation({ token, agentName, sessionId }) {
     if (!token) return;
     try {
         const existing = await getLocalConversations();
         const entry = {
             id: `${token}_${Date.now()}`,
             token,
-            agentName: agentName || 'AI Representative',
+            sessionId: sessionId || null,
+            agentName: agentName || 'AI Temsilcisi',
             endedAt: new Date().toISOString()
         };
         const next = [entry, ...existing.filter((c) => c.token !== token)].slice(0, MAX_SAVED);
@@ -50,8 +51,9 @@ async function getLocalConversations() {
 function fromRemoteSession(session) {
     return {
         id: session._id,
-        token: session.roomName,
-        agentName: session.agentName || 'AI Representative',
+        token: null,
+        sessionId: session._id,
+        agentName: session.agentName || 'AI Temsilcisi',
         endedAt: session.endedAt || session.startedAt,
         remote: true,
         status: session.status
@@ -77,11 +79,11 @@ export async function getSavedConversations() {
         if (!res.ok) return local;
         const remoteSessions = await res.json();
 
-        const localTokens = new Set(local.map((c) => c.token));
+        const localSessionIds = new Set(local.map((c) => c.sessionId).filter(Boolean));
         const hiddenIds = new Set(await getHiddenRemoteIds());
         const remoteOnly = remoteSessions
             .map(fromRemoteSession)
-            .filter((c) => !localTokens.has(c.token) && !hiddenIds.has(c.id));
+            .filter((c) => !localSessionIds.has(c.sessionId) && !hiddenIds.has(c.id));
 
         return [...local, ...remoteOnly].sort((a, b) => new Date(b.endedAt) - new Date(a.endedAt));
     } catch (err) {

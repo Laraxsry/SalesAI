@@ -1,4 +1,4 @@
-import { Session, Message, SessionSummary, Agent, Product, Workspace, Lead } from '@repo/database';
+import { Session, Message, SessionSummary, Agent, Product } from '@repo/database';
 import { getLLM } from '@repo/ai';
 import { publishEvent } from '@repo/realtime';
 import { Logger } from '@repo/logger';

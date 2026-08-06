@@ -39,7 +39,7 @@ export async function retrieve({ productId, query, topK = 8, modality }) {
         if (cached) {
             return JSON.parse(cached);
         }
-    } catch (err) {
+    } catch {
         // Ignore cache read errors, fallback to regular retrieval
     }
 
@@ -72,7 +72,7 @@ export async function retrieve({ productId, query, topK = 8, modality }) {
     try {
         // Cache for 24 hours (86400 seconds)
         await redis.setex(cacheKey, 86400, JSON.stringify(rerankedResults));
-    } catch (err) {
+    } catch {
         // Ignore cache write errors
     }
 

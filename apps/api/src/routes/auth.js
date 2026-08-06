@@ -10,8 +10,7 @@ import {
     signVisitorToken,
     verifyRefresh,
     requireAuth,
-    hashRefreshToken,
-    generateApiKey
+    hashRefreshToken
 } from '@repo/auth';
 import { shortId } from '@repo/utils';
 import { logAudit, extractRequestMeta, AUDIT_ACTIONS } from '@repo/utils';
@@ -178,7 +177,6 @@ authRouter.post('/login', requestTimeout(5000), validate({ body: LoginInput }), 
         // 2FA kontrolü
         if (user.twoFactorEnabled) {
             // Kısa süreli MFA token döner — tam erişim için /auth/2fa/verify gerekli
-            const { authenticator } = await import('otplib');
             const mfaToken = signTokens({ sub: String(user._id), email: user.email, mfa: 'pending' });
             return res.json({
                 mfaRequired: true,
@@ -250,7 +248,6 @@ authRouter.post('/refresh', authRateLimit, requestTimeout(5000), async (req, res
         if (!session) {
             // REUSE DETECTED: bu hash daha önce rotate edilmiş demek → saldırı girişimi
             // Aynı family'deki tüm session'ları iptal et
-            const revocationPayload = verifyRefresh(refreshToken).catch?.(() => payload);
             await AuthSession.updateMany(
                 { userId: payload.sub },
                 { revokedAt: new Date() }

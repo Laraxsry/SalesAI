@@ -1,5 +1,5 @@
 import { useCallback, useState } from 'react';
-import { View, Text, StyleSheet, FlatList, TouchableOpacity, Switch, TextInput, ActivityIndicator } from 'react-native';
+import { View, Text, StyleSheet, FlatList, TouchableOpacity, Switch, TextInput, ActivityIndicator, Alert } from 'react-native';
 import { useRouter, useFocusEffect } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
 import { getSavedConversations, removeSavedConversation } from '../src/savedConversations';
@@ -32,8 +32,13 @@ export default function SavedScreen() {
 
     async function onToggleNotifications(value) {
         if (value) {
-            const { granted } = await requestPushPermission();
+            const { granted, reason } = await requestPushPermission();
             setNotificationsOn(granted);
+            if (!granted && reason === 'project-not-configured') {
+                Alert.alert('Bildirimler hazır değil', 'EAS projectId tanımlandıktan sonra push bildirimleri etkinleştirilebilir.');
+            } else if (!granted) {
+                Alert.alert('Bildirimler açılamadı', 'Cihaz kaydı tamamlanamadı. Ağ bağlantını ve bildirim iznini kontrol et.');
+            }
         } else {
             await setNotificationPref(false);
             setNotificationsOn(false);
@@ -166,9 +171,9 @@ export default function SavedScreen() {
                         </View>
                         <TouchableOpacity
                             style={styles.resumeButton}
-                            onPress={() => router.push(`/v/${item.token}`)}
+                            onPress={() => router.push(item.remote ? `/saved/${item.sessionId}` : `/v/${item.token}`)}
                         >
-                            <Text style={styles.resumeText}>Devam et</Text>
+                            <Text style={styles.resumeText}>{item.remote ? 'Detay' : 'Devam et'}</Text>
                         </TouchableOpacity>
                         <TouchableOpacity onPress={() => onRemove(item.id)} hitSlop={10} style={styles.removeButton}>
                             <Text style={styles.removeText}>✕</Text>

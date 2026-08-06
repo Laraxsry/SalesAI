@@ -1,5 +1,6 @@
 import { Platform } from 'react-native';
 import * as Notifications from 'expo-notifications';
+import Constants from 'expo-constants';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { registerPushToken } from './visitorIdentity';
 
@@ -16,6 +17,8 @@ Notifications.setNotificationHandler({
 
 /** Requests OS push permission, mints an Expo push token, and registers it via POST /api/v1/devices. */
 export async function requestPushPermission() {
+    if (Platform.OS === 'web') return { granted: false, reason: 'unsupported-platform' };
+
     const { status: existing } = await Notifications.getPermissionsAsync();
     let status = existing;
     if (existing !== 'granted') {
@@ -35,18 +38,23 @@ export async function requestPushPermission() {
         });
     }
 
+    const projectId = Constants.easConfig?.projectId || Constants.expoConfig?.extra?.eas?.projectId;
+    if (!projectId) {
+        await setNotificationPref(false);
+        return { granted: false, reason: 'project-not-configured' };
+    }
+
     let token = null;
     try {
-        token = (await Notifications.getExpoPushTokenAsync()).data;
+        token = (await Notifications.getExpoPushTokenAsync({ projectId })).data;
     } catch (err) {
         console.warn('Could not obtain Expo push token (needs a real device + EAS project id):', err?.message);
     }
 
-    if (token) {
-        await registerPushToken(token, Platform.OS);
-    }
-    await setNotificationPref(true);
-    return { granted: true, token };
+    const registration = token ? await registerPushToken(token, Platform.OS) : null;
+    const enabled = Boolean(token && registration);
+    await setNotificationPref(enabled);
+    return { granted: enabled, token, reason: enabled ? null : 'registration-failed' };
 }
 
 export async function setNotificationPref(enabled) {

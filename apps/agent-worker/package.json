@@ -11,17 +11,17 @@
     "test": "vitest run"
   },
   "dependencies": {
-    "@livekit/agents": "^1.4.11",
-    "@livekit/agents-plugin-openai": "^1.4.11",
-    "@livekit/agents-plugin-silero": "^1.4.11",
-    "@livekit/agents-plugin-tavus": "^1.5.0",
+    "@livekit/agents": "1.6.1",
+    "@livekit/agents-plugin-openai": "1.6.1",
+    "@livekit/agents-plugin-silero": "1.6.1",
+    "@livekit/agents-plugin-tavus": "1.6.1",
     "@livekit/rtc-node": "^0.13.29",
     "@opentelemetry/api": "^1.9.1",
-    "@opentelemetry/auto-instrumentations-node": "^0.47.0",
-    "@opentelemetry/exporter-trace-otlp-http": "^0.52.1",
-    "@opentelemetry/resources": "^1.30.1",
-    "@opentelemetry/sdk-node": "^0.52.1",
-    "@opentelemetry/semantic-conventions": "^1.30.0",
+    "@opentelemetry/auto-instrumentations-node": "^0.79.0",
+    "@opentelemetry/exporter-trace-otlp-http": "^0.221.0",
+    "@opentelemetry/resources": "^2.10.0",
+    "@opentelemetry/sdk-node": "^0.221.0",
+    "@opentelemetry/semantic-conventions": "^1.43.0",
     "@repo/agent": "*",
     "@repo/avatar": "*",
     "@repo/config-env": "*",
@@ -30,13 +30,13 @@
     "@repo/realtime": "*",
     "@repo/screen": "*",
     "@repo/utils": "*",
-    "sharp": "^0.34.5"
+    "sharp": "^0.35.3"
   },
   "devDependencies": {
-    "@opentelemetry/core": "^1.30.1",
+    "@opentelemetry/core": "^2.10.0",
     "@repo/eslint-config": "*",
     "@repo/testing": "*",
     "eslint": "^9.17.0",
-    "vitest": "^2.1.8"
+    "vitest": "^4.1.10"
   }
 }

@@ -1,5 +1,7 @@
 import { Platform } from 'react-native';
 
+/* global __DEV__ */
+
 // In development:
 // - iOS Simulator can use localhost (127.0.0.1)
 // - Android Emulator must use 10.0.2.2 to access the host's localhost
@@ -19,8 +21,7 @@ const getApiUrl = () => {
         }
         return `http://${LOCAL_IP}:5001`;
     }
-    // Production API URL
-    return 'https://api.salesai.example.com';
+    throw new Error('EXPO_PUBLIC_API_URL must be configured for production builds.');
 };
 
 const getLiveKitUrl = () => {
@@ -31,8 +32,7 @@ const getLiveKitUrl = () => {
         }
         return `ws://${LOCAL_IP}:7880`;
     }
-    // Production LiveKit URL
-    return 'wss://livekit.salesai.example.com';
+    throw new Error('EXPO_PUBLIC_LIVEKIT_URL must be configured for production builds.');
 };
 
 export const CONFIG = {

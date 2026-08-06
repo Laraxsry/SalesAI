@@ -12,7 +12,6 @@ import { Logger } from '@repo/logger';
  * - İstemciye temiz bir hata yanıtı döner
  * - Production'da stack trace göstermez (güvenlik)
  */
-// eslint-disable-next-line no-unused-vars
 export function errorHandler(err, req, res, _next) {
     // Mongoose validation hatası (ör: zorunlu alan eksik)
     if (err.name === 'ValidationError') {

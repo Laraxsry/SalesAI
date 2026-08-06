@@ -1,25 +1,58 @@
-import { useState, useEffect } from 'react';
-import { View, Text, StyleSheet, TouchableOpacity, ActivityIndicator, Platform, PermissionsAndroid, Alert } from 'react-native';
+import { useState, useEffect, useRef } from 'react';
+import { View, Text, StyleSheet, TouchableOpacity, ActivityIndicator, Platform, PermissionsAndroid, Alert, Linking } from 'react-native';
 import { useLocalSearchParams, useRouter } from 'expo-router';
-import { LiveKitRoom, useTracks, useRoomContext, AudioSession } from '@livekit/react-native';
 import { Track, RoomEvent } from 'livekit-client';
 import { StatusBar } from 'expo-status-bar';
 import * as Haptics from 'expo-haptics';
 import { CONFIG } from '../../config';
 import { saveConversation } from '../../src/savedConversations';
 import { getVisitorId } from '../../src/visitorIdentity';
-import { AvatarView } from '../../src/components/AvatarView';
 import { Captions } from '../../src/components/Captions';
 import { CallControls } from '../../src/components/CallControls';
 
-export default function SessionScreen() {
+/* global __DEV__ */
+
+const liveKitNative = Platform.OS === 'web' ? {} : require('@livekit/react-native');
+const { LiveKitRoom, useTracks, useRoomContext, AudioSession } = liveKitNative;
+const AvatarView = Platform.OS === 'web' ? null : require('../../src/components/AvatarView').AvatarView;
+
+export default function SessionRoute() {
+    if (Platform.OS === 'web') return <WebSessionRedirect />;
+    return <NativeSessionScreen />;
+}
+
+function WebSessionRedirect() {
+    const { token } = useLocalSearchParams();
+    const router = useRouter();
+    const visitorBase = process.env.EXPO_PUBLIC_VISITOR_URL || (__DEV__ ? 'http://localhost:5174' : 'https://app.salesai.com');
+    const destination = `${visitorBase}/v/${encodeURIComponent(token)}`;
+
+    useEffect(() => {
+        Linking.openURL(destination).catch(() => {});
+    }, [destination]);
+
+    return (
+        <View style={styles.centerContainer}>
+            <Text style={styles.loadingText}>Web görüşmesi açılıyor…</Text>
+            <TouchableOpacity style={styles.retryButton} onPress={() => Linking.openURL(destination)}>
+                <Text style={styles.retryText}>Görüşmeyi aç</Text>
+            </TouchableOpacity>
+            <TouchableOpacity style={styles.backButton} onPress={() => router.replace('/')}>
+                <Text style={styles.backText}>Ana ekrana dön</Text>
+            </TouchableOpacity>
+        </View>
+    );
+}
+
+function NativeSessionScreen() {
     const { token } = useLocalSearchParams();
     const router = useRouter();
 
     const [connectionState, setConnectionState] = useState('idle'); // idle, permissions, fetching, connecting, connected, error
     const [errorMessage, setErrorMessage] = useState('');
     const [connDetails, setConnDetails] = useState(null);
-    const [agentName, setAgentName] = useState('AI Representative');
+    const [agentName, setAgentName] = useState('AI Temsilcisi');
+    const endedRef = useRef(false);
 
     // Prepares the native audio session (speaker/earpiece routing, category) before joining.
     useEffect(() => {
@@ -32,20 +65,21 @@ export default function SessionScreen() {
     // Request permissions and fetch connection details
     const startSession = async () => {
         try {
+            endedRef.current = false;
             setConnectionState('permissions');
             if (Platform.OS === 'android') {
                 const granted = await PermissionsAndroid.request(
                     PermissionsAndroid.PERMISSIONS.RECORD_AUDIO,
                     {
-                        title: 'Microphone Permission',
-                        message: 'SalesAI needs access to your microphone to converse with the agent.',
-                        buttonNeutral: 'Ask Me Later',
-                        buttonNegative: 'Cancel',
-                        buttonPositive: 'OK',
+                        title: 'Mikrofon İzni',
+                        message: 'Temsilciyle konuşabilmek için SalesAI mikrofon erişimine ihtiyaç duyar.',
+                        buttonNeutral: 'Daha Sonra',
+                        buttonNegative: 'Vazgeç',
+                        buttonPositive: 'İzin Ver',
                     }
                 );
                 if (granted !== PermissionsAndroid.RESULTS.GRANTED) {
-                    throw new Error('Microphone permission is required to speak with the agent.');
+                    throw new Error('Temsilciyle konuşmak için mikrofon izni gereklidir.');
                 }
             }
 
@@ -59,7 +93,7 @@ export default function SessionScreen() {
 
             if (!res.ok) {
                 const errData = await res.json().catch(() => ({}));
-                throw new Error(errData.error || 'Failed to start session. The link might be expired or invalid.');
+                throw new Error(errData.error || 'Görüşme başlatılamadı. Bağlantı geçersiz veya süresi dolmuş olabilir.');
             }
 
             const data = await res.json();
@@ -67,7 +101,7 @@ export default function SessionScreen() {
             setConnectionState('connecting');
         } catch (err) {
             console.error('Error starting session:', err);
-            setErrorMessage(err.message);
+            setErrorMessage(err instanceof TypeError ? 'SalesAI hizmetine ulaşılamıyor. Lütfen tekrar deneyin.' : err.message);
             setConnectionState('error');
         }
     };
@@ -79,7 +113,9 @@ export default function SessionScreen() {
     }, [token]);
 
     const handleDisconnect = () => {
-        saveConversation({ token, agentName }).catch(() => {});
+        if (endedRef.current) return;
+        endedRef.current = true;
+        saveConversation({ token, agentName, sessionId: connDetails?.sessionId }).catch(() => {});
         if (connDetails?.sessionId && connDetails?.roomName) {
             // Public, roomName-verified endpoint (mirrors the web visitor app) —
             // marks the session ended and triggers post-call analysis/lead
@@ -98,7 +134,7 @@ export default function SessionScreen() {
         return (
             <View style={styles.centerContainer}>
                 <ActivityIndicator size="large" color="#6d5efc" />
-                <Text style={styles.loadingText}>Requesting Microphone Permission...</Text>
+                <Text style={styles.loadingText}>Mikrofon izni isteniyor…</Text>
             </View>
         );
     }
@@ -107,9 +143,9 @@ export default function SessionScreen() {
         return (
             <View style={styles.centerContainer}>
                 <ActivityIndicator size="large" color="#6d5efc" />
-                <Text style={styles.loadingText}>Creating session with agent...</Text>
+                <Text style={styles.loadingText}>Temsilciyle görüşme hazırlanıyor…</Text>
                 <TouchableOpacity style={[styles.backButton, { marginTop: 24 }]} onPress={handleDisconnect}>
-                    <Text style={styles.backText}>Cancel</Text>
+                    <Text style={styles.backText}>Vazgeç</Text>
                 </TouchableOpacity>
             </View>
         );
@@ -118,13 +154,13 @@ export default function SessionScreen() {
     if (connectionState === 'error') {
         return (
             <View style={styles.centerContainer}>
-                <Text style={styles.errorHeader}>Connection Failed</Text>
+                <Text style={styles.errorHeader}>Bağlantı Kurulamadı</Text>
                 <Text style={styles.errorDesc}>{errorMessage}</Text>
                 <TouchableOpacity style={styles.retryButton} onPress={startSession}>
-                    <Text style={styles.retryText}>Retry</Text>
+                    <Text style={styles.retryText}>Tekrar Dene</Text>
                 </TouchableOpacity>
                 <TouchableOpacity style={styles.backButton} onPress={() => router.replace('/')}>
-                    <Text style={styles.backText}>Go Back</Text>
+                    <Text style={styles.backText}>Ana Ekrana Dön</Text>
                 </TouchableOpacity>
             </View>
         );
@@ -137,16 +173,16 @@ export default function SessionScreen() {
             {connectionState === 'connecting' && (
                 <View style={[StyleSheet.absoluteFill, styles.centerContainer, { zIndex: 10 }]}>
                     <ActivityIndicator size="large" color="#6d5efc" />
-                    <Text style={styles.loadingText}>Connecting to LiveKit Server...</Text>
+                    <Text style={styles.loadingText}>Görüşmeye bağlanılıyor…</Text>
                     <TouchableOpacity style={[styles.backButton, { marginTop: 24 }]} onPress={handleDisconnect}>
-                        <Text style={styles.backText}>Cancel</Text>
+                        <Text style={styles.backText}>Vazgeç</Text>
                     </TouchableOpacity>
                 </View>
             )}
 
             {connDetails && (
                 <LiveKitRoom
-                    serverUrl={CONFIG.LIVEKIT_URL}
+                    serverUrl={connDetails.livekitUrl || CONFIG.LIVEKIT_URL}
                     token={connDetails.token}
                     connect={true}
                     audio={true}
@@ -214,7 +250,7 @@ function RoomView({ agentName, setAgentName, avatarProvider, handleDisconnect })
 
         const handleParticipantConnected = (participant) => {
             if (participant.identity.startsWith('agent_') || participant.identity.includes('worker')) {
-                setAgentName(participant.name || 'AI Representative');
+                setAgentName(participant.name || 'AI Temsilcisi');
             }
         };
         room.on('participantConnected', handleParticipantConnected);
@@ -294,7 +330,6 @@ function RoomView({ agentName, setAgentName, avatarProvider, handleDisconnect })
 
     const onEndPress = () => {
         room?.disconnect();
-        handleDisconnect();
     };
 
     return (

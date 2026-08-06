@@ -9,7 +9,7 @@ export function Captions({ text }) {
                     <Text style={styles.captionsText}>{text}</Text>
                 </View>
             ) : (
-                <Text style={styles.listeningText}>Listening to agent...</Text>
+                <Text style={styles.listeningText}>Temsilci dinleniyor…</Text>
             )}
         </View>
     );

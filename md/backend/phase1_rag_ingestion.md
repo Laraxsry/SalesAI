@@ -28,31 +28,44 @@
      client yüklediği dosyanın gerçek MIME tipini gönderir, worker uzantı yerine bunu kullanır.
    - [x] MinIO bucket (`salesai-uploads`) API ayağa kalkarken `ensureBucket()` ile otomatik oluşturuluyor
      (önceden bucket yoksa presigned URL çalışmıyordu).
-   - [ ] `Product.websiteUrl` girildiğinde, aynı URL otomatik olarak bir `KnowledgeSource`
-     (`type: 'url'`) olarak da oluşturulup ingestion kuyruğuna alınsın. Şu an `websiteUrl`
-     sadece Guided Tour'un gideceği adresi belirliyor (`apps/agent-worker/src/agent.js`)
-     ve hiçbir şekilde crawl/chunk/embed edilmiyor — seller ayrıca Knowledge'a aynı
-     linki elle eklemezse agent siteyi gösterebilir ama içeriği hakkında hiçbir şey
-     bilmez. `POST /products` ve `PATCH /products/:id`'de `websiteUrl` set/güncellendiğinde
-     karşılık gelen `KnowledgeSource`'u otomatik create/update edip `enqueue('ingestion', ...)`
-     çağırmalı (idempotent: aynı URL için tekrar kaynak oluşturmamalı, var olanı re-ingest etmeli).
-   - [x] `KnowledgeSource type: 'url'/'api'` crawl'ı artık `Product.demoSession`'ı (tur ile
-     aynı cookie/localStorage materyali) kullanıyor — önceden `extractFromUrl()` tamamen
-     kimliksiz bir Playwright context açıyordu, auth gerektiren sayfalarda login ekranını/
-     public görünümü indeksliyordu. `apps/worker-ingestion/src/extractors/url.js` artık
-     opsiyonel `auth` parametresi alıyor, `handlers/ingest-source.js` bunu `Product.demoSession`'dan
-     çözüp geçiyor.
+   - [x] `Product.websiteUrl` girildiğinde, aynı URL otomatik olarak bir `KnowledgeSource`
+     (`type: 'url'`) olarak da oluşturulup ingestion kuyruğuna alınsın. `POST /products` ve
+     `PATCH /products/:id`'de `websiteUrl` set/güncellendiğinde `syncWebsiteUrlSource()` yardımcı
+     fonksiyonu çağrılır: kaynak yoksa oluşturulur + `enqueue('ingest-source', ...)`; URL değiştiyse
+     güncellenir + re-ingest edilir; URL silinirse kaynak `status:'disabled'` yapılır (geçmiş
+     chunk'lar korunur, liste görünümünden filtrelenir). İdempotent: `meta.autoCreated:true` ile
+     etiketlenen auto-source sayesinde aynı URL için birden fazla kaynak oluşmaz.
+   - [x] `KnowledgeSource type: 'url'/'api'` crawl'ı artık `Product.demoSession`'ı kullanıyor —
+     önceden `extractFromUrl()` tamamen kimliksiz bir Playwright context açıyordu, auth
+     gerektiren sayfalarda login ekranını/public görünümü indeksliyordu. `apps/worker-ingestion/src/extractors/url.js`
+     artık opsiyonel `auth` parametresi alıyor, `handlers/ingest-source.js` bunu `Product.demoSession`'dan
+     çözüp geçiyor. **Güncelleme:** `auth` artık cookie/localStorage snapshot değil,
+     `{ loginUrl?, email, password, selectors? }` — crawl başlamadan önce `@repo/screen`'in
+     paylaşılan `loginWithCredentials()` fonksiyonuyla sitenin gerçek giriş formu dolduruluyor
+     (bkz. `md/backend/phase3_screen_intelligence.md` — aynı sebep: snapshot yöntemi access
+     token süresi (genelde ~15dk) dolunca bozuluyordu).
    - [x] `extractFromUrl()` artık tek sayfa yerine **aynı-origin BFS crawl** yapıyor:
      kök URL'den başlayıp sayfadaki `<a href>` linklerini (SPA route'ları dahil, gerçek
      `<a>` etiketine render edilen client-side router linkleri de yakalanıyor) `URL_CRAWL_MAX_PAGES`
      (varsayılan 10, env ile ayarlanabilir) sayfaya kadar takip ediyor, tek bir authenticated
-     browser context'i (auth bir kez enjekte edilip tüm sayfalarda cookie/localStorage kalıcı
-     kalıyor) üzerinden. Her sayfa `checkSSRFUrl` ile ayrıca doğrulanıyor (kötü/ulaşılamaz link
+     browser context'i (giriş bir kez yapılıp tüm sayfalarda oturum kalıcı kalıyor) üzerinden.
+     Her sayfa `checkSSRFUrl` ile ayrıca doğrulanıyor (kötü/ulaşılamaz link
      crawl'ı durdurmuyor, sadece atlanıyor). Sonuç, `[Page: <url>]` etiketiyle tek bir `text`'te
      birleştirilip mevcut `ingestSource()` akışına (tek çağrı, değişmeden) veriliyor —
      `ingestSource()`'un `deleteBySource()` çağırması nedeniyle sayfa başına ayrı `ingestSource()`
      çağrısı yapılmadı (önceki sayfanın chunk'larını silerdi). Seller artık panelin tek bir
      giriş URL'ini vermesi yeterli; alt-route'ları tek tek eklemesine gerek yok.
+   - [x] **Collapsed nav / accordion sidebar desteği** — büyük panel'lerde ("Reports" gibi bir
+     ana başlığın altında bir düzine alt sayfa) alt linkler tıklanıp genişletilmeden DOM'a hiç
+     render edilmiyordu, crawler bunları göremiyordu. `extractPage()` artık her sayfada link
+     taramadan önce `expandCollapsedNav()` çağırıyor — `[aria-expanded="false"]` toggle'larını
+     bulup tıklıyor (bounded, `URL_CRAWL_MAX_EXPAND_CLICKS`, varsayılan 25), böylece nested
+     sidebar linkleri açığa çıkıp `<a href>` taramasına dahil oluyor. `URL_CRAWL_MAX_PAGES`
+     varsayılanı da 10 → 40'a çıkarıldı (büyük panel'ler için yetersizdi).
+   - [x] **404/5xx sayfalar artık indexlenmiyor** — `extractPage()` `page.goto()`'nun response
+     status'unü kontrol ediyor, 400+ dönen sayfaları (kırık link, silinmiş route) `ok:false`
+     ile işaretleyip atlıyor — hem hata sayfasının boilerplate metni knowledge'a girmiyor hem de
+     o sayfadan link takip edilmiyor (zaten yok).
 
 2. **Ingestion worker** ([`worker-ingestion`](../../apps/worker-ingestion))
    - Extraction by modality (see `handlers/ingest-source.js`):

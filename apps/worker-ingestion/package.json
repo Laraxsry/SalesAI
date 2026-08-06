@@ -17,6 +17,7 @@
     "@repo/queue": "*",
     "@repo/rag": "*",
     "@repo/realtime": "*",
+    "@repo/screen": "*",
     "@repo/storage": "*",
     "@repo/utils": "*",
     "cheerio": "^1.2.0",

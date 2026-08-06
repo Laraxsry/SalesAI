@@ -1,14 +1,21 @@
-import { useParams, Link } from 'react-router-dom';
+import { useParams, Link, useNavigate } from 'react-router-dom';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { ArrowLeft, ExternalLink, BookOpen, Bot, Key, AlertTriangle } from 'lucide-react';
+import { ArrowLeft, ExternalLink, BookOpen, Bot, Key, AlertTriangle, Trash2 } from 'lucide-react';
 import { useState } from 'react';
 import { productsApi } from '../lib/api.js';
 
 function DemoSessionForm({ product }) {
     const queryClient = useQueryClient();
-    const [jsonStr, setJsonStr] = useState(
-        product.demoSession ? JSON.stringify(product.demoSession, null, 2) : ''
+    const existing = product.demoSession || {};
+    const [loginUrl, setLoginUrl] = useState(existing.loginUrl || '');
+    const [email, setEmail] = useState(existing.email || '');
+    const [password, setPassword] = useState(existing.password || '');
+    const [showAdvanced, setShowAdvanced] = useState(
+        Boolean(existing.selectors?.email || existing.selectors?.password || existing.selectors?.submit)
     );
+    const [emailSelector, setEmailSelector] = useState(existing.selectors?.email || '');
+    const [passwordSelector, setPasswordSelector] = useState(existing.selectors?.password || '');
+    const [submitSelector, setSubmitSelector] = useState(existing.selectors?.submit || '');
     const [error, setError] = useState(null);
 
     const mutation = useMutation({
@@ -22,16 +29,33 @@ function DemoSessionForm({ product }) {
     });
 
     const handleSave = () => {
-        if (!jsonStr.trim()) {
-            mutation.mutate(null);
+        if (!email.trim() || !password.trim()) {
+            setError('Email ve şifre zorunludur.');
             return;
         }
-        try {
-            const parsed = JSON.parse(jsonStr);
-            mutation.mutate(parsed);
-        } catch (e) {
-            setError('Geçersiz JSON formatı: ' + e.message);
-        }
+        const selectors = {};
+        if (emailSelector.trim()) selectors.email = emailSelector.trim();
+        if (passwordSelector.trim()) selectors.password = passwordSelector.trim();
+        if (submitSelector.trim()) selectors.submit = submitSelector.trim();
+
+        setError(null);
+        mutation.mutate({
+            ...(loginUrl.trim() && { loginUrl: loginUrl.trim() }),
+            email: email.trim(),
+            password,
+            ...(Object.keys(selectors).length > 0 && { selectors })
+        });
+    };
+
+    const handleRemove = () => {
+        if (!confirm('Demo oturumu bilgilerini kaldırmak istediğinize emin misiniz?')) return;
+        mutation.mutate(null);
+        setLoginUrl('');
+        setEmail('');
+        setPassword('');
+        setEmailSelector('');
+        setPasswordSelector('');
+        setSubmitSelector('');
     };
 
     return (
@@ -41,31 +65,104 @@ function DemoSessionForm({ product }) {
                 <h2 className="text-lg font-medium text-text">Demo Oturumu (Guided Tour)</h2>
             </div>
             <p className="text-sm text-text-muted mb-4">
-                AI temsilcinizin ürününüzü ziyaretçilere gösterirken (Ekran Paylaşımı Turu) sitenize hangi hesapla giriş yapacağını buradan ayarlayabilirsiniz.
+                AI temsilcinizin ürününüzü ziyaretçilere gösterirken (Ekran Paylaşımı Turu) sitenize hangi hesapla giriş
+                yapacağını buradan ayarlayabilirsiniz. Tur her başladığında bu bilgilerle sitenizin gerçek giriş formu
+                doldurulup giriş yapılır — süresi dolan bir oturum/token yapıştırmanız gerekmez.
             </p>
-            
+
             <div className="mb-4 rounded bg-bg-muted p-3 text-xs text-text-muted border border-border/50">
                 <p className="flex items-center gap-1.5 font-medium text-brand-light mb-1">
                     <AlertTriangle size={14} /> Güvenlik Uyarısı
                 </p>
                 <ul className="list-disc pl-4 space-y-1">
-                    <li>Buraya eklediğiniz oturum bilgileri (cookie) veritabanımızda <strong>AES-256-GCM ile şifrelenerek</strong> saklanır.</li>
+                    <li>Buraya girdiğiniz bilgiler (şifre dahil) veritabanımızda <strong>AES-256-GCM ile şifrelenerek</strong> saklanır.</li>
                     <li>Sadece <strong>"Read-Only" (Sadece Okunabilir)</strong> yetkilere sahip, gerçek müşteri verisi içermeyen bir demo hesabı kullanın.</li>
-                    <li>Admin/Yönetici hesaplarının cookie'lerini buraya <strong>KESİNLİKLE</strong> girmeyin.</li>
+                    <li>Admin/Yönetici hesaplarının bilgilerini buraya <strong>KESİNLİKLE</strong> girmeyin.</li>
                 </ul>
+            </div>
+
+            <div className="mb-4 grid gap-4 sm:grid-cols-2">
+                <div>
+                    <label className="block text-xs font-medium text-text-muted mb-2">Demo Hesap E-postası</label>
+                    <input
+                        type="email"
+                        className="w-full rounded-[var(--radius-input)] border border-input-border bg-input-bg px-3 py-2 text-sm text-text focus:border-brand focus:outline-none focus:ring-1 focus:ring-brand"
+                        placeholder="demo@urun.com"
+                        value={email}
+                        onChange={(e) => setEmail(e.target.value)}
+                    />
+                </div>
+                <div>
+                    <label className="block text-xs font-medium text-text-muted mb-2">Demo Hesap Şifresi</label>
+                    <input
+                        type="password"
+                        className="w-full rounded-[var(--radius-input)] border border-input-border bg-input-bg px-3 py-2 text-sm text-text focus:border-brand focus:outline-none focus:ring-1 focus:ring-brand"
+                        placeholder="••••••••"
+                        value={password}
+                        onChange={(e) => setPassword(e.target.value)}
+                    />
+                </div>
             </div>
 
             <div className="mb-4">
                 <label className="block text-xs font-medium text-text-muted mb-2">
-                    Cookie / LocalStorage JSON
+                    Giriş Sayfası URL'i <span className="text-text-muted/70">(opsiyonel — boş bırakılırsa ürün URL'i kullanılır)</span>
                 </label>
-                <textarea
-                    className="w-full h-48 rounded-[var(--radius-input)] border border-input-border bg-input-bg px-3 py-2 text-sm text-text font-mono focus:border-brand focus:outline-none focus:ring-1 focus:ring-brand"
-                    placeholder='{"cookies": [{"name": "session", "value": "...", "domain": "example.com", "path": "/", "secure": true}]}'
-                    value={jsonStr}
-                    onChange={(e) => setJsonStr(e.target.value)}
+                <input
+                    type="text"
+                    className="w-full rounded-[var(--radius-input)] border border-input-border bg-input-bg px-3 py-2 text-sm text-text focus:border-brand focus:outline-none focus:ring-1 focus:ring-brand"
+                    placeholder="https://urun.com/login"
+                    value={loginUrl}
+                    onChange={(e) => setLoginUrl(e.target.value)}
                 />
             </div>
+
+            <button
+                type="button"
+                onClick={() => setShowAdvanced((v) => !v)}
+                className="mb-3 text-xs font-medium text-brand-light hover:underline"
+            >
+                {showAdvanced ? 'Gelişmiş ayarları gizle' : 'Gelişmiş ayarlar (form alanı bulunamazsa)'}
+            </button>
+
+            {showAdvanced && (
+                <div className="mb-4 grid gap-4 rounded border border-border/50 bg-bg-muted p-3 sm:grid-cols-3">
+                    <p className="sm:col-span-3 text-xs text-text-muted">
+                        Giriş formu otomatik algılanır; algılama başarısız olursa DevTools'tan bulduğunuz CSS
+                        selector'ları buraya girin.
+                    </p>
+                    <div>
+                        <label className="block text-xs font-medium text-text-muted mb-2">Email input selector</label>
+                        <input
+                            type="text"
+                            className="w-full rounded-[var(--radius-input)] border border-input-border bg-input-bg px-3 py-2 text-xs font-mono text-text focus:border-brand focus:outline-none focus:ring-1 focus:ring-brand"
+                            placeholder="otomatik algılanır"
+                            value={emailSelector}
+                            onChange={(e) => setEmailSelector(e.target.value)}
+                        />
+                    </div>
+                    <div>
+                        <label className="block text-xs font-medium text-text-muted mb-2">Şifre input selector</label>
+                        <input
+                            type="text"
+                            className="w-full rounded-[var(--radius-input)] border border-input-border bg-input-bg px-3 py-2 text-xs font-mono text-text focus:border-brand focus:outline-none focus:ring-1 focus:ring-brand"
+                            placeholder="otomatik algılanır"
+                            value={passwordSelector}
+                            onChange={(e) => setPasswordSelector(e.target.value)}
+                        />
+                    </div>
+                    <div>
+                        <label className="block text-xs font-medium text-text-muted mb-2">Giriş butonu selector</label>
+                        <input
+                            type="text"
+                            className="w-full rounded-[var(--radius-input)] border border-input-border bg-input-bg px-3 py-2 text-xs font-mono text-text focus:border-brand focus:outline-none focus:ring-1 focus:ring-brand"
+                            placeholder="otomatik algılanır"
+                            value={submitSelector}
+                            onChange={(e) => setSubmitSelector(e.target.value)}
+                        />
+                    </div>
+                </div>
+            )}
 
             {error && <p className="mb-4 text-sm text-red-400">{error}</p>}
 
@@ -77,14 +174,15 @@ function DemoSessionForm({ product }) {
                 >
                     {mutation.isPending ? 'Kaydediliyor...' : 'Kaydet'}
                 </button>
-                <a 
-                    href="https://developer.chrome.com/docs/devtools/storage/cookies/" 
-                    target="_blank" 
-                    rel="noreferrer"
-                    className="inline-flex items-center gap-1.5 px-4 py-2 text-sm text-text-muted hover:text-text"
-                >
-                    <ExternalLink size={14} /> Nasıl kopyalarım?
-                </a>
+                {product.demoSession && (
+                    <button
+                        onClick={handleRemove}
+                        disabled={mutation.isPending}
+                        className="rounded-[var(--radius-button)] px-4 py-2 text-sm font-medium text-red-400 hover:bg-red-500/10 disabled:opacity-50"
+                    >
+                        Kaldır
+                    </button>
+                )}
             </div>
         </div>
     );
@@ -92,20 +190,49 @@ function DemoSessionForm({ product }) {
 
 export function ProductDetail() {
     const { id } = useParams();
+    const navigate = useNavigate();
+    const queryClient = useQueryClient();
+    const [deleteError, setDeleteError] = useState(null);
     const { data: product, isLoading, error } = useQuery({
         queryKey: ['product', id],
         queryFn: () => productsApi.get(id)
     });
+
+    const deleteMutation = useMutation({
+        mutationFn: () => productsApi.remove(id),
+        onSuccess: () => {
+            queryClient.invalidateQueries({ queryKey: ['products'] });
+            navigate('/');
+        },
+        onError: (err) => setDeleteError(err.message)
+    });
+
+    function handleDelete() {
+        if (!confirm(`"${product.name}" ürününü ve ona bağlı tüm agent'ları silmek istediğinize emin misiniz? Bu işlem geri alınamaz.`)) return;
+        setDeleteError(null);
+        deleteMutation.mutate();
+    }
 
     if (isLoading) return <p className="text-sm text-text-muted">Yükleniyor…</p>;
     if (error) return <p className="text-sm text-red-400">{error.message}</p>;
 
     return (
         <div>
-            <Link to="/" className="mb-6 inline-flex items-center gap-1.5 text-sm text-text-muted hover:text-text">
-                <ArrowLeft size={14} />
-                Ürünler
-            </Link>
+            <div className="mb-6 flex items-center justify-between">
+                <Link to="/" className="inline-flex items-center gap-1.5 text-sm text-text-muted hover:text-text">
+                    <ArrowLeft size={14} />
+                    Ürünler
+                </Link>
+                <button
+                    onClick={handleDelete}
+                    disabled={deleteMutation.isPending}
+                    className="inline-flex items-center gap-1.5 rounded-[var(--radius-input)] px-3 py-1.5 text-xs font-medium text-red-400 hover:bg-red-500/10 disabled:opacity-50"
+                >
+                    <Trash2 size={14} />
+                    {deleteMutation.isPending ? 'Siliniyor…' : 'Ürünü sil'}
+                </button>
+            </div>
+            {deleteError && <p className="mb-4 text-sm text-red-400">{deleteError}</p>}
 
             <h1 className="text-2xl font-bold text-text">{product.name}</h1>
             {product.description && <p className="mt-2 text-sm text-text-muted">{product.description}</p>}

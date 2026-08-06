@@ -163,12 +163,29 @@ export default function SessionScreen() {
         activeRoom.on(RoomEvent.Reconnecting, onReconnecting);
         activeRoom.on(RoomEvent.Reconnected, onReconnected);
 
+        // Agent-initiated stop: the agent-worker can't stop this device's own
+        // screen share track, so it asks over the data channel instead.
+        const handleData = (payload) => {
+            let msg;
+            try {
+                msg = JSON.parse(new TextDecoder().decode(payload));
+            } catch {
+                return;
+            }
+            if (msg?.type === 'salesai:stop_screen_share' && activeRoom.localParticipant) {
+                activeRoom.localParticipant.setScreenShareEnabled(false).catch(() => {});
+                setIsSharingScreen(false);
+            }
+        };
+        activeRoom.on(RoomEvent.DataReceived, handleData);
+
         return () => {
             if (unsubscribe) unsubscribe();
             activeRoom.off('transcriptionReceived', handleTranscription);
             activeRoom.off('participantConnected', handleParticipantConnected);
             activeRoom.off(RoomEvent.Reconnecting, onReconnecting);
             activeRoom.off(RoomEvent.Reconnected, onReconnected);
+            activeRoom.off(RoomEvent.DataReceived, handleData);
         };
     }, [activeRoom]);
 

@@ -282,6 +282,62 @@ async function runSession(ctx) {
         });
     });
 
+    // Stops whatever screen is currently visible. Mode A (guided tour) is a
+    // track this worker owns, so it's closed and unpublished directly. Mode B
+    // (the customer's own screen) is owned by the visitor's client — the
+    // agent has no way to stop that track itself, so it sends a data-channel
+    // request and relies on the visitor app to act on it.
+    const stopScreenShare = async () => {
+        const results = {};
+
+        if (isTourActive) {
+            try {
+                if (tourPublishInterval) {
+                    clearInterval(tourPublishInterval);
+                    tourPublishInterval = null;
+                }
+                if (tourVideoTrack) {
+                    try {
+                        await ctx.room.localParticipant.unpublishTrack(tourVideoTrack);
+                    } catch (e) {
+                        log.warn('Failed to unpublish tour track', { error: e.message });
+                    }
+                    tourVideoTrack = null;
+                }
+                tourVideoSource = null;
+                await tour.close();
+                isTourActive = false;
+                results.tour = 'stopped';
+
+                await Message.create({
+                    sessionId: session._id,
+                    role: 'system',
+                    text: '[screen:tour_stopped]',
+                    meta: { action: 'tour_stopped' }
+                }).catch(() => {});
+            } catch (e) {
+                log.error('Failed to stop guided tour', { error: e.message });
+                results.tour = `error: ${e.message}`;
+            }
+        }
+
+        if (screenModes.includes('customer-share') && latestCustomerFrameBase64) {
+            try {
+                const payload = new TextEncoder().encode(JSON.stringify({ type: 'salesai:stop_screen_share' }));
+                await ctx.room.localParticipant.publishData(payload, { reliable: true, topic: 'salesai' });
+                results.customerShare = 'stop_requested';
+            } catch (e) {
+                log.warn('Failed to send stop-screen-share signal to visitor', { error: e.message });
+                results.customerShare = `error: ${e.message}`;
+            }
+        }
+
+        if (!results.tour && !results.customerShare) {
+            return { ok: false, error: 'No active screen share to stop.' };
+        }
+        return { ok: true, ...results };
+    };
+
     const screenControls = {
         read: async (question) => {
             if (!screenModes.includes('customer-share')) {
@@ -316,7 +372,8 @@ async function runSession(ctx) {
     const tools = withToolCallMetrics(buildTools({
         productId: String(product._id),
         tour: tourControls,
-        screen: screenControls
+        screen: screenControls,
+        stopScreenShare
     })).map(t => llm.tool({
         name: t.name,
         description: t.description,

@@ -8,7 +8,7 @@ import {
     useRoomContext,
     useTracks
 } from '@livekit/components-react';
-import { Track } from 'livekit-client';
+import { RoomEvent, Track } from 'livekit-client';
 import { Logo } from '@repo/ui';
 import { Mic, MicOff, PhoneOff, ScreenShare, ScreenShareOff } from 'lucide-react';
 
@@ -57,6 +57,25 @@ export function VisitRoom({ embed, sessionId, roomName, onEnd }) {
         startedRef.current = true;
         localParticipant.setMicrophoneEnabled(true).catch(() => setMicError(true));
     }, [localParticipant]);
+
+    // Agent-initiated stop: when the customer asks the agent (by voice) to
+    // close the screen share, the agent-worker can't stop this track itself
+    // (it belongs to this client) — it sends a data-channel request instead.
+    useEffect(() => {
+        function handleData(payload) {
+            let msg;
+            try {
+                msg = JSON.parse(new TextDecoder().decode(payload));
+            } catch {
+                return;
+            }
+            if (msg?.type === 'salesai:stop_screen_share') {
+                localParticipant.setScreenShareEnabled(false).catch(() => {});
+            }
+        }
+        room.on(RoomEvent.DataReceived, handleData);
+        return () => room.off(RoomEvent.DataReceived, handleData);
+    }, [room, localParticipant]);
 
     function toggleMic() {
         localParticipant.setMicrophoneEnabled(!isMicrophoneEnabled).catch(() => setMicError(true));

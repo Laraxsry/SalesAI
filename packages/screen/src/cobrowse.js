@@ -17,6 +17,30 @@ const activeBrowsers = new Set();
 const MAX_CONCURRENT_BROWSERS = Number(process.env.MAX_TOUR_BROWSERS || 3);
 
 /**
+ * Candidate selectors for auto-detecting a login form's fields, tried in
+ * order until one matches a visible element. Overridable per-product via
+ * `auth.selectors` (see GuidedTour#login) for sites these don't match.
+ */
+const EMAIL_FIELD_SELECTORS = [
+    'input[type="email"]',
+    'input[autocomplete="username"]',
+    'input[name="email" i]',
+    'input[id="email" i]',
+    'input[name="username" i]',
+    'input[id="username" i]'
+];
+const PASSWORD_FIELD_SELECTORS = ['input[type="password"]'];
+const SUBMIT_SELECTORS = [
+    'button[type="submit"]',
+    'input[type="submit"]',
+    'button:has-text("Giriş")',
+    'button:has-text("Giriş Yap")',
+    'button:has-text("Log in")',
+    'button:has-text("Login")',
+    'button:has-text("Sign in")'
+];
+
+/**
  * Resolves a URL to a "trust key" for the SSRF guard below.
  *
  * For URLs with a recognised Public Suffix List domain (`allowPrivateDomains:
@@ -43,6 +67,35 @@ export function trustKey(url) {
     return getDomain(url, { allowPrivateDomains: true }) || parsed.origin;
 }
 
+/**
+ * Injects a captured cookie/localStorage snapshot into `page` — used for
+ * `Session.transientAuth` (the visitor's own live session, handed over
+ * single-use for one tour and deleted from the DB immediately after being
+ * read; see agent-worker/src/agent.js). Unlike a seller's long-lived demo
+ * account, this snapshot is consumed within seconds of being captured, so
+ * the access-token-expiry problem that made this approach unusable for
+ * `Product.demoSession` (see `loginWithCredentials`) doesn't apply here.
+ *
+ * @param {import('playwright').BrowserContext} context
+ * @param {import('playwright').Page} page
+ * @param {string} rootUrl - used to resolve the origin localStorage is set on.
+ * @param {{cookies?: object[], localStorage?: Record<string,string>}} auth
+ */
+export async function injectSessionSnapshot(context, page, rootUrl, auth) {
+    if (auth.cookies) {
+        await context.addCookies(auth.cookies);
+    }
+    if (auth.localStorage && rootUrl) {
+        const origin = new URL(rootUrl).origin;
+        await page.goto(origin, { waitUntil: 'domcontentloaded' });
+        await page.evaluate((storage) => {
+            for (const [key, value] of Object.entries(storage)) {
+                window.localStorage.setItem(key, value);
+            }
+        }, auth.localStorage);
+    }
+}
+
 export function assertHttpUrl(url) {
     let target;
     try {
@@ -63,9 +116,14 @@ export class GuidedTour {
      *   This list is never populated from a visitor conversation — that's
      *   the trust boundary the SSRF guard below depends on.
      * @param {'playwright'|'stagehand'} backend - which browser backend to drive.
-     * @param {{cookies?: object[], localStorage?: Record<string,string>}|null} auth -
-     *   optional demo-session material (cookies/localStorage) injected before
-     *   the tour starts, so the tour can show authenticated product screens.
+     * @param {({loginUrl?:string, email:string, password:string, selectors?:{email?:string,password?:string,submit?:string}}|{cookies?:object[], localStorage?:Record<string,string>})|null} auth -
+     *   Either `Product.demoSession` (seller-configured demo account — logs
+     *   into the real form fresh every tour via login(), since a captured
+     *   snapshot would go stale the moment the underlying access token
+     *   expires, often ~15min) or `Session.transientAuth` (the visitor's own
+     *   live cookies/localStorage, single-use — injected directly via
+     *   injectSessionSnapshot() since it's consumed within seconds of being
+     *   captured and staleness isn't a concern).
      */
     constructor({
         startUrl,
@@ -139,21 +197,18 @@ export class GuidedTour {
             this.page = await context.newPage();
         }
 
-        // Inject demo-session material (seller-provided, see Product model)
-        // before the first navigation so the tour lands already authenticated.
-        if (this.auth) {
-            if (this.auth.cookies) {
-                await context.addCookies(this.auth.cookies);
-            }
-            if (this.auth.localStorage && this.startUrl) {
-                const origin = new URL(this.startUrl).origin;
-                await this.page.goto(origin, { waitUntil: 'domcontentloaded' });
-                await this.page.evaluate((storage) => {
-                    for (const [key, value] of Object.entries(storage)) {
-                        window.localStorage.setItem(key, value);
-                    }
-                }, this.auth.localStorage);
-            }
+        // Authenticate before the first navigation so the tour lands already
+        // logged in. Two distinct sources, two distinct shapes:
+        //  - Product.demoSession: seller-configured, long-lived demo account
+        //    -> logs into the real form fresh every time (see login()).
+        //  - Session.transientAuth: visitor's own live cookies/localStorage,
+        //    handed over for this one session only and deleted from the DB
+        //    right after being read (see agent-worker/src/agent.js) -> no
+        //    staleness concern, so the direct snapshot injection is fine.
+        if (this.auth?.email && this.auth?.password) {
+            await this.login();
+        } else if (this.auth?.cookies || this.auth?.localStorage) {
+            await injectSessionSnapshot(context, this.page, this.startUrl, this.auth);
         }
 
         if (this.startUrl) {
@@ -169,6 +224,17 @@ export class GuidedTour {
             if (landedKey) this.trustedKeys.add(landedKey);
         }
         return this;
+    }
+
+    /**
+     * Logs into the product with the seller-provided demo credentials
+     * (Product.demoSession = { loginUrl?, email, password, selectors? }).
+     * Runs fresh at the start of every tour — unlike the old cookie/
+     * localStorage snapshot approach, a fresh login has no expiry to go
+     * stale against.
+     */
+    async login() {
+        await loginWithCredentials(this.page, this.auth, this.startUrl);
     }
 
     /** Navigate to a URL/path within the product. */
@@ -242,4 +308,84 @@ export class GuidedTour {
         }
         this.page = null;
     }
+}
+
+/**
+ * Finds the first visible element on `page` matching `override` (a
+ * seller-supplied CSS selector) or, absent that, the first matching
+ * candidate from the auto-detect list. Returns null if nothing matches and
+ * no override was given; throws if an override was given but matched
+ * nothing (a misconfigured override should surface immediately, not
+ * silently fall through to guessing).
+ */
+async function locateLoginField(page, override, candidates, label) {
+    if (override) {
+        const el = page.locator(override).first();
+        if ((await el.count()) === 0) {
+            throw new Error(`[GuidedTour] Configured ${label} selector matched nothing: ${override}`);
+        }
+        return el;
+    }
+    for (const selector of candidates) {
+        try {
+            const el = page.locator(selector).first();
+            if ((await el.count()) > 0 && (await el.isVisible())) return el;
+        } catch {
+            // Selector unsupported on this page (e.g. :has-text on a weird
+            // DOM) — try the next candidate instead of failing the tour.
+        }
+    }
+    return null;
+}
+
+/**
+ * Logs `page` into a product using seller-provided demo credentials via the
+ * site's own login form — auto-detecting the email/password/submit fields
+ * unless overridden. Runs fresh every call, so (unlike a captured cookie/
+ * localStorage snapshot) there's no access-token expiry window for it to go
+ * stale against. Shared by `GuidedTour#login` (screen-share demo) and the
+ * URL knowledge crawler (`@app/worker-ingestion`'s `extractors/url.js`),
+ * which both need to view a product's auth-gated pages.
+ *
+ * @param {import('playwright').Page} page
+ * @param {{loginUrl?:string, email:string, password:string, selectors?:{email?:string,password?:string,submit?:string}}} auth
+ * @param {string} [fallbackUrl] - used as the login page URL when `auth.loginUrl` isn't set.
+ */
+export async function loginWithCredentials(page, auth, fallbackUrl) {
+    const { loginUrl, email, password, selectors = {} } = auth;
+    if (!email || !password) {
+        throw new Error('[GuidedTour] demoSession is missing email/password.');
+    }
+    const target = loginUrl || fallbackUrl;
+    if (!target) {
+        throw new Error('[GuidedTour] demoSession has no loginUrl and no fallback URL to log in at.');
+    }
+
+    await page.goto(target, { waitUntil: 'domcontentloaded' });
+    await page.waitForTimeout(1500);
+
+    const emailField = await locateLoginField(page, selectors.email, EMAIL_FIELD_SELECTORS, 'email');
+    if (!emailField) {
+        throw new Error(
+            '[GuidedTour] Could not locate an email/username field on the login page. Configure demoSession.selectors.email.'
+        );
+    }
+    await emailField.fill(email);
+
+    const passwordField = await locateLoginField(page, selectors.password, PASSWORD_FIELD_SELECTORS, 'password');
+    if (!passwordField) {
+        throw new Error(
+            '[GuidedTour] Could not locate a password field on the login page. Configure demoSession.selectors.password.'
+        );
+    }
+    await passwordField.fill(password);
+
+    const submitButton = await locateLoginField(page, selectors.submit, SUBMIT_SELECTORS, 'submit');
+    if (submitButton) {
+        await submitButton.click();
+    } else {
+        await passwordField.press('Enter');
+    }
+
+    await page.waitForTimeout(3000);
 }

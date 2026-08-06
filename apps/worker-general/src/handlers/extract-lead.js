@@ -79,6 +79,19 @@ export async function extractLead({ session, messages, analysis, workspaceId }) 
         return null;
     }
 
+    // Ziyaretçi kimliğini belli eden hiçbir bilgi yoksa (email paylaşmadı,
+    // hesaplı visitor adı yok) "Anonim lead" kaydı oluşturma — skor ne olursa
+    // olsun, satış ekibinin ulaşabileceği bir iletişim bilgisi olmadan lead
+    // takip edilemez.
+    const hasContactInfo = Boolean(email || session.visitorName);
+    if (!hasContactInfo) {
+        Logger.info('[extract-lead] iletişim bilgisi yok, anonim lead oluşturulmadı', {
+            sessionId: String(session._id),
+            score
+        });
+        return null;
+    }
+
     // ── 7. Lead kaydet / güncelle ──────────────────────────────────────────────
     const lead = await Lead.findOneAndUpdate(
         { sessionId: session._id },

@@ -22,6 +22,16 @@ import { pipeline } from 'node:stream/promises';
 
 const VIDEO_MAX_KEYFRAMES = Number(process.env.VIDEO_MAX_KEYFRAMES || 6);
 
+// fluent-ffmpeg resolves plain `ffmpeg`/`ffprobe` off PATH, which on a dev
+// machine with multiple installs (e.g. an old Anaconda ffmpeg shadowing a
+// newer one) can silently pick an incompatible binary — .screenshots() uses
+// ffprobe internally to find the video duration, and a stale ffprobe can
+// make keyframe extraction fail outright with no useful error surfaced
+// higher up. Only overrides when explicitly configured, so prod images that
+// install a single correct ffmpeg on PATH are unaffected.
+if (process.env.FFMPEG_PATH) ffmpeg.setFfmpegPath(process.env.FFMPEG_PATH);
+if (process.env.FFPROBE_PATH) ffmpeg.setFfprobePath(process.env.FFPROBE_PATH);
+
 /**
  * Emits an ingestion:progress event via Redis → Socket.IO.
  * @param {string} sourceId
@@ -196,8 +206,29 @@ export async function handleIngestSource({ sourceId, productId }) {
                     frameCaptions = results
                         .filter((r) => r.status === 'fulfilled')
                         .map((r) => r.value);
+
+                    // Promise.allSettled swallows per-frame rejections silently — if every
+                    // frame failed (e.g. vision API error), frameCaptions ends up empty with
+                    // no signal anywhere. Surface it: console for live debugging, and
+                    // KnowledgeSource.meta so it's visible later via Compass without needing
+                    // the worker's terminal output.
+                    const rejected = results.filter((r) => r.status === 'rejected');
+                    if (rejected.length > 0) {
+                        console.warn(
+                            `[ingest-source] ${rejected.length}/${frameFiles.length} frame descriptions failed:`,
+                            rejected[0].reason?.message
+                        );
+                    }
+                    await KnowledgeSource.findByIdAndUpdate(sourceId, {
+                        'meta.frameCount': frameFiles.length,
+                        'meta.frameCaptionCount': frameCaptions.length,
+                        ...(rejected.length > 0 && { 'meta.frameCaptionError': rejected[0].reason?.message })
+                    }).catch(() => {});
                 } catch (err) {
                     console.warn('[ingest-source] keyframe extraction failed, continuing with transcript only:', err.message);
+                    await KnowledgeSource.findByIdAndUpdate(sourceId, {
+                        'meta.frameExtractionError': err.message
+                    }).catch(() => {});
                 } finally {
                     await fs.rm(frameDir, { recursive: true, force: true }).catch(() => {});
                 }

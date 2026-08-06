@@ -63,9 +63,12 @@ knowledgeRouter.post(
 
 knowledgeRouter.get('/:productId', requireAuth, async (req, res, next) => {
     try {
-        const sources = await KnowledgeSource.find({ productId: req.params.productId }).sort({
-            createdAt: -1
-        });
+        // 'disabled' status'lu source'lar (websiteUrl silinen ürünlerin otomatik kaynakları)
+        // listede görünmemeli; DB'de geçmiş chunk referansı için tutuluyorlar.
+        const sources = await KnowledgeSource.find({
+            productId: req.params.productId,
+            status: { $ne: 'disabled' }
+        }).sort({ createdAt: -1 });
         res.json(sources);
     } catch (err) {
         next(err);

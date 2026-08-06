@@ -69,7 +69,8 @@ export const productsApi = {
     list: (workspaceId) => apiFetch(`/products?workspaceId=${workspaceId}`),
     get: (id) => apiFetch(`/products/${id}`),
     create: (payload) => apiFetch('/products', { method: 'POST', body: payload }),
-    update: (id, payload) => apiFetch(`/products/${id}`, { method: 'PATCH', body: payload })
+    update: (id, payload) => apiFetch(`/products/${id}`, { method: 'PATCH', body: payload }),
+    remove: (id) => apiFetch(`/products/${id}`, { method: 'DELETE' })
 };
 
 export const knowledgeApi = {
@@ -92,7 +93,8 @@ export const agentsApi = {
     get: (id) => apiFetch(`/agents/${id}`),
     create: (payload) => apiFetch('/agents', { method: 'POST', body: payload }),
     activate: (id) => apiFetch(`/agents/${id}/activate`, { method: 'POST' }),
-    pause: (id) => apiFetch(`/agents/${id}/pause`, { method: 'POST' })
+    pause: (id) => apiFetch(`/agents/${id}/pause`, { method: 'POST' }),
+    remove: (id) => apiFetch(`/agents/${id}`, { method: 'DELETE' })
 };
 
 export const leadsApi = {

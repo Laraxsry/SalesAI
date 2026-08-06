@@ -48,6 +48,9 @@ Thumbs.db
 .claude/
 .claude/settings.local.json
 
+# Local agent handoff/progress notes — personal tracking only, never pushed
+AGENT_HANDOFF.md
+
 # vercel / expo
 .vercel
 apps/mobile/.expo/

@@ -52,6 +52,8 @@
    - [x] Expose `GET /analytics/leads` (workspaceId scope, status/minScore filtreleri).
    - [x] `PATCH /analytics/leads/:id/status` — Lead durumu güncelleme (new → contacted → won/lost workflow).
    - [x] Optional webhook/CRM push — `POST/GET/PATCH/DELETE /integrations/webhooks` ile workspace başına yapılandırılabilir outbound webhook altyapısı eklendi. HMAC-SHA256 imzalama, 3x retry (backoff), dead-letter kaydı ve manuel test endpoint’i ile tamamlandı. *(Walkthrough üzerindeki manuel test adımları ile tüm webhook akışı doğrulandı)*
+   - [x] İletişim bilgisi olmayan (email paylaşılmamış, `visitorName` yok) oturumlar için "Anonim lead" kaydı açılmıyor — skor eşiği geçse bile `extract-lead.js` artık en az bir contact alanı zorunlu kılıyor.
+   - [ ] **Açık:** Ziyaretçi host site'da kendi hesabıyla giriş yapmışsa (end-customer login), bu kimliğin widget'a otomatik aktarılıp Lead'e bağlanması — `packages/sdk`'ye bir `identify({ name, email })` API'si + embed session'a `visitorInfo` alanı eklenmesi gerekiyor. Şu an SDK'da böyle bir mekanizma yok (bkz. `packages/sdk/src/index.js`); bilgi bırakmadıysa lead hâlâ oluşmuyor.
 
 5. **Transcript search** *(Postman full-text search ile doğrulandı)*
    - [x] `GET /sessions/search?q=` full-text over `messages` ($text search),

@@ -16,7 +16,7 @@ const KnowledgeSourceSchema = new Schema(
         url: { type: String },
         status: {
             type: String,
-            enum: ['pending', 'processing', 'ready', 'failed'],
+            enum: ['pending', 'processing', 'ready', 'failed', 'disabled'],
             default: 'pending',
             index: true
         },

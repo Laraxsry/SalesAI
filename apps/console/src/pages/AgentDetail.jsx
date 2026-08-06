@@ -1,8 +1,8 @@
 import { useState } from 'react';
-import { useParams, Link } from 'react-router-dom';
+import { useParams, Link, useNavigate } from 'react-router-dom';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { Button } from '@repo/ui';
-import { ArrowLeft, Bot, Rocket, Pause, Copy, Check, ExternalLink, AlertCircle } from 'lucide-react';
+import { ArrowLeft, Bot, Rocket, Pause, Copy, Check, ExternalLink, AlertCircle, Trash2 } from 'lucide-react';
 import { agentsApi } from '../lib/api.js';
 
 const STATUS_STYLE = {
@@ -39,6 +39,7 @@ function CopyButton({ text }) {
 
 export function AgentDetail() {
     const { id } = useParams();
+    const navigate = useNavigate();
     const queryClient = useQueryClient();
     const [error, setError] = useState('');
     const [busy, setBusy] = useState(false);
@@ -47,6 +48,20 @@ export function AgentDetail() {
         queryKey: ['agent', id],
         queryFn: () => agentsApi.get(id)
     });
+
+    async function onDelete() {
+        if (!confirm(`"${agent.name}" agent'ını silmek istediğinize emin misiniz? Bu işlem geri alınamaz.`)) return;
+        setError('');
+        setBusy(true);
+        try {
+            await agentsApi.remove(id);
+            queryClient.invalidateQueries({ queryKey: ['agents', agent.productId] });
+            navigate(`/agents?product=${agent.productId}`);
+        } catch (err) {
+            setError(err.message);
+            setBusy(false);
+        }
+    }
 
     async function onActivate() {
         setError('');
@@ -85,13 +100,23 @@ export function AgentDetail() {
 
     return (
         <div>
-            <Link
-                to={`/agents?product=${agent.productId}`}
-                className="mb-6 inline-flex items-center gap-1.5 text-sm text-text-muted hover:text-text"
-            >
-                <ArrowLeft size={14} />
-                Agents
-            </Link>
+            <div className="mb-6 flex items-center justify-between">
+                <Link
+                    to={`/agents?product=${agent.productId}`}
+                    className="inline-flex items-center gap-1.5 text-sm text-text-muted hover:text-text"
+                >
+                    <ArrowLeft size={14} />
+                    Agents
+                </Link>
+                <button
+                    onClick={onDelete}
+                    disabled={busy}
+                    className="inline-flex items-center gap-1.5 rounded-[var(--radius-input)] px-3 py-1.5 text-xs font-medium text-red-400 hover:bg-red-500/10 disabled:opacity-50"
+                >
+                    <Trash2 size={14} />
+                    Agent'ı sil
+                </button>
+            </div>
 
             <div className="mb-6 flex items-center gap-3">
                 <span className="flex h-11 w-11 items-center justify-center rounded-full bg-brand/15 text-brand-light">

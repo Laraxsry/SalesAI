@@ -1,13 +1,110 @@
 import { Router } from 'express';
 import { validate } from '@repo/validation';
 import { ProductInput, ProductUpdateInput } from '@repo/contracts';
-import { Product, Workspace, Membership, Agent, ShareLink, Session } from '@repo/database';
+import { Product, Workspace, Membership, Agent, ShareLink, Session, KnowledgeSource } from '@repo/database';
 import { requireAuth } from '@repo/auth';
 import { requirePermission } from '@repo/access';
 import { resolveTenant, resolveMember } from '../middleware/tenant.js';
 import { encryptField, decryptField } from '@repo/utils';
+import { enqueue, QUEUES } from '@repo/queue';
 
 export const productsRouter = Router();
+
+/**
+ * Bir ürünün websiteUrl'ini KnowledgeSource ile senkronize eder ve gerekirse
+ * ingestion kuyruğuna alır. Üç senaryo:
+ *
+ * 1. websiteUrl set edildi, daha önce kaynak yok → oluştur + kuyruğa ekle
+ * 2. websiteUrl değişti, kaynak var              → URL güncelle + re-ingest
+ * 3. websiteUrl silindi (null/'')                → kaynağı 'disabled' yap
+ *
+ * @param {string|mongoose.ObjectId} productId
+ * @param {string|null|undefined} websiteUrl  - Güncellenmiş URL (falsy = silindi)
+ * @param {string|null|undefined} prevUrl     - Önceki URL (karşılaştırma için)
+ */
+async function syncWebsiteUrlSource(productId, websiteUrl, prevUrl) {
+    // websiteUrl alanı bu çağrıda hiç gönderilmemiş → dokunma
+    if (websiteUrl === undefined) return;
+
+    const normalizedNew = websiteUrl || null;
+    const normalizedPrev = prevUrl || null;
+
+    // Değişim yoksa gereksiz DB işlemi yapma
+    if (normalizedNew === normalizedPrev) return;
+
+    // Bu product'a ait mevcut auto-url kaynağını bul (meta.autoCreated: true ile etiketliyoruz)
+    const existing = await KnowledgeSource.findOne({
+        productId,
+        type: 'url',
+        'meta.autoCreated': true
+    });
+
+    if (!normalizedNew) {
+        // websiteUrl silindi → kaynağı devre dışı bırak (geçmiş chunk'ları koru)
+        if (existing) {
+            await KnowledgeSource.findByIdAndUpdate(existing._id, {
+                $set: { status: 'disabled', 'meta.disabledAt': new Date() }
+            });
+        }
+        return;
+    }
+
+    if (!existing) {
+        // İlk kez set ediliyor → yeni KnowledgeSource oluştur
+        const source = await KnowledgeSource.create({
+            productId,
+            type: 'url',
+            url: normalizedNew,
+            title: `Website: ${normalizedNew}`,
+            status: 'pending',
+            meta: { autoCreated: true }
+        });
+        await enqueue(QUEUES.INGESTION, 'ingest-source', {
+            sourceId: String(source._id),
+            productId: String(productId)
+        });
+    } else {
+        // Kaynak var ama URL değişti → güncelle + re-ingest
+        await KnowledgeSource.findByIdAndUpdate(existing._id, {
+            $set: {
+                url: normalizedNew,
+                title: `Website: ${normalizedNew}`,
+                status: 'pending',
+                error: null
+            }
+        });
+        await enqueue(QUEUES.INGESTION, 'ingest-source', {
+            sourceId: String(existing._id),
+            productId: String(productId)
+        });
+    }
+}
+
+/**
+ * Force-reingests the product's auto-created url KnowledgeSource (if any)
+ * without touching its URL — used when demoSession credentials change but
+ * websiteUrl doesn't. Without this, content ingested before a demo account
+ * was configured (or with stale credentials) stays anonymous/partial
+ * forever, since nothing else re-triggers a crawl.
+ *
+ * @param {string|mongoose.ObjectId} productId
+ */
+async function reingestAutoUrlSource(productId) {
+    const existing = await KnowledgeSource.findOne({
+        productId,
+        type: 'url',
+        'meta.autoCreated': true
+    });
+    if (!existing) return;
+
+    await KnowledgeSource.findByIdAndUpdate(existing._id, {
+        $set: { status: 'pending', error: null }
+    });
+    await enqueue(QUEUES.INGESTION, 'ingest-source', {
+        sourceId: String(existing._id),
+        productId: String(productId)
+    });
+}
 
 /**
  * POST /products
@@ -40,6 +137,9 @@ productsRouter.post(
                 websiteUrl: req.body.websiteUrl,
                 tourAllowedDomains: req.body.tourAllowedDomains
             });
+
+            // websiteUrl verilmişse otomatik olarak bir KnowledgeSource oluştur ve kuyruğa ekle
+            await syncWebsiteUrlSource(product._id, req.body.websiteUrl, null);
 
             res.status(201).json({
                 id: String(product._id),
@@ -162,6 +262,15 @@ productsRouter.patch('/:id', requireAuth, validate({ body: ProductUpdateInput })
             { $set: update },
             { new: true, runValidators: true }
         );
+
+        // websiteUrl değiştiyse KnowledgeSource'u senkronize et; değişmediyse ama
+        // demoSession değiştiyse (websiteUrl aynı kaldı) mevcut auto-source'u
+        // yeni kimlik bilgileriyle re-ingest et.
+        if (req.body.websiteUrl !== undefined) {
+            await syncWebsiteUrlSource(updated._id, req.body.websiteUrl, product.websiteUrl);
+        } else if (req.body.demoSession !== undefined && updated.websiteUrl) {
+            await reingestAutoUrlSource(updated._id);
+        }
 
         res.json({
             id: String(updated._id),

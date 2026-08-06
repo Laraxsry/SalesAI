@@ -23,7 +23,8 @@
    - [x] Tool handlers: `start_guided_tour`, `navigate_to`, `highlight`.
    - [x] Publish frames into LiveKit as a video track — Playwright PNG → `sharp` RGBA → `VideoSource.captureFrame()` @ ~1 FPS; `LocalVideoTrack` published as `screen_share`.
    - [x] Optional Browserbase + Stagehand backend (planlanmış, implemente edilmemiş).
-   - [x] Authentication: Session Handover / Token Injection (PAT mimarisi) ile Playwright context'ine token enjekte edildi. Single-use güvenlik modeli (okunduktan sonra veritabanından silinme) uygulandı.
+   - [x] ~~Authentication: Session Handover / Token Injection~~ — **kaldırıldı**, yerine gerçek giriş formu otomasyonu geldi (aşağıya bak).
+   - [x] Authentication v2 — `Product.demoSession = { loginUrl?, email, password, selectors? }`. `GuidedTour`/`extractFromUrl` her tur/crawl'da sitenin **gerçek login formunu** dolduruyor (`loginWithCredentials()`, `packages/screen/src/cobrowse.js`) — email/şifre/submit alanları otomatik algılanıyor (yaygın selector pattern'leri denenir), algılama başarısız olursa seller `demoSession.selectors` ile CSS selector override verebilir. **Eski cookie/localStorage snapshot yöntemi kaldırıldı**: o yöntem `localStorage`'daki access token'ın bir anlık görüntüsünü alıyordu ve token genelde ~15dk gibi kısa ömürlü olduğu için (`JWT.exp - JWT.iat`), tur her seferinde token süresi dolunca "hesaptan çıkmış" görünmeye başlıyordu — headless tarayıcıda sitenin kendi refresh-token akışı da tetiklenmiyordu. Her turda taze giriş yapmak bu süre sınırını tamamen ortadan kaldırıyor. Konsoldaki JSON-yapıştırma formu email/şifre alanlarına dönüştürüldü (`apps/console/src/pages/ProductDetail.jsx`).
 
 2. **Customer-shared screen (mode B)**
    - [x] Detect the visitor's screen-share track in the room (`trackSubscribed` event var).
@@ -34,6 +35,7 @@
 3. **Orchestration**
    - [x] `screenModes` array on the agent doc gates `tour` and `vision` tools — unauthorised calls return an error without executing.
    - [x] Record screen actions in `messages.meta` for the transcript timeline — `tour_started`, `navigate_to`, `highlight`, `vision_read` events saved to Message with `role:'system'`.
+   - [x] `stop_screen_share` tool — "ekran paylaşımını kapat" artık gerçekten kapatıyor: tur (mode A) track'i agent-worker tarafından unpublish edilip Playwright browser kapatılıyor; müşterinin kendi ekranı (mode B) agent'ın sahip olmadığı bir track olduğu için LiveKit data-channel üzerinden `salesai:stop_screen_share` sinyali gönderilip visitor (web + mobile) bunu dinleyip `setScreenShareEnabled(false)` çağırıyor. Önceden bu tool hiç tanımlı değildi, LLM "kapattım" diyip aslında hiçbir şey yapmıyordu.
 
 4. **Performance**
    - [x] Pool/limit concurrent tour browsers (global `activeBrowsers` Set ile max 3 tarayıcı limiti, `MAX_TOUR_BROWSERS` env var ile ayarlanabilir).

@@ -5,9 +5,9 @@ import { retrieve } from '@repo/rag';
  * wired by the agent-worker (it owns the GuidedTour + screen track). Here we
  * define the schema + the knowledge tool that only needs productId.
  *
- * @param {{ productId:string, tour?:object, screen?:object }} ctx
+ * @param {{ productId:string, tour?:object, screen?:object, stopScreenShare?:Function }} ctx
  */
-export function buildTools({ productId, tour, screen }) {
+export function buildTools({ productId, tour, screen, stopScreenShare }) {
     return [
         {
             name: 'search_knowledge',
@@ -73,6 +73,13 @@ export function buildTools({ productId, tour, screen }) {
                 properties: { question: { type: 'string' } }
             },
             handler: async ({ question }) => screen?.read?.(question) ?? { ok: false }
+        },
+        {
+            name: 'stop_screen_share',
+            description:
+                'Stop showing the screen (closes an active guided tour demo, and/or asks the customer to stop sharing their own screen). Call this whenever the customer asks to close, hide, or stop the screen share.',
+            parameters: { type: 'object', properties: {} },
+            handler: async () => stopScreenShare?.() ?? { ok: false }
         }
     ];
 }

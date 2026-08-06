@@ -19,12 +19,12 @@ import { enqueue, QUEUES } from '@repo/queue';
  *   workspaceId: import('mongoose').Types.ObjectId
  * }} params
  */
-export async function extractLead({ session, messages, analysis, workspaceId }) {
+export async function extractLead({ session, messages, analysis: _analysis, workspaceId }) {
     const signals = [];
     let score = 0;
 
     // ── 1. Email tespiti ────────────────────────────────────────────────────────
-    const EMAIL_REGEX = /[a-zA-Z0-9._%+\-]+@[a-zA-Z0-9.\-]+\.[a-zA-Z]{2,}/;
+    const EMAIL_REGEX = /[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}/;
     const transcript = messages.map(m => m.text || '').join(' ');
 
     const emailMatch = transcript.match(EMAIL_REGEX);

@@ -22,7 +22,7 @@ export default function Home() {
 
     const handleConnect = () => {
         if (!input.trim()) {
-            setError('Please enter a valid share link or token');
+            setError('Geçerli bir paylaşım bağlantısı veya token girin.');
             return;
         }
 
@@ -36,8 +36,13 @@ export default function Home() {
             token = tokenMatch[1];
         }
 
+        if (!/^[a-zA-Z0-9_-]+$/.test(token)) {
+            setError('Paylaşım bağlantısı veya token formatı geçersiz.');
+            return;
+        }
+
         // Navigate to the video call screen with the token
-        router.push(`/v/${token}`);
+        router.push(`/v/${encodeURIComponent(token)}`);
     };
 
     return (
@@ -49,16 +54,16 @@ export default function Home() {
             <ScrollView contentContainerStyle={styles.scrollContainer} keyboardShouldPersistTaps="handled">
                 <View style={styles.header}>
                     <Text style={styles.brand}>SalesAI</Text>
-                    <Text style={styles.tagline}>Talk to your AI sales representative</Text>
+                    <Text style={styles.tagline}>AI satış temsilcinizle görüşün</Text>
                 </View>
 
                 <View style={styles.card}>
-                    <Text style={styles.cardTitle}>Join AI Conversation</Text>
-                    <Text style={styles.cardDesc}>Enter your representative's share link or token below to start a voice and video session.</Text>
+                    <Text style={styles.cardTitle}>AI Görüşmesine Katılın</Text>
+                    <Text style={styles.cardDesc}>Sesli ve görüntülü görüşmeyi başlatmak için temsilcinizin paylaşım bağlantısını veya tokenını girin.</Text>
 
                     <TextInput
                         style={[styles.input, error ? styles.inputError : null]}
-                        placeholder="e.g. agent_token_abc"
+                        placeholder="Örn. agent_token_abc"
                         placeholderTextColor="#6c727f"
                         value={input}
                         onChangeText={(text) => {
@@ -72,7 +77,7 @@ export default function Home() {
                     {error ? <Text style={styles.errorText}>{error}</Text> : null}
 
                     <TouchableOpacity style={styles.button} onPress={handleConnect} activeOpacity={0.8}>
-                        <Text style={styles.buttonText}>Connect to Representative</Text>
+                        <Text style={styles.buttonText}>Temsilciye Bağlan</Text>
                     </TouchableOpacity>
                 </View>
 
@@ -83,11 +88,11 @@ export default function Home() {
                 )}
 
                 <TouchableOpacity style={styles.consoleLink} onPress={() => router.push('/console')} activeOpacity={0.7}>
-                    <Text style={styles.consoleLinkText}>Access Seller Console</Text>
+                    <Text style={styles.consoleLinkText}>Satıcı Konsoluna Gir</Text>
                 </TouchableOpacity>
 
                 <View style={styles.footer}>
-                    <Text style={styles.footerText}>Powered by LiveKit WebRTC & SalesAI</Text>
+                    <Text style={styles.footerText}>LiveKit WebRTC ve SalesAI altyapısıyla</Text>
                 </View>
             </ScrollView>
         </KeyboardAvoidingView>

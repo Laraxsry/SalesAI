@@ -1,4 +1,4 @@
-import { createContext, useState, useContext, useEffect, useCallback } from 'react';
+import { createContext, useState, useContext, useEffect, useCallback, useRef } from 'react';
 import { Stack } from 'expo-router';
 import { View, ActivityIndicator, StyleSheet } from 'react-native';
 import * as SecureStore from 'expo-secure-store';
@@ -15,6 +15,7 @@ export default function ConsoleLayout() {
     const [refreshToken, setRefreshToken] = useState(null);
     const [user, setUser] = useState(null);
     const [restoring, setRestoring] = useState(true);
+    const refreshInFlight = useRef(null);
 
     const persist = useCallback(async (authToken, refresh, userProfile) => {
         try {
@@ -37,6 +38,56 @@ export default function ConsoleLayout() {
         setRefreshToken(null);
         SecureStore.deleteItemAsync(STORAGE_KEY).catch(() => {});
     }, []);
+
+    const refreshSession = useCallback(async () => {
+        if (refreshInFlight.current) return refreshInFlight.current;
+        if (!refreshToken) {
+            logout();
+            throw new Error('Session expired');
+        }
+
+        refreshInFlight.current = (async () => {
+            const res = await fetch(`${CONFIG.API_URL}/api/v1/auth/refresh`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ refreshToken }),
+            });
+            if (!res.ok) throw new Error('Session refresh failed');
+
+            const tokens = await res.json();
+            setToken(tokens.accessToken);
+            setRefreshToken(tokens.refreshToken);
+            await persist(tokens.accessToken, tokens.refreshToken, user);
+            return tokens.accessToken;
+        })();
+
+        try {
+            return await refreshInFlight.current;
+        } catch (err) {
+            logout();
+            throw err;
+        } finally {
+            refreshInFlight.current = null;
+        }
+    }, [logout, persist, refreshToken, user]);
+
+    const apiFetch = useCallback(async (path, options = {}) => {
+        const url = path.startsWith('http') ? path : `${CONFIG.API_URL}${path}`;
+        const request = (accessToken) => fetch(url, {
+            ...options,
+            headers: {
+                ...options.headers,
+                ...(accessToken ? { Authorization: `Bearer ${accessToken}` } : {}),
+            },
+        });
+
+        let response = await request(token);
+        if (response.status === 401 && refreshToken) {
+            const freshToken = await refreshSession();
+            response = await request(freshToken);
+        }
+        return response;
+    }, [refreshSession, refreshToken, token]);
 
     // Restore the session on cold start. Access tokens only live 15min, so
     // rather than trusting whatever was stored, immediately trade the saved
@@ -81,7 +132,7 @@ export default function ConsoleLayout() {
     }
 
     return (
-        <AuthContext.Provider value={{ token, refreshToken, user, login, logout }}>
+        <AuthContext.Provider value={{ token, refreshToken, user, login, logout, apiFetch }}>
             <Stack
                 screenOptions={{
                     headerShown: false,

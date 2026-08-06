@@ -1,15 +1,16 @@
+import crypto from 'node:crypto';
 import { Router } from 'express';
 import { validate } from '@repo/validation';
-import { RegisterInput, LoginInput } from '@repo/contracts';
-import { User, Workspace, Membership, AuthSession } from '@repo/database';
+import { RegisterInput, LoginInput, MagicLinkRequestInput, MagicLinkVerifyInput } from '@repo/contracts';
+import { User, Workspace, Membership, AuthSession, Visitor, MagicLinkToken } from '@repo/database';
 import {
     hashPassword,
     verifyPassword,
     signTokens,
+    signVisitorToken,
     verifyRefresh,
     requireAuth,
-    hashRefreshToken,
-    generateApiKey
+    hashRefreshToken
 } from '@repo/auth';
 import { shortId } from '@repo/utils';
 import { logAudit, extractRequestMeta, AUDIT_ACTIONS } from '@repo/utils';
@@ -176,7 +177,6 @@ authRouter.post('/login', requestTimeout(5000), validate({ body: LoginInput }), 
         // 2FA kontrolü
         if (user.twoFactorEnabled) {
             // Kısa süreli MFA token döner — tam erişim için /auth/2fa/verify gerekli
-            const { authenticator } = await import('otplib');
             const mfaToken = signTokens({ sub: String(user._id), email: user.email, mfa: 'pending' });
             return res.json({
                 mfaRequired: true,
@@ -248,7 +248,6 @@ authRouter.post('/refresh', authRateLimit, requestTimeout(5000), async (req, res
         if (!session) {
             // REUSE DETECTED: bu hash daha önce rotate edilmiş demek → saldırı girişimi
             // Aynı family'deki tüm session'ları iptal et
-            const revocationPayload = verifyRefresh(refreshToken).catch?.(() => payload);
             await AuthSession.updateMany(
                 { userId: payload.sub },
                 { revokedAt: new Date() }
@@ -327,6 +326,98 @@ authRouter.post('/logout', requireAuth, async (req, res, next) => {
         }
 
         res.json({ message: 'Logged out' });
+    } catch (err) {
+        next(err);
+    }
+});
+
+const MAGIC_LINK_TTL_MS = 15 * 60 * 1000; // 15 dakika
+
+// ─── POST /auth/magic-link ──────────────────────────────────────────────────
+/**
+ * Mobile Phase 3: passwordless entry point for visitors (no seller account).
+ * Finds-or-creates a Visitor by email — or, if `visitorId` is given (an
+ * anonymous visitor from POST /devices), attaches the email to that same
+ * identity so its existing device/session history carries over instead of
+ * forking into a second Visitor.
+ *
+ * This repo has no email-sending integration, so — unlike billing's
+ * Stripe-or-mock branch — the link is always returned directly in the
+ * response instead of being emailed. A real deployment would wire an email
+ * provider here and drop `devLink`/`token` from the response.
+ */
+authRouter.post('/magic-link', authRateLimit, requestTimeout(5000), validate({ body: MagicLinkRequestInput }), async (req, res, next) => {
+    try {
+        const { email, visitorId } = req.body;
+        const cleanEmail = email.trim().toLowerCase();
+
+        let visitor = await Visitor.findOne({ email: cleanEmail });
+        if (!visitor) {
+            if (visitorId && visitorId.match(/^[0-9a-fA-F]{24}$/)) {
+                const anonymous = await Visitor.findById(visitorId);
+                if (anonymous && !anonymous.email) {
+                    anonymous.email = cleanEmail;
+                    await anonymous.save();
+                    visitor = anonymous;
+                }
+            }
+            if (!visitor) visitor = await Visitor.create({ email: cleanEmail });
+        }
+
+        const token = crypto.randomBytes(24).toString('hex');
+        await MagicLinkToken.create({
+            email: cleanEmail,
+            token,
+            visitorId: visitor._id,
+            expiresAt: new Date(Date.now() + MAGIC_LINK_TTL_MS)
+        });
+
+        const devLink = `salesai://auth/verify?token=${token}`;
+        res.json({
+            ok: true,
+            message: 'No email provider configured — dev mode returns the link directly.',
+            devLink,
+            token
+        });
+    } catch (err) {
+        next(err);
+    }
+});
+
+// ─── POST /auth/magic-link/verify ───────────────────────────────────────────
+/**
+ * Exchanges a single-use magic-link token for a visitor JWT (`type: 'visitor'`,
+ * `sub` = Visitor._id). This token is accepted by GET /sessions/mine and
+ * POST /devices, but not by any seller/workspace route — those all resolve
+ * `req.user.sub` against `User`/`Membership`, which a visitor id never matches.
+ */
+authRouter.post('/magic-link/verify', authRateLimit, requestTimeout(5000), validate({ body: MagicLinkVerifyInput }), async (req, res, next) => {
+    try {
+        const { token } = req.body;
+        const record = await MagicLinkToken.findOne({ token });
+        if (!record) return res.status(404).json({ error: 'Invalid or expired link' });
+        if (record.consumedAt) return res.status(400).json({ error: 'This link has already been used' });
+        if (record.expiresAt < new Date()) return res.status(400).json({ error: 'This link has expired' });
+
+        record.consumedAt = new Date();
+        await record.save();
+
+        const visitor = await Visitor.findById(record.visitorId);
+        if (!visitor) return res.status(404).json({ error: 'Visitor not found' });
+
+        // Long-lived (30d) access token, no refresh pair: POST /auth/refresh
+        // is seller-only (it re-resolves session.userId against `User`), and
+        // visitor identity is deliberately lightweight — re-requesting a
+        // magic link is an acceptable fallback for the rare case a visitor's
+        // token does expire, rather than teaching the shared rotation
+        // endpoint about a second identity type.
+        const accessToken = signVisitorToken({ sub: String(visitor._id), email: visitor.email, type: 'visitor' });
+
+        res.json({
+            visitorId: String(visitor._id),
+            email: visitor.email,
+            accessToken
+        });
     } catch (err) {
         next(err);
     }

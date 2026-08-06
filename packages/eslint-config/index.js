@@ -24,6 +24,6 @@ export default [
         }
     },
     {
-        ignores: ['dist/**', 'build/**', '.next/**', 'node_modules/**']
+        ignores: ['**/dist/**', '**/build/**', '**/.next/**', '**/node_modules/**']
     }
 ];

@@ -1,9 +1,10 @@
 import { useCallback, useState } from 'react';
-import { View, Text, StyleSheet, FlatList, TouchableOpacity, Switch } from 'react-native';
+import { View, Text, StyleSheet, FlatList, TouchableOpacity, Switch, TextInput, ActivityIndicator, Alert } from 'react-native';
 import { useRouter, useFocusEffect } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
 import { getSavedConversations, removeSavedConversation } from '../src/savedConversations';
 import { requestPushPermission, getNotificationPref, setNotificationPref } from '../src/push';
+import { getVisitorAuth, requestMagicLink, verifyMagicLink } from '../src/visitorIdentity';
 
 function formatDate(iso) {
     const d = new Date(iso);
@@ -14,21 +15,64 @@ export default function SavedScreen() {
     const router = useRouter();
     const [conversations, setConversations] = useState([]);
     const [notificationsOn, setNotificationsOn] = useState(false);
+    const [syncedEmail, setSyncedEmail] = useState(null);
+    const [emailInput, setEmailInput] = useState('');
+    const [tokenInput, setTokenInput] = useState('');
+    const [linkRequested, setLinkRequested] = useState(false);
+    const [syncBusy, setSyncBusy] = useState(false);
+    const [syncError, setSyncError] = useState('');
 
-    useFocusEffect(
-        useCallback(() => {
-            getSavedConversations().then(setConversations);
-            getNotificationPref().then(setNotificationsOn);
-        }, [])
-    );
+    const refresh = useCallback(() => {
+        getSavedConversations().then(setConversations);
+        getNotificationPref().then(setNotificationsOn);
+        getVisitorAuth().then((auth) => setSyncedEmail(auth.email || null));
+    }, []);
+
+    useFocusEffect(refresh);
 
     async function onToggleNotifications(value) {
         if (value) {
-            const { granted } = await requestPushPermission();
+            const { granted, reason } = await requestPushPermission();
             setNotificationsOn(granted);
+            if (!granted && reason === 'project-not-configured') {
+                Alert.alert('Bildirimler hazır değil', 'EAS projectId tanımlandıktan sonra push bildirimleri etkinleştirilebilir.');
+            } else if (!granted) {
+                Alert.alert('Bildirimler açılamadı', 'Cihaz kaydı tamamlanamadı. Ağ bağlantını ve bildirim iznini kontrol et.');
+            }
         } else {
             await setNotificationPref(false);
             setNotificationsOn(false);
+        }
+    }
+
+    async function onRequestLink() {
+        if (!emailInput.trim()) return;
+        setSyncError('');
+        setSyncBusy(true);
+        try {
+            await requestMagicLink(emailInput.trim());
+            setLinkRequested(true);
+        } catch (err) {
+            setSyncError(err.message);
+        } finally {
+            setSyncBusy(false);
+        }
+    }
+
+    async function onVerifyToken() {
+        if (!tokenInput.trim()) return;
+        setSyncError('');
+        setSyncBusy(true);
+        try {
+            const data = await verifyMagicLink(tokenInput.trim());
+            setSyncedEmail(data.email);
+            setLinkRequested(false);
+            setTokenInput('');
+            refresh();
+        } catch (err) {
+            setSyncError(err.message);
+        } finally {
+            setSyncBusy(false);
         }
     }
 
@@ -62,6 +106,53 @@ export default function SavedScreen() {
                 />
             </View>
 
+            <View style={styles.notifCard}>
+                <View style={{ flex: 1 }}>
+                    <Text style={styles.notifTitle}>Cihazlar arası senkronizasyon</Text>
+                    {syncedEmail ? (
+                        <Text style={styles.notifDesc}>{syncedEmail} ile senkronize edildi.</Text>
+                    ) : (
+                        <>
+                            <Text style={styles.notifDesc}>
+                                E-postanı gir, sana bir bağlantı gönderelim — görüşmelerin diğer cihazlarında da görünsün.
+                            </Text>
+                            <View style={styles.syncRow}>
+                                <TextInput
+                                    style={styles.syncInput}
+                                    placeholder="ornek@eposta.com"
+                                    placeholderTextColor="#6c727f"
+                                    value={emailInput}
+                                    onChangeText={setEmailInput}
+                                    autoCapitalize="none"
+                                    keyboardType="email-address"
+                                />
+                                <TouchableOpacity style={styles.syncButton} onPress={onRequestLink} disabled={syncBusy}>
+                                    {syncBusy ? <ActivityIndicator size="small" color="#ffffff" /> : <Text style={styles.syncButtonText}>Gönder</Text>}
+                                </TouchableOpacity>
+                            </View>
+
+                            {linkRequested && (
+                                <View style={styles.syncRow}>
+                                    <TextInput
+                                        style={styles.syncInput}
+                                        placeholder="Bağlantıdaki kodu yapıştır"
+                                        placeholderTextColor="#6c727f"
+                                        value={tokenInput}
+                                        onChangeText={setTokenInput}
+                                        autoCapitalize="none"
+                                    />
+                                    <TouchableOpacity style={styles.syncButton} onPress={onVerifyToken} disabled={syncBusy}>
+                                        {syncBusy ? <ActivityIndicator size="small" color="#ffffff" /> : <Text style={styles.syncButtonText}>Doğrula</Text>}
+                                    </TouchableOpacity>
+                                </View>
+                            )}
+
+                            {syncError ? <Text style={styles.syncError}>{syncError}</Text> : null}
+                        </>
+                    )}
+                </View>
+            </View>
+
             <FlatList
                 data={conversations}
                 keyExtractor={(item) => item.id}
@@ -80,9 +171,9 @@ export default function SavedScreen() {
                         </View>
                         <TouchableOpacity
                             style={styles.resumeButton}
-                            onPress={() => router.push(`/v/${item.token}`)}
+                            onPress={() => router.push(item.remote ? `/saved/${item.sessionId}` : `/v/${item.token}`)}
                         >
-                            <Text style={styles.resumeText}>Devam et</Text>
+                            <Text style={styles.resumeText}>{item.remote ? 'Detay' : 'Devam et'}</Text>
                         </TouchableOpacity>
                         <TouchableOpacity onPress={() => onRemove(item.id)} hitSlop={10} style={styles.removeButton}>
                             <Text style={styles.removeText}>✕</Text>
@@ -119,6 +210,27 @@ const styles = StyleSheet.create({
     },
     notifTitle: { color: '#ffffff', fontSize: 15, fontWeight: '600', marginBottom: 2 },
     notifDesc: { color: '#9ba1b0', fontSize: 12, lineHeight: 16 },
+    syncRow: { flexDirection: 'row', gap: 8, marginTop: 10 },
+    syncInput: {
+        flex: 1,
+        backgroundColor: '#1b1b2a',
+        borderRadius: 10,
+        borderWidth: 1,
+        borderColor: '#2d2d44',
+        color: '#ffffff',
+        fontSize: 13,
+        paddingHorizontal: 12,
+        paddingVertical: 10,
+    },
+    syncButton: {
+        backgroundColor: '#6d5efc',
+        borderRadius: 10,
+        paddingHorizontal: 16,
+        alignItems: 'center',
+        justifyContent: 'center',
+    },
+    syncButtonText: { color: '#ffffff', fontSize: 13, fontWeight: '600' },
+    syncError: { color: '#f87171', fontSize: 12, marginTop: 8 },
     listContent: { padding: 20, paddingBottom: 40 },
     empty: { alignItems: 'center', marginTop: 60 },
     emptyTitle: { color: '#ffffff', fontSize: 16, fontWeight: '600', marginBottom: 6 },

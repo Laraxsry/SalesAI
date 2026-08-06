@@ -1,0 +1,47 @@
+{
+    "nav": {
+        "overview": "Overview",
+        "knowledge": "Knowledge",
+        "agents": "Agents",
+        "analytics": "Analytics",
+        "leads": "Leads",
+        "settings": "Settings",
+        "logout": "Çıkış yap"
+    },
+    "auth": {
+        "loginTitle": "Tekrar hoş geldin",
+        "loginSubtitle": "Devam etmek için hesabına giriş yap.",
+        "email": "Email",
+        "password": "Şifre",
+        "loginButton": "Giriş yap",
+        "loggingIn": "Giriş yapılıyor…",
+        "noAccount": "Hesabın yok mu?",
+        "register": "Kayıt ol",
+        "registerTitle": "Hesap oluştur",
+        "registerSubtitle": "30 saniyede workspace'ini kur, ücretsiz başla.",
+        "name": "İsim",
+        "registerButton": "Ücretsiz kayıt ol",
+        "registering": "Oluşturuluyor…",
+        "haveAccount": "Zaten hesabın var mı?"
+    },
+    "settings": {
+        "title": "Ayarlar",
+        "tabs": {
+            "account": "Hesap",
+            "members": "Ekip",
+            "billing": "Faturalama",
+            "apiKeys": "API Anahtarları"
+        },
+        "language": "Dil"
+    },
+    "common": {
+        "loading": "Yükleniyor…",
+        "cancel": "Vazgeç",
+        "save": "Kaydet",
+        "delete": "Sil",
+        "copy": "Kopyala",
+        "copied": "Kopyalandı",
+        "somethingWentWrong": "Bir şeyler ters gitti",
+        "reload": "Sayfayı yenile"
+    }
+}

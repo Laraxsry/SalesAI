@@ -147,7 +147,7 @@ billingRouter.post(
                     });
 
                     return res.json({ checkoutUrl: session.url, sessionId: session.id });
-                } catch (stripeErr) {
+                } catch {
                     // Fallback to mock session URL if Stripe API fails
                 }
             }
@@ -196,7 +196,7 @@ billingRouter.post(
                         return_url: returnUrl || 'http://localhost:3000/settings/billing'
                     });
                     return res.json({ portalUrl: portalSession.url });
-                } catch (stripeErr) {
+                } catch {
                     // Fallback to mock portal
                 }
             }

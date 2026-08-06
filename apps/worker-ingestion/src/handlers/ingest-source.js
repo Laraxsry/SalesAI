@@ -4,7 +4,7 @@ import { describeImage, transcribeAudio } from '@repo/ai';
 import { presignDownload } from '@repo/storage';
 import { publishEvent, RT_EVENTS } from '@repo/realtime';
 import { extractFromUrl } from '../extractors/url.js';
-import { safeFetch, decryptField } from '@repo/utils';
+import { decryptField } from '@repo/utils';
 import { createRequire } from 'node:module';
 const require = createRequire(import.meta.url);
 // Node.js 22+ için pdf-parse (pdfjs-dist) DOMMatrix polyfill'i

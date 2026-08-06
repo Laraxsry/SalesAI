@@ -181,6 +181,39 @@ agentsRouter.delete('/:id', requireAuth, async (req, res, next) => {
 });
 
 /**
+ * Phase 5: Read the agent's current embed (widget) configuration + domain
+ * allowlist, for prefilling the Embed Studio UI. Defaults are returned when
+ * no EmbedConfig has been saved yet (schema defaults, no domains).
+ *
+ * md/backend/phase5: GET /api/v1/agents/:id/embed
+ */
+agentsRouter.get('/:id/embed', requireAuth, async (req, res, next) => {
+    try {
+        const agent = await Agent.findById(req.params.id);
+        if (!agent) return res.status(404).json({ error: 'Agent not found' });
+
+        const [embedConfig, allowlist, link] = await Promise.all([
+            EmbedConfig.findOne({ agentId: agent._id }),
+            EmbedDomain.find({ agentId: agent._id }).sort({ domain: 1 }).lean(),
+            ShareLink.findOne({ agentId: agent._id, active: true }).sort({ createdAt: -1 })
+        ]);
+
+        const config = (embedConfig || new EmbedConfig({ agentId: agent._id })).toObject();
+        const snippet = link
+            ? buildEmbedSnippet({
+                  apiBaseUrl: process.env.API_PUBLIC_URL || 'http://localhost:5001',
+                  shareToken: link.token,
+                  sdkVersion: getSdkVersion()
+              })
+            : null;
+
+        res.json({ ...config, domains: allowlist, snippet });
+    } catch (err) {
+        next(err);
+    }
+});
+
+/**
  * Phase 5: Save the agent's embed (widget) configuration + domain allowlist.
  *
  * Upsert semantics: one EmbedConfig per agent; the domain list in the body is

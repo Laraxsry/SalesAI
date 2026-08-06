@@ -4,11 +4,10 @@ import { StatusBar } from 'expo-status-bar';
 import { useRouter } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import { useAuth } from './_layout';
-import { CONFIG } from '../../config';
 
 export default function DashboardScreen() {
     const router = useRouter();
-    const { token, user, logout } = useAuth();
+    const { token, user, logout, apiFetch } = useAuth();
 
     const [activeTab, setActiveTab] = useState('home'); // home, sessions, leads, agents, settings
     const [loading, setLoading] = useState(true);
@@ -36,9 +35,7 @@ export default function DashboardScreen() {
         try {
             setError('');
             // 1. Fetch workspaces
-            const wsRes = await fetch(`${CONFIG.API_URL}/api/v1/workspaces`, {
-                headers: { 'Authorization': `Bearer ${token}` },
-            });
+            const wsRes = await apiFetch('/api/v1/workspaces');
             if (!wsRes.ok) throw new Error('Failed to fetch workspaces');
             const wsData = await wsRes.json();
             setWorkspaces(wsData);
@@ -46,7 +43,7 @@ export default function DashboardScreen() {
             if (wsData.length > 0) {
                 const initialWS = wsData[0];
                 setActiveWorkspace(initialWS);
-                await loadWorkspaceData(initialWS._id);
+                await loadWorkspaceData(initialWS.id);
             } else {
                 setLoading(false);
             }
@@ -60,9 +57,7 @@ export default function DashboardScreen() {
     const loadWorkspaceData = async (workspaceId) => {
         try {
             // 2. Fetch products
-            const prodRes = await fetch(`${CONFIG.API_URL}/api/v1/products?workspaceId=${workspaceId}`, {
-                headers: { 'Authorization': `Bearer ${token}` },
-            });
+            const prodRes = await apiFetch(`/api/v1/products?workspaceId=${workspaceId}`);
             if (!prodRes.ok) throw new Error('Failed to fetch products');
             const prodData = await prodRes.json();
             setProducts(prodData);
@@ -84,18 +79,14 @@ export default function DashboardScreen() {
     const loadProductAndLeadsData = async (workspaceId, productId) => {
         try {
             // 3. Fetch leads
-            const leadsRes = await fetch(`${CONFIG.API_URL}/api/v1/analytics/leads?workspaceId=${workspaceId}`, {
-                headers: { 'Authorization': `Bearer ${token}` },
-            });
+            const leadsRes = await apiFetch(`/api/v1/analytics/leads?workspaceId=${workspaceId}`);
             if (leadsRes.ok) {
                 const leadsData = await leadsRes.json();
                 setLeads(leadsData.leads || []);
             }
 
             // 4. Fetch agents for active product
-            const agentsRes = await fetch(`${CONFIG.API_URL}/api/v1/agents?productId=${productId}`, {
-                headers: { 'Authorization': `Bearer ${token}` },
-            });
+            const agentsRes = await apiFetch(`/api/v1/agents?productId=${productId}`);
             if (!agentsRes.ok) throw new Error('Failed to fetch agents');
             const agentsData = await agentsRes.json();
             setAgents(agentsData);
@@ -110,18 +101,14 @@ export default function DashboardScreen() {
 
             for (const agent of agentsData) {
                 // Fetch sessions
-                const sessRes = await fetch(`${CONFIG.API_URL}/api/v1/agents/${agent._id}/sessions`, {
-                    headers: { 'Authorization': `Bearer ${token}` },
-                });
+                const sessRes = await apiFetch(`/api/v1/agents/${agent._id}/sessions`);
                 if (sessRes.ok) {
                     const sessData = await sessRes.json();
                     allSessions.push(...sessData.map(s => ({ ...s, agentName: agent.name })));
                 }
 
                 // Fetch KPIs
-                const kpiRes = await fetch(`${CONFIG.API_URL}/api/v1/analytics/agents/${agent._id}`, {
-                    headers: { 'Authorization': `Bearer ${token}` },
-                });
+                const kpiRes = await apiFetch(`/api/v1/analytics/agents/${agent._id}`);
                 if (kpiRes.ok) {
                     const kpiData = await kpiRes.json();
                     totalSessionsSum += kpiData.totalSessions || 0;
@@ -166,7 +153,7 @@ export default function DashboardScreen() {
     const handleRefresh = () => {
         setRefreshing(true);
         if (activeWorkspace && activeProduct) {
-            loadProductAndLeadsData(activeWorkspace._id, activeProduct.id);
+            loadProductAndLeadsData(activeWorkspace.id, activeProduct.id);
         } else {
             loadInitialContext();
         }
@@ -177,9 +164,8 @@ export default function DashboardScreen() {
         const nextStatus = agent.status === 'active' ? 'paused' : 'active';
         const endpoint = agent.status === 'active' ? 'pause' : 'activate';
         try {
-            const res = await fetch(`${CONFIG.API_URL}/api/v1/agents/${agent._id}/${endpoint}`, {
+            const res = await apiFetch(`/api/v1/agents/${agent._id}/${endpoint}`, {
                 method: 'POST',
-                headers: { 'Authorization': `Bearer ${token}` },
             });
             if (!res.ok) throw new Error(`Failed to update status to ${nextStatus}`);
             
@@ -194,12 +180,9 @@ export default function DashboardScreen() {
     // Update lead status
     const updateLeadStatus = async (lead, nextStatus) => {
         try {
-            const res = await fetch(`${CONFIG.API_URL}/api/v1/analytics/leads/${lead._id}/status`, {
+            const res = await apiFetch(`/api/v1/analytics/leads/${lead._id}/status`, {
                 method: 'PATCH',
-                headers: { 
-                    'Authorization': `Bearer ${token}`,
-                    'Content-Type': 'application/json'
-                },
+                headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({ status: nextStatus }),
             });
             if (!res.ok) throw new Error('Failed to update lead status');
@@ -242,6 +225,11 @@ export default function DashboardScreen() {
     }
 
     const liveSessions = sessions.filter(s => s.status === 'live');
+    // Client-side UX affordance only — matches the gap in the backend today
+    // (agent pause/activate and lead-status routes don't enforce RBAC either),
+    // so this prevents accidental taps rather than being a real security
+    // boundary. Role comes straight from GET /workspaces (no extra call).
+    const isViewer = activeWorkspace?.role === 'VIEWER';
 
     return (
         <View style={styles.container}>
@@ -384,23 +372,26 @@ export default function DashboardScreen() {
                                     <Text style={styles.leadCompany}>Company: {item.contact.company}</Text>
                                 ) : null}
 
-                                {/* Lead Status Actions */}
+                                {/* Lead Status Actions — read-only for VIEWER role */}
                                 <View style={styles.leadActionsRow}>
-                                    <TouchableOpacity 
-                                        style={[styles.leadStatusBtn, item.status === 'new' && styles.leadStatusBtnActive]}
+                                    <TouchableOpacity
+                                        style={[styles.leadStatusBtn, item.status === 'new' && styles.leadStatusBtnActive, isViewer && styles.leadStatusBtnDisabled]}
                                         onPress={() => updateLeadStatus(item, 'new')}
+                                        disabled={isViewer}
                                     >
                                         <Text style={[styles.leadStatusBtnText, item.status === 'new' && styles.leadStatusBtnActiveText]}>New</Text>
                                     </TouchableOpacity>
-                                    <TouchableOpacity 
-                                        style={[styles.leadStatusBtn, item.status === 'contacted' && styles.leadStatusBtnActive]}
+                                    <TouchableOpacity
+                                        style={[styles.leadStatusBtn, item.status === 'contacted' && styles.leadStatusBtnActive, isViewer && styles.leadStatusBtnDisabled]}
                                         onPress={() => updateLeadStatus(item, 'contacted')}
+                                        disabled={isViewer}
                                     >
                                         <Text style={[styles.leadStatusBtnText, item.status === 'contacted' && styles.leadStatusBtnActiveText]}>Contacted</Text>
                                     </TouchableOpacity>
-                                    <TouchableOpacity 
-                                        style={[styles.leadStatusBtn, item.status === 'converted' && styles.leadStatusBtnActive]}
+                                    <TouchableOpacity
+                                        style={[styles.leadStatusBtn, item.status === 'converted' && styles.leadStatusBtnActive, isViewer && styles.leadStatusBtnDisabled]}
                                         onPress={() => updateLeadStatus(item, 'converted')}
+                                        disabled={isViewer}
                                     >
                                         <Text style={[styles.leadStatusBtnText, item.status === 'converted' && styles.leadStatusBtnActiveText]}>Won</Text>
                                     </TouchableOpacity>
@@ -447,6 +438,7 @@ export default function DashboardScreen() {
                                     <Switch
                                         value={item.status === 'active'}
                                         onValueChange={() => toggleAgentStatus(item)}
+                                        disabled={isViewer}
                                         trackColor={{ false: '#2d2d44', true: '#10b981' }}
                                         thumbColor="#ffffff"
                                     />
@@ -474,18 +466,18 @@ export default function DashboardScreen() {
                         <Text style={[styles.sectionTitle, { marginTop: 24 }]}>Workspaces</Text>
                         <View style={styles.settingsCard}>
                             {workspaces.map((ws) => (
-                                <TouchableOpacity 
-                                    key={ws._id} 
-                                    style={[styles.workspaceItem, activeWorkspace?._id === ws._id && styles.workspaceItemActive]}
+                                <TouchableOpacity
+                                    key={ws.id}
+                                    style={[styles.workspaceItem, activeWorkspace?.id === ws.id && styles.workspaceItemActive]}
                                     onPress={() => {
                                         setActiveWorkspace(ws);
-                                        loadWorkspaceData(ws._id);
+                                        loadWorkspaceData(ws.id);
                                     }}
                                 >
-                                    <Text style={[styles.workspaceText, activeWorkspace?._id === ws._id && styles.workspaceTextActive]}>
-                                        {ws.name}
+                                    <Text style={[styles.workspaceText, activeWorkspace?.id === ws.id && styles.workspaceTextActive]}>
+                                        {ws.name} {ws.role ? `(${ws.role})` : ''}
                                     </Text>
-                                    {activeWorkspace?._id === ws._id && <Text style={styles.activeIndicatorText}>Active</Text>}
+                                    {activeWorkspace?.id === ws.id && <Text style={styles.activeIndicatorText}>Active</Text>}
                                 </TouchableOpacity>
                             ))}
                         </View>
@@ -821,6 +813,9 @@ const styles = StyleSheet.create({
     },
     leadStatusBtnActiveText: {
         color: '#ffffff',
+    },
+    leadStatusBtnDisabled: {
+        opacity: 0.4,
     },
     contactActionsRow: {
         borderTopWidth: 1,

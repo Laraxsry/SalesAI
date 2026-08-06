@@ -22,25 +22,25 @@ const PII_PATTERNS = [
     // Email adresleri
     {
         name: 'email',
-        pattern: /[a-zA-Z0-9._%+\-]+@[a-zA-Z0-9.\-]+\.[a-zA-Z]{2,}/g,
+        pattern: /[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}/g,
         replacement: '[REDACTED-EMAIL]'
     },
     // Türkiye telefon: +90 5xx veya 05xx formatları
     {
         name: 'phone_tr',
-        pattern: /(\+90|0)[\s\-]?5\d{2}[\s\-]?\d{3}[\s\-]?\d{2}[\s\-]?\d{2}/g,
+        pattern: /(\+90|0)[\s-]?5\d{2}[\s-]?\d{3}[\s-]?\d{2}[\s-]?\d{2}/g,
         replacement: '[REDACTED-PHONE]'
     },
     // Uluslararası telefon numaraları (+XX ile başlayan)
     {
         name: 'phone_intl',
-        pattern: /\+\d{1,3}[\s\-]?\(?\d{1,4}\)?[\s\-]?\d{1,4}[\s\-]?\d{1,9}/g,
+        pattern: /\+\d{1,3}[\s-]?\(?\d{1,4}\)?[\s-]?\d{1,4}[\s-]?\d{1,9}/g,
         replacement: '[REDACTED-PHONE]'
     },
     // Kredi kartı numaraları (16 hane, boşluklu veya tireli gruplar)
     {
         name: 'credit_card',
-        pattern: /\b\d{4}[\s\-]?\d{4}[\s\-]?\d{4}[\s\-]?\d{4}\b/g,
+        pattern: /\b\d{4}[\s-]?\d{4}[\s-]?\d{4}[\s-]?\d{4}\b/g,
         replacement: '[REDACTED-CARD]'
     },
     // TC Kimlik Numarası (11 haneli, 0 ile başlamaz)

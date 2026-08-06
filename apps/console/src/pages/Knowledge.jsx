@@ -1,6 +1,10 @@
 import { useEffect, useState } from 'react';
-import { useSearchParams } from 'react-router-dom';
+import { useSearchParams, Link } from 'react-router-dom';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
+import { useForm } from 'react-hook-form';
+import { zodResolver } from '@hookform/resolvers/zod';
+import { z } from 'zod';
+import { KnowledgeSourceInput } from '@repo/contracts';
 import { Button, Input } from '@repo/ui';
 import {
     Plus,
@@ -16,7 +20,9 @@ import {
     Loader2,
     CheckCircle2,
     XCircle,
-    Clock
+    Clock,
+    UploadCloud,
+    Search
 } from 'lucide-react';
 import { productsApi, knowledgeApi } from '../lib/api.js';
 import { useAuthStore } from '../store/auth.js';
@@ -38,39 +44,91 @@ const STATUS = {
     failed: { label: 'Başarısız', icon: XCircle, className: 'text-red-400 bg-red-500/10' }
 };
 
+function Dropzone({ file, accept, onFile }) {
+    const [dragging, setDragging] = useState(false);
+
+    function handleDrop(e) {
+        e.preventDefault();
+        setDragging(false);
+        const dropped = e.dataTransfer.files?.[0];
+        if (dropped) onFile(dropped);
+    }
+
+    return (
+        <label
+            onDragOver={(e) => {
+                e.preventDefault();
+                setDragging(true);
+            }}
+            onDragLeave={() => setDragging(false)}
+            onDrop={handleDrop}
+            className={`mb-4 flex cursor-pointer flex-col items-center justify-center gap-2 rounded-[var(--radius-input)] border-2 border-dashed px-3 py-8 text-center transition-colors ${
+                dragging ? 'border-brand bg-brand/10' : 'border-border hover:border-brand/50'
+            }`}
+        >
+            <UploadCloud size={22} className={dragging ? 'text-brand-light' : 'text-text-muted'} />
+            <p className="text-sm text-text">
+                {file ? file.name : 'Dosyayı sürükle bırak ya da seçmek için tıkla'}
+            </p>
+            <input
+                type="file"
+                required={!file}
+                accept={accept}
+                onChange={(e) => onFile(e.target.files?.[0] ?? null)}
+                className="hidden"
+            />
+        </label>
+    );
+}
+
+/** title/content/url are validated with the real API contract; conditional per-type requiredness added via superRefine. */
+function buildSourceSchema(type, productId) {
+    return z.preprocess(
+        (data) => ({
+            productId,
+            type,
+            title: data?.title || undefined,
+            content: data?.content || undefined,
+            url: data?.url || undefined
+        }),
+        KnowledgeSourceInput.superRefine((val, ctx) => {
+            if (val.type === 'text' && !val.content) {
+                ctx.addIssue({ code: z.ZodIssueCode.custom, path: ['content'], message: 'İçerik gerekli' });
+            }
+            if ((val.type === 'url' || val.type === 'api') && !val.url) {
+                ctx.addIssue({ code: z.ZodIssueCode.custom, path: ['url'], message: 'Geçerli bir URL gir' });
+            }
+        })
+    );
+}
+
 function AddSourceModal({ productId, onClose, onCreated }) {
     const [type, setType] = useState('text');
-    const [title, setTitle] = useState('');
-    const [content, setContent] = useState('');
-    const [url, setUrl] = useState('');
     const [file, setFile] = useState(null);
     const [error, setError] = useState('');
-    const [loading, setLoading] = useState(false);
+    const {
+        register,
+        handleSubmit,
+        formState: { errors, isSubmitting }
+    } = useForm({
+        resolver: zodResolver(buildSourceSchema(type, productId)),
+        defaultValues: { title: '', content: '', url: '' }
+    });
 
-    async function onSubmit(e) {
-        e.preventDefault();
+    async function onSubmit(values) {
         setError('');
-        setLoading(true);
         try {
-            const payload = { productId, type, title: title || undefined };
-
-            if (type === 'text') {
-                payload.content = content;
-            } else if (type === 'url' || type === 'api') {
-                payload.url = url;
-            } else {
+            const payload = { ...values };
+            if (type === 'document' || type === 'image' || type === 'video') {
                 if (!file) throw new Error('Bir dosya seç');
                 const { fileKey, mimeType } = await knowledgeApi.uploadFile(file);
                 payload.fileKey = fileKey;
                 payload.mimeType = mimeType;
             }
-
             await knowledgeApi.create(payload);
             onCreated();
         } catch (err) {
             setError(err.message);
-        } finally {
-            setLoading(false);
         }
     }
 
@@ -79,12 +137,12 @@ function AddSourceModal({ productId, onClose, onCreated }) {
             <div className="w-full max-w-md rounded-[var(--radius-card)] border border-border bg-surface p-6">
                 <div className="mb-6 flex items-center justify-between">
                     <h2 className="text-lg font-semibold text-text">Knowledge ekle</h2>
-                    <button onClick={onClose} className="text-text-muted hover:text-text">
+                    <button onClick={onClose} aria-label="Kapat" className="text-text-muted hover:text-text">
                         <X size={18} />
                     </button>
                 </div>
 
-                <form onSubmit={onSubmit}>
+                <form onSubmit={handleSubmit(onSubmit)}>
                     <div className="mb-4 grid grid-cols-3 gap-2">
                         {TYPES.map(({ value, label, icon: Icon }) => (
                             <button
@@ -107,21 +165,20 @@ function AddSourceModal({ productId, onClose, onCreated }) {
                         id="source-title"
                         label="Başlık (opsiyonel)"
                         placeholder="Örn. Fiyatlandırma sayfası"
-                        value={title}
-                        onChange={(e) => setTitle(e.target.value)}
+                        error={errors.title?.message}
+                        {...register('title')}
                     />
 
                     {type === 'text' && (
                         <label className="mb-4 block text-sm">
                             <span className="mb-1.5 block font-medium text-text-muted">İçerik</span>
                             <textarea
-                                required
                                 rows={5}
-                                value={content}
-                                onChange={(e) => setContent(e.target.value)}
                                 placeholder="Ürününüz hakkında metin, SSS, satış argümanları…"
                                 className="w-full resize-none rounded-[var(--radius-input)] border border-border bg-bg px-3 py-2 text-[13.5px] text-text outline-none focus:border-brand focus:ring-2 focus:ring-brand/20"
+                                {...register('content')}
                             />
+                            {errors.content && <p className="mt-1.5 text-xs text-red-400">{errors.content.message}</p>}
                         </label>
                     )}
 
@@ -130,24 +187,21 @@ function AddSourceModal({ productId, onClose, onCreated }) {
                             id="source-url"
                             label={type === 'api' ? 'OpenAPI / API URL' : 'Web sitesi URL'}
                             type="url"
-                            required
                             placeholder="https://..."
-                            value={url}
-                            onChange={(e) => setUrl(e.target.value)}
+                            error={errors.url?.message}
+                            {...register('url')}
                         />
                     )}
 
                     {(type === 'document' || type === 'image' || type === 'video') && (
-                        <label className="mb-4 block text-sm">
-                            <span className="mb-1.5 block font-medium text-text-muted">Dosya</span>
-                            <input
-                                type="file"
-                                required
+                        <div className="mb-4">
+                            <span className="mb-1.5 block text-sm font-medium text-text-muted">Dosya</span>
+                            <Dropzone
+                                file={file}
                                 accept={type === 'image' ? 'image/*' : type === 'video' ? 'video/*' : undefined}
-                                onChange={(e) => setFile(e.target.files?.[0] ?? null)}
-                                className="block w-full text-sm text-text-muted file:mr-3 file:rounded-[var(--radius-input)] file:border-0 file:bg-surface-raised file:px-3 file:py-2 file:text-sm file:font-medium file:text-text hover:file:bg-bg"
+                                onFile={setFile}
                             />
-                        </label>
+                        </div>
                     )}
 
                     {error && (
@@ -161,8 +215,8 @@ function AddSourceModal({ productId, onClose, onCreated }) {
                         <Button type="button" variant="ghost" onClick={onClose}>
                             Vazgeç
                         </Button>
-                        <Button type="submit" disabled={loading}>
-                            {loading ? 'Ekleniyor…' : 'Ekle'}
+                        <Button type="submit" disabled={isSubmitting}>
+                            {isSubmitting ? 'Ekleniyor…' : 'Ekle'}
                         </Button>
                     </div>
                 </form>
@@ -254,6 +308,15 @@ export function Knowledge() {
                                 </option>
                             ))}
                         </select>
+                    )}
+                    {productId && (
+                        <Link
+                            to={`/knowledge/gaps?product=${productId}`}
+                            className="flex h-10 items-center gap-1.5 rounded-[var(--radius-input)] border border-border bg-surface px-3 text-sm font-medium text-text-muted transition-colors hover:border-brand/50 hover:text-text"
+                        >
+                            <Search size={15} />
+                            Bilgi boşlukları
+                        </Link>
                     )}
                     <Button onClick={() => setShowModal(true)} disabled={!productId}>
                         <Plus size={16} />

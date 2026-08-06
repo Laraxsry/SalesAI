@@ -1,6 +1,10 @@
 import { useEffect, useState } from 'react';
 import { Link, useSearchParams } from 'react-router-dom';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
+import { useForm, Controller } from 'react-hook-form';
+import { zodResolver } from '@hookform/resolvers/zod';
+import { z } from 'zod';
+import { AgentConfigInput } from '@repo/contracts';
 import { Button, Input } from '@repo/ui';
 import { Plus, Bot, X, AlertCircle } from 'lucide-react';
 import { productsApi, agentsApi } from '../lib/api.js';
@@ -38,44 +42,48 @@ const LANGUAGES = [
     { value: 'en', label: 'English' }
 ];
 
+/** Form values use a flat tone/language/goalsText shape; this reshapes + validates against the real API contract. */
+function buildAgentFormSchema(productId) {
+    return z.preprocess((data) => {
+        const goals = typeof data?.goalsText === 'string'
+            ? data.goalsText.split(',').map((g) => g.trim()).filter(Boolean)
+            : [];
+        return {
+            productId,
+            name: data?.name,
+            persona: { tone: data?.tone, language: data?.language, goals, guardrails: [] },
+            avatarProvider: data?.avatarProvider,
+            screenModes: data?.screenModes || []
+        };
+    }, AgentConfigInput);
+}
+
 function NewAgentModal({ productId, onClose, onCreated }) {
-    const [name, setName] = useState('');
-    const [tone, setTone] = useState('friendly, expert, concise');
-    const [language, setLanguage] = useState('tr');
-    const [goals, setGoals] = useState('');
-    const [avatarProvider, setAvatarProvider] = useState('voice-only');
-    const [screenModes, setScreenModes] = useState(['guided-tour', 'customer-share']);
     const [error, setError] = useState('');
-    const [loading, setLoading] = useState(false);
+    const {
+        register,
+        handleSubmit,
+        control,
+        formState: { errors, isSubmitting }
+    } = useForm({
+        resolver: zodResolver(buildAgentFormSchema(productId)),
+        defaultValues: {
+            name: '',
+            tone: 'friendly, expert, concise',
+            language: 'tr',
+            goalsText: '',
+            avatarProvider: 'voice-only',
+            screenModes: ['guided-tour', 'customer-share']
+        }
+    });
 
-    function toggleScreenMode(mode) {
-        setScreenModes((prev) => (prev.includes(mode) ? prev.filter((m) => m !== mode) : [...prev, mode]));
-    }
-
-    async function onSubmit(e) {
-        e.preventDefault();
+    async function onSubmit(agent) {
         setError('');
-        setLoading(true);
         try {
-            const agent = await agentsApi.create({
-                productId,
-                name,
-                persona: {
-                    tone,
-                    language,
-                    goals: goals
-                        .split(',')
-                        .map((g) => g.trim())
-                        .filter(Boolean)
-                },
-                avatarProvider,
-                screenModes
-            });
-            onCreated(agent);
+            const created = await agentsApi.create(agent);
+            onCreated(created);
         } catch (err) {
             setError(err.message);
-        } finally {
-            setLoading(false);
         }
     }
 
@@ -84,34 +92,31 @@ function NewAgentModal({ productId, onClose, onCreated }) {
             <div className="max-h-[90vh] w-full max-w-md overflow-y-auto rounded-[var(--radius-card)] border border-border bg-surface p-6">
                 <div className="mb-6 flex items-center justify-between">
                     <h2 className="text-lg font-semibold text-text">Yeni agent</h2>
-                    <button onClick={onClose} className="text-text-muted hover:text-text">
+                    <button onClick={onClose} aria-label="Kapat" className="text-text-muted hover:text-text">
                         <X size={18} />
                     </button>
                 </div>
 
-                <form onSubmit={onSubmit}>
+                <form onSubmit={handleSubmit(onSubmit)}>
                     <Input
                         id="agent-name"
                         label="Agent adı"
                         placeholder="Satış Asistanı"
-                        required
-                        value={name}
-                        onChange={(e) => setName(e.target.value)}
+                        error={errors.name?.message}
+                        {...register('name')}
                     />
 
                     <Input
                         id="agent-tone"
                         label="Ton"
                         placeholder="friendly, expert, concise"
-                        value={tone}
-                        onChange={(e) => setTone(e.target.value)}
+                        {...register('tone')}
                     />
 
                     <label className="mb-4 block text-sm">
                         <span className="mb-1.5 block font-medium text-text-muted">Dil</span>
                         <select
-                            value={language}
-                            onChange={(e) => setLanguage(e.target.value)}
+                            {...register('language')}
                             className="h-10 w-full rounded-[var(--radius-input)] border border-border bg-bg px-3 text-[13.5px] text-text outline-none focus:border-brand"
                         >
                             {LANGUAGES.map((l) => (
@@ -126,15 +131,13 @@ function NewAgentModal({ productId, onClose, onCreated }) {
                         id="agent-goals"
                         label="Hedefler (virgülle ayır, opsiyonel)"
                         placeholder="demo ayarla, itirazları yanıtla"
-                        value={goals}
-                        onChange={(e) => setGoals(e.target.value)}
+                        {...register('goalsText')}
                     />
 
                     <label className="mb-4 block text-sm">
                         <span className="mb-1.5 block font-medium text-text-muted">Avatar sağlayıcı</span>
                         <select
-                            value={avatarProvider}
-                            onChange={(e) => setAvatarProvider(e.target.value)}
+                            {...register('avatarProvider')}
                             className="h-10 w-full rounded-[var(--radius-input)] border border-border bg-bg px-3 text-[13.5px] text-text outline-none focus:border-brand"
                         >
                             {AVATAR_PROVIDERS.map((p) => (
@@ -145,22 +148,34 @@ function NewAgentModal({ productId, onClose, onCreated }) {
                         </select>
                     </label>
 
-                    <div className="mb-4">
-                        <span className="mb-1.5 block text-sm font-medium text-text-muted">Ekran modları</span>
-                        <div className="flex flex-col gap-2">
-                            {SCREEN_MODES.map((m) => (
-                                <label key={m.value} className="flex items-center gap-2 text-sm text-text">
-                                    <input
-                                        type="checkbox"
-                                        checked={screenModes.includes(m.value)}
-                                        onChange={() => toggleScreenMode(m.value)}
-                                        className="h-4 w-4 rounded border-border accent-[var(--color-brand)]"
-                                    />
-                                    {m.label}
-                                </label>
-                            ))}
-                        </div>
-                    </div>
+                    <Controller
+                        name="screenModes"
+                        control={control}
+                        render={({ field }) => (
+                            <div className="mb-4">
+                                <span className="mb-1.5 block text-sm font-medium text-text-muted">Ekran modları</span>
+                                <div className="flex flex-col gap-2">
+                                    {SCREEN_MODES.map((m) => (
+                                        <label key={m.value} className="flex items-center gap-2 text-sm text-text">
+                                            <input
+                                                type="checkbox"
+                                                checked={field.value.includes(m.value)}
+                                                onChange={() =>
+                                                    field.onChange(
+                                                        field.value.includes(m.value)
+                                                            ? field.value.filter((v) => v !== m.value)
+                                                            : [...field.value, m.value]
+                                                    )
+                                                }
+                                                className="h-4 w-4 rounded border-border accent-[var(--color-brand)]"
+                                            />
+                                            {m.label}
+                                        </label>
+                                    ))}
+                                </div>
+                            </div>
+                        )}
+                    />
 
                     {error && (
                         <div className="mb-4 flex items-center gap-2 rounded-[var(--radius-input)] border border-red-500/30 bg-red-500/10 px-3 py-2.5 text-sm text-red-400">
@@ -173,8 +188,8 @@ function NewAgentModal({ productId, onClose, onCreated }) {
                         <Button type="button" variant="ghost" onClick={onClose}>
                             Vazgeç
                         </Button>
-                        <Button type="submit" disabled={loading}>
-                            {loading ? 'Oluşturuluyor…' : 'Oluştur'}
+                        <Button type="submit" disabled={isSubmitting}>
+                            {isSubmitting ? 'Oluşturuluyor…' : 'Oluştur'}
                         </Button>
                     </div>
                 </form>

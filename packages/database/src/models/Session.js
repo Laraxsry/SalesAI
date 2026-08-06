@@ -6,6 +6,11 @@ const SessionSchema = new Schema(
         shareLinkId: { type: Schema.Types.ObjectId, ref: 'ShareLink', index: true },
         roomName: { type: String, required: true, index: true },
         visitorName: { type: String },
+        // Mobile Phase 3: optional lightweight visitor identity, set when the
+        // session was minted by a device/visitor that registered for push or
+        // signed in via magic-link. Lets GET /sessions/mine list a visitor's
+        // history across devices without a full account.
+        visitorId: { type: Schema.Types.ObjectId, ref: 'Visitor', index: true },
         status: {
             type: String,
             enum: ['live', 'ended', 'failed'],

@@ -14,3 +14,30 @@ body {
     color: var(--color-text);
     font-family: 'Inter', system-ui, -apple-system, Segoe UI, Roboto, sans-serif;
 }
+
+.app-loading {
+    min-height: 100dvh;
+    display: grid;
+    place-items: center;
+    color: var(--color-muted);
+    font-size: 0.875rem;
+    font-weight: 600;
+    letter-spacing: 0.02em;
+}
+
+button:focus-visible,
+a:focus-visible {
+    outline: 2px solid var(--color-brand-light);
+    outline-offset: 2px;
+}
+
+@media (prefers-reduced-motion: reduce) {
+    *,
+    *::before,
+    *::after {
+        scroll-behavior: auto !important;
+        animation-duration: 0.01ms !important;
+        animation-iteration-count: 1 !important;
+        transition-duration: 0.01ms !important;
+    }
+}

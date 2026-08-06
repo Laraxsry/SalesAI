@@ -31,3 +31,8 @@ export { AuthSession } from './AuthSession.js';
 export { ApiKey } from './ApiKey.js';
 export { AuditLog, AUDIT_ACTIONS } from './AuditLog.js';
 
+// Mobile Phase 3: Push & Saved Conversations
+export { Visitor } from './Visitor.js';
+export { MagicLinkToken } from './MagicLinkToken.js';
+export { Device } from './Device.js';
+

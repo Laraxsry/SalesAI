@@ -22,6 +22,9 @@ import { billingRouter } from './billing.js';
 // Phase 4: Webhook / CRM Integrations
 import { integrationsRouter } from './integrations.js';
 
+// Mobile Phase 3: Push & Saved Conversations
+import { devicesRouter } from './devices.js';
+
 /** Mounts all API routers under /api/v1. */
 export function registerRoutes(app) {
     // Phase 0: Foundation
@@ -52,5 +55,8 @@ export function registerRoutes(app) {
 
     // Phase 4: Webhook / CRM Integrations
     app.use('/api/v1/integrations', integrationsRouter);
+
+    // Mobile Phase 3: Push & Saved Conversations
+    app.use('/api/v1/devices', devicesRouter);
 }
 

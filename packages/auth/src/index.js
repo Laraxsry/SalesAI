@@ -32,6 +32,16 @@ export function verifyAccess(token) {
     return jwt.verify(token, ACCESS_SECRET());
 }
 
+/**
+ * Signs a single long-lived (default 30d) access token against the same
+ * secret as signTokens()'s access token, so requireAuth() verifies both the
+ * same way. Used for lightweight identities (Mobile Phase 3 visitors) that
+ * don't go through the seller refresh-rotation flow in POST /auth/refresh.
+ */
+export function signVisitorToken(payload, ttlSeconds = 30 * 24 * 60 * 60) {
+    return jwt.sign({ ...payload, jti: crypto.randomUUID() }, ACCESS_SECRET(), { expiresIn: ttlSeconds });
+}
+
 export function verifyRefresh(token) {
     return jwt.verify(token, REFRESH_SECRET());
 }

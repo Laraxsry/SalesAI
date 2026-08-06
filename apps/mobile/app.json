@@ -8,17 +8,52 @@
     "userInterfaceStyle": "dark",
     "plugins": [
       "expo-router",
-      "expo-secure-store"
+      "expo-secure-store",
+      "expo-notifications",
+      "@livekit/react-native-expo-plugin",
+      "@config-plugins/react-native-webrtc"
     ],
     "ios": {
       "supportsTablet": true,
       "bundleIdentifier": "com.salesai.app",
+      "associatedDomains": [
+        "applinks:app.salesai.com"
+      ],
       "infoPlist": {
-        "NSMicrophoneUsageDescription": "SalesAI needs access to your microphone to converse with the agent."
+        "NSMicrophoneUsageDescription": "SalesAI needs access to your microphone to converse with the agent.",
+        "UIBackgroundModes": [
+          "audio"
+        ]
       }
     },
     "android": {
-      "package": "com.salesai.app"
+      "package": "com.salesai.app",
+      "permissions": [
+        "RECORD_AUDIO",
+        "FOREGROUND_SERVICE",
+        "FOREGROUND_SERVICE_MICROPHONE",
+        "POST_NOTIFICATIONS"
+      ],
+      "intentFilters": [
+        {
+          "action": "VIEW",
+          "autoVerify": true,
+          "data": [
+            {
+              "scheme": "https",
+              "host": "app.salesai.com",
+              "pathPrefix": "/"
+            }
+          ],
+          "category": [
+            "BROWSABLE",
+            "DEFAULT"
+          ]
+        }
+      ]
+    },
+    "web": {
+      "bundler": "metro"
     }
   }
 }

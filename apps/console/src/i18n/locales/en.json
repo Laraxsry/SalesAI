@@ -1,0 +1,47 @@
+{
+    "nav": {
+        "overview": "Overview",
+        "knowledge": "Knowledge",
+        "agents": "Agents",
+        "analytics": "Analytics",
+        "leads": "Leads",
+        "settings": "Settings",
+        "logout": "Log out"
+    },
+    "auth": {
+        "loginTitle": "Welcome back",
+        "loginSubtitle": "Sign in to your account to continue.",
+        "email": "Email",
+        "password": "Password",
+        "loginButton": "Sign in",
+        "loggingIn": "Signing in…",
+        "noAccount": "Don't have an account?",
+        "register": "Sign up",
+        "registerTitle": "Create an account",
+        "registerSubtitle": "Set up your workspace in 30 seconds, free.",
+        "name": "Name",
+        "registerButton": "Sign up for free",
+        "registering": "Creating…",
+        "haveAccount": "Already have an account?"
+    },
+    "settings": {
+        "title": "Settings",
+        "tabs": {
+            "account": "Account",
+            "members": "Team",
+            "billing": "Billing",
+            "apiKeys": "API Keys"
+        },
+        "language": "Language"
+    },
+    "common": {
+        "loading": "Loading…",
+        "cancel": "Cancel",
+        "save": "Save",
+        "delete": "Delete",
+        "copy": "Copy",
+        "copied": "Copied",
+        "somethingWentWrong": "Something went wrong",
+        "reload": "Reload page"
+    }
+}

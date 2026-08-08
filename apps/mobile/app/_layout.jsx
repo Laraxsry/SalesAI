@@ -4,6 +4,18 @@ import { LogBox, Platform } from 'react-native';
 import * as Notifications from 'expo-notifications';
 import { getNotificationRoute } from '../src/notificationRoute';
 
+// Intercept global fetch to bypass localtunnel reminder pages automatically
+if (typeof global.fetch === 'function') {
+    const _fetch = global.fetch;
+    global.fetch = function (url, options = {}) {
+        const headers = {
+            'Bypass-Tunnel-Reminder': 'true',
+            ...(options.headers || {}),
+        };
+        return _fetch(url, { ...options, headers });
+    };
+}
+
 // The native LiveKit package calls native component APIs at module load time,
 // so it must never be evaluated by the React Native Web runtime.
 if (Platform.OS !== 'web') {

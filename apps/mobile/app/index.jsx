@@ -10,7 +10,7 @@ import { getSavedConversations } from '../src/savedConversations';
  */
 export default function Home() {
     const router = useRouter();
-    const [input, setInput] = useState('');
+    const [input, setInput] = useState('test-token-5686');
     const [error, setError] = useState('');
     const [savedCount, setSavedCount] = useState(0);
 
@@ -20,14 +20,13 @@ export default function Home() {
         }, [])
     );
 
-    const handleConnect = () => {
-        if (!input.trim()) {
-            setError('Geçerli bir paylaşım bağlantısı veya token girin.');
-            return;
+    const handleConnect = (overrideToken) => {
+        let token = (typeof overrideToken === 'string' ? overrideToken : input).trim();
+        if (!token) {
+            token = 'test-token-5686';
         }
 
         setError('');
-        let token = input.trim();
 
         // If the user inputs a full link (universal link or deep link), extract the token
         // e.g. salesai://v/some-token or http://.../v/some-token
@@ -63,7 +62,7 @@ export default function Home() {
 
                     <TextInput
                         style={[styles.input, error ? styles.inputError : null]}
-                        placeholder="Örn. agent_token_abc"
+                        placeholder="Örn. test-token-5686"
                         placeholderTextColor="#6c727f"
                         value={input}
                         onChangeText={(text) => {
@@ -76,8 +75,16 @@ export default function Home() {
 
                     {error ? <Text style={styles.errorText}>{error}</Text> : null}
 
-                    <TouchableOpacity style={styles.button} onPress={handleConnect} activeOpacity={0.8}>
+                    <TouchableOpacity style={styles.button} onPress={() => handleConnect()} activeOpacity={0.8}>
                         <Text style={styles.buttonText}>Temsilciye Bağlan</Text>
+                    </TouchableOpacity>
+
+                    <TouchableOpacity 
+                        style={[styles.button, { backgroundColor: '#10b981', marginTop: 12 }]} 
+                        onPress={() => handleConnect('test-token-5686')} 
+                        activeOpacity={0.8}
+                    >
+                        <Text style={styles.buttonText}>⚡ Hızlı Bağlan (Demo Token: test-token-5686)</Text>
                     </TouchableOpacity>
                 </View>
 

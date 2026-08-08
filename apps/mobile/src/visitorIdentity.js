@@ -34,7 +34,7 @@ export async function getVisitorId() {
     try {
         const res = await fetch(`${CONFIG.API_URL}/api/v1/devices`, {
             method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
+            headers: { 'Content-Type': 'application/json', 'Bypass-Tunnel-Reminder': 'true' },
             body: JSON.stringify({})
         });
         if (!res.ok) return null;
@@ -53,7 +53,7 @@ export async function registerPushToken(expoPushToken, platform) {
     try {
         const res = await fetch(`${CONFIG.API_URL}/api/v1/devices`, {
             method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
+            headers: { 'Content-Type': 'application/json', 'Bypass-Tunnel-Reminder': 'true' },
             body: JSON.stringify({ visitorId, expoPushToken, platform })
         });
         if (!res.ok) throw new Error('Failed to register device');
@@ -69,7 +69,7 @@ export async function requestMagicLink(email) {
     const visitorId = await getVisitorId();
     const res = await fetch(`${CONFIG.API_URL}/api/v1/auth/magic-link`, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: { 'Content-Type': 'application/json', 'Bypass-Tunnel-Reminder': 'true' },
         body: JSON.stringify({ email, visitorId })
     });
     const data = await res.json().catch(() => ({}));
@@ -81,7 +81,7 @@ export async function requestMagicLink(email) {
 export async function verifyMagicLink(token) {
     const res = await fetch(`${CONFIG.API_URL}/api/v1/auth/magic-link/verify`, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: { 'Content-Type': 'application/json', 'Bypass-Tunnel-Reminder': 'true' },
         body: JSON.stringify({ token })
     });
     const data = await res.json().catch(() => ({}));

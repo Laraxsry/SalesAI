@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef } from 'react';
-import { View, Text, StyleSheet, TouchableOpacity, ActivityIndicator, Platform, PermissionsAndroid, Alert, Linking } from 'react-native';
+import { View, Text, StyleSheet, TouchableOpacity, ActivityIndicator, Platform, PermissionsAndroid, Alert, Linking, TextInput, KeyboardAvoidingView } from 'react-native';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { Track, RoomEvent } from 'livekit-client';
 import { StatusBar } from 'expo-status-bar';
@@ -56,6 +56,9 @@ function NativeSessionScreen() {
 
     // Prepares the native audio session (speaker/earpiece routing, category) before joining.
     useEffect(() => {
+        AudioSession.configureAudio({
+            ios: { defaultOutput: 'speaker' }
+        }).catch(() => {});
         AudioSession.startAudioSession().catch(() => {});
         return () => {
             AudioSession.stopAudioSession().catch(() => {});
@@ -81,13 +84,38 @@ function NativeSessionScreen() {
                 if (granted !== PermissionsAndroid.RESULTS.GRANTED) {
                     throw new Error('Temsilciyle konuşmak için mikrofon izni gereklidir.');
                 }
+            } else if (Platform.OS === 'ios') {
+                try {
+                    const mediaDevices = require('@livekit/react-native-webrtc').mediaDevices;
+                    if (mediaDevices?.getUserMedia) {
+                        const stream = await mediaDevices.getUserMedia({ audio: true });
+                        stream.getTracks().forEach((track) => track.stop());
+                    }
+                } catch (permissionErr) {
+                    console.warn('iOS Microphone permission check failed:', permissionErr);
+                    Alert.alert(
+                        'Mikrofon İzni Gerekli',
+                        'SalesAI sesli yapay zeka ile konuşabilmek için Ayarlar > Gizlilik ve Güvenlik > Mikrofon bölümünden SalesAI uygulamasına izin vermelisiniz.',
+                        [
+                            { text: 'İptal', style: 'cancel' },
+                            { text: 'Ayarları Aç', onPress: () => Linking.openSettings() }
+                        ]
+                    );
+                    throw new Error('Temsilciyle konuşmak için mikrofon izni gereklidir.');
+                }
             }
 
             setConnectionState('fetching');
-            const visitorId = await getVisitorId();
+            const visitorId = await Promise.race([
+                getVisitorId().catch(() => null),
+                new Promise((resolve) => setTimeout(() => resolve(null), 1500))
+            ]);
             const res = await fetch(`${CONFIG.API_URL}/api/v1/sessions`, {
                 method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
+                headers: {
+                    'Content-Type': 'application/json',
+                    'Bypass-Tunnel-Reminder': 'true'
+                },
                 body: JSON.stringify({ shareToken: token, visitorName: 'Mobile Visitor', visitorId: visitorId || undefined }),
             });
 
@@ -180,13 +208,19 @@ function NativeSessionScreen() {
                 </View>
             )}
 
-            {connDetails && (
+            {connDetails?.token && (
                 <LiveKitRoom
-                    serverUrl={connDetails.livekitUrl || CONFIG.LIVEKIT_URL}
+                    serverUrl={CONFIG.LIVEKIT_URL}
                     token={connDetails.token}
                     connect={true}
                     audio={true}
                     video={false}
+                    options={{
+                        publishDefaults: {
+                            red: false,
+                            audioSource: Track.Source.Microphone,
+                        },
+                    }}
                     onConnected={() => setConnectionState('connected')}
                     onDisconnected={handleDisconnect}
                     style={styles.roomContainer}
@@ -215,6 +249,24 @@ function RoomView({ agentName, setAgentName, avatarProvider, handleDisconnect })
     const [reconnecting, setReconnecting] = useState(false);
     const [captions, setCaptions] = useState('');
     const [isDeafened, setIsDeafened] = useState(false);
+    const [chatInput, setChatInput] = useState('');
+
+    const sendChatMessage = async () => {
+        if (!chatInput.trim() || !room?.localParticipant) return;
+        const text = chatInput.trim();
+        setChatInput('');
+        try {
+            const payload = new TextEncoder().encode(JSON.stringify({ type: 'chat', text }));
+            await room.localParticipant.publishData(payload, { reliable: true });
+            if (typeof room.localParticipant.sendChatMessage === 'function') {
+                await room.localParticipant.sendChatMessage(text).catch(() => {});
+            }
+            setCaptions(`Siz: ${text}`);
+            Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light).catch(() => {});
+        } catch (e) {
+            console.warn('Failed to send text message:', e);
+        }
+    };
 
     // Look for remote camera tracks (the agent video stream)
     const remoteVideoTracks = useTracks([Track.Source.Camera]);
@@ -223,6 +275,12 @@ function RoomView({ agentName, setAgentName, avatarProvider, handleDisconnect })
     // Transcription + connection-lifecycle listeners, now on the real room.
     useEffect(() => {
         if (!room) return;
+
+        if (room.localParticipant) {
+            room.localParticipant.setMicrophoneEnabled(true).catch((err) => {
+                console.warn('Failed to enable microphone:', err);
+            });
+        }
 
         let unsubscribe = null;
         try {
@@ -373,6 +431,21 @@ function RoomView({ agentName, setAgentName, avatarProvider, handleDisconnect })
                 toggleScreenShare={toggleScreenShare}
                 handleDisconnect={onEndPress}
             />
+
+            <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : 'height'} style={styles.chatInputContainer}>
+                <TextInput
+                    style={styles.chatInput}
+                    placeholder="Yazarak da mesaj gönderebilirsiniz…"
+                    placeholderTextColor="#64748b"
+                    value={chatInput}
+                    onChangeText={setChatInput}
+                    onSubmitEditing={sendChatMessage}
+                    returnKeyType="send"
+                />
+                <TouchableOpacity style={styles.sendButton} onPress={sendChatMessage}>
+                    <Text style={styles.sendButtonText}>Gönder</Text>
+                </TouchableOpacity>
+            </KeyboardAvoidingView>
         </View>
     );
 }
@@ -476,6 +549,35 @@ const styles = StyleSheet.create({
         flex: 1,
         justifyContent: 'center',
         alignItems: 'center',
-        marginVertical: 40,
+        marginVertical: 20,
+    },
+    chatInputContainer: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        marginTop: 16,
+        backgroundColor: '#161626',
+        borderRadius: 24,
+        paddingHorizontal: 16,
+        paddingVertical: 4,
+        borderWidth: 1,
+        borderColor: '#27273e',
+    },
+    chatInput: {
+        flex: 1,
+        color: '#ffffff',
+        fontSize: 14,
+        paddingVertical: 8,
+    },
+    sendButton: {
+        backgroundColor: '#6d5efc',
+        borderRadius: 16,
+        paddingHorizontal: 14,
+        paddingVertical: 8,
+        marginLeft: 8,
+    },
+    sendButtonText: {
+        color: '#ffffff',
+        fontSize: 13,
+        fontWeight: '600',
     },
 });

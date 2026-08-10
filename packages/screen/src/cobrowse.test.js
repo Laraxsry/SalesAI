@@ -1,5 +1,5 @@
 import { describe, it, expect, vi } from 'vitest';
-import { trustKey, assertHttpUrl, GuidedTour } from './cobrowse.js';
+import { trustKey, assertHttpUrl, authRouteKey, GuidedTour } from './cobrowse.js';
 
 /**
  * trustKey/assertHttpUrl are the pure core of the guided tour's SSRF guard.
@@ -42,6 +42,16 @@ describe('assertHttpUrl', () => {
 
     it('rejects a string that is not a URL at all', () => {
         expect(() => assertHttpUrl('not a url')).toThrow(/Invalid URL/);
+    });
+});
+
+describe('authRouteKey', () => {
+    it('treats a canonical trailing slash as the same login route', () => {
+        expect(authRouteKey('https://example.com/login')).toBe(authRouteKey('https://example.com/login/'));
+    });
+
+    it('still detects navigation away from the login route', () => {
+        expect(authRouteKey('https://example.com/login')).not.toBe(authRouteKey('https://example.com/dashboard'));
     });
 });
 

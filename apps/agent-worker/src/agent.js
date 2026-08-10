@@ -106,7 +106,7 @@ async function runSession(ctx) {
     });
 
     let isTourActive = false;
-    let tourPublishInterval = null;
+    let tourPublishTimer = null;
     let tourVideoSource = null;
     let tourVideoTrack = null;
     // Latest tour frame as a downscaled JPEG data URL, kept in memory only
@@ -125,6 +125,8 @@ async function runSession(ctx) {
                 return { ok: false, error: 'Tour already active. Use navigate_to to move within the current tour.' };
             }
             try {
+                // If configured demo authentication fails, fail loudly instead
+                // of silently showing the public site as if login succeeded.
                 await tour.open();
                 if (url) {
                     await tour.goto(url);
@@ -142,37 +144,44 @@ async function runSession(ctx) {
                     console.error('Could not publish tour track to LiveKit:', e);
                 }
 
-                // Capture Playwright frames and push to LiveKit at ~1 FPS
-                tourPublishInterval = setInterval(async () => {
-                    if (!isTourActive || !tourVideoSource) return;
-                    try {
-                        const pngBuffer = await tour.screenshot();
-                        // Convert PNG → raw ARGB buffer via sharp
-                        const { data, info } = await sharp(pngBuffer)
-                            .resize({ width: 1280, height: 720, fit: 'contain', background: '#000' })
-                            .ensureAlpha()
-                            .raw()
-                            .toBuffer({ resolveWithObject: true });
+                // Schedule the next capture only after the current one finishes.
+                // Overlapping Playwright/sharp work can starve LiveKit heartbeats.
+                const scheduleTourFrame = () => {
+                    tourPublishTimer = setTimeout(async () => {
+                        tourPublishTimer = null;
+                        if (!isTourActive || !tourVideoSource) return;
+                        try {
+                            const pngBuffer = await tour.screenshot();
+                            // Convert PNG → raw ARGB buffer via sharp
+                            const { data, info } = await sharp(pngBuffer)
+                                .resize({ width: 1280, height: 720, fit: 'contain', background: '#000' })
+                                .ensureAlpha()
+                                .raw()
+                                .toBuffer({ resolveWithObject: true });
 
-                        // Push to LiveKit VideoSource
-                        const frame = new VideoFrame(data, info.width, info.height, VideoBufferType.RGBA);
-                        const timestampUs = BigInt(Date.now()) * 1000n;
-                        tourVideoSource.captureFrame(frame, timestampUs);
+                            // Push to LiveKit VideoSource
+                            const frame = new VideoFrame(data, info.width, info.height, VideoBufferType.RGBA);
+                            const timestampUs = BigInt(Date.now()) * 1000n;
+                            tourVideoSource.captureFrame(frame, timestampUs);
 
-                        // Also keep a downscaled JPEG copy for read_tour_screen —
-                        // cheap (just re-encoding the same PNG we already have),
-                        // the actual vision-model cost only happens when the
-                        // tool is called.
-                        const jpegBuffer = await sharp(pngBuffer)
-                            .resize({ width: 1024, withoutEnlargement: true })
-                            .jpeg({ quality: 80 })
-                            .toBuffer();
-                        latestTourFrameBase64 = `data:image/jpeg;base64,${jpegBuffer.toString('base64')}`;
-                    } catch (frameErr) {
-                        // Non-fatal: log and skip this frame
-                        log.warn('Tour frame capture failed', { error: frameErr.message });
-                    }
-                }, 1000); // ~1 FPS keeps CPU and bandwidth manageable
+                            // Also keep a downscaled JPEG copy for read_tour_screen —
+                            // cheap (just re-encoding the same PNG we already have),
+                            // the actual vision-model cost only happens when the
+                            // tool is called.
+                            const jpegBuffer = await sharp(pngBuffer)
+                                .resize({ width: 1024, withoutEnlargement: true })
+                                .jpeg({ quality: 80 })
+                                .toBuffer();
+                            latestTourFrameBase64 = `data:image/jpeg;base64,${jpegBuffer.toString('base64')}`;
+                        } catch (frameErr) {
+                            // Non-fatal: log and skip this frame
+                            log.warn('Tour frame capture failed', { error: frameErr.message });
+                        } finally {
+                            if (isTourActive && tourVideoSource) scheduleTourFrame();
+                        }
+                    }, 1500);
+                };
+                scheduleTourFrame();
 
                 // Log screen action to messages meta
                 await Message.create({
@@ -339,9 +348,9 @@ async function runSession(ctx) {
 
         if (isTourActive) {
             try {
-                if (tourPublishInterval) {
-                    clearInterval(tourPublishInterval);
-                    tourPublishInterval = null;
+                if (tourPublishTimer) {
+                    clearTimeout(tourPublishTimer);
+                    tourPublishTimer = null;
                 }
                 if (tourVideoTrack) {
                     try {
@@ -502,7 +511,7 @@ async function runSession(ctx) {
     agentSession.on(voice.AgentSessionEventTypes.Close, otelContext.bind(parentContext, async () => {
         try {
             // Cleanup: stop tour publish loop and close browser
-            if (tourPublishInterval) clearInterval(tourPublishInterval);
+            if (tourPublishTimer) clearTimeout(tourPublishTimer);
             if (customerSampleInterval) clearInterval(customerSampleInterval);
             latestTourFrameBase64 = null;
             try { await tour.close(); } catch { /* best-effort cleanup */ }
@@ -554,13 +563,31 @@ async function runSession(ctx) {
     // WARNING documented there) instead of firing as soon as we join the room.
     const realtimeGate = createRealtimeGate({
         onStart: () => {
+            log.info('realtime gate opened; starting agent session');
             agentSession.start({
                 agent: new voice.Agent({ instructions, tools }),
                 room: ctx.room
+            }).then(() => {
+                agentSession.generateReply({
+                    instructions: 'Greet the visitor warmly in one short sentence and ask how you can help. Do not call any tools.',
+                    toolChoice: 'none'
+                });
             }).catch((err) => log.error('failed to start realtime session', { error: err.message }));
         }
     });
-    ctx.room.on('trackSubscribed', (track) => realtimeGate.handleTrackSubscribed(track));
+    ctx.room.on('trackSubscribed', (track, publication, participant) => {
+        log.info('track subscribed', {
+            participantIdentity: participant?.identity,
+            participantName: participant?.name,
+            trackKind: track?.kind,
+            trackSource: publication?.source,
+            trackSid: publication?.trackSid
+        });
+        realtimeGate.handleTrackSubscribed(track);
+    });
+    log.info('checking existing subscribed audio tracks before opening realtime gate', {
+        remoteParticipantCount: ctx.room.remoteParticipants.size
+    });
     realtimeGate.checkAlreadySubscribed(ctx.room);
 }
 

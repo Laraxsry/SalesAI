@@ -1,19 +1,18 @@
 import { useState, useEffect, useRef } from 'react';
 import { View, Text, StyleSheet, TouchableOpacity, ActivityIndicator, Platform, PermissionsAndroid, Alert, Linking, TextInput, KeyboardAvoidingView } from 'react-native';
 import { useLocalSearchParams, useRouter } from 'expo-router';
-import { Track, RoomEvent } from 'livekit-client';
+import { ConnectionState, Track, RoomEvent } from 'livekit-client';
 import { StatusBar } from 'expo-status-bar';
 import * as Haptics from 'expo-haptics';
 import { CONFIG } from '../../config';
 import { saveConversation } from '../../src/savedConversations';
 import { getVisitorId } from '../../src/visitorIdentity';
-import { Captions } from '../../src/components/Captions';
 import { CallControls } from '../../src/components/CallControls';
 
 /* global __DEV__ */
 
 const liveKitNative = Platform.OS === 'web' ? {} : require('@livekit/react-native');
-const { LiveKitRoom, useTracks, useRoomContext, AudioSession } = liveKitNative;
+const { LiveKitRoom, VideoTrack, useTracks, useRoomContext, AudioSession } = liveKitNative;
 const AvatarView = Platform.OS === 'web' ? null : require('../../src/components/AvatarView').AvatarView;
 
 export default function SessionRoute() {
@@ -54,11 +53,12 @@ function NativeSessionScreen() {
     const [agentName, setAgentName] = useState('AI Temsilcisi');
     const endedRef = useRef(false);
 
-    // Prepares the native audio session (speaker/earpiece routing, category) before joining.
+    function debug(...args) {
+        console.log('[mobile-session]', ...args);
+    }
+
+    // Activate native call audio before LiveKit publishes the microphone.
     useEffect(() => {
-        AudioSession.configureAudio({
-            ios: { defaultOutput: 'speaker' }
-        }).catch(() => {});
         AudioSession.startAudioSession().catch(() => {});
         return () => {
             AudioSession.stopAudioSession().catch(() => {});
@@ -81,26 +81,8 @@ function NativeSessionScreen() {
                         buttonPositive: 'İzin Ver',
                     }
                 );
+                debug('android microphone permission result', granted);
                 if (granted !== PermissionsAndroid.RESULTS.GRANTED) {
-                    throw new Error('Temsilciyle konuşmak için mikrofon izni gereklidir.');
-                }
-            } else if (Platform.OS === 'ios') {
-                try {
-                    const mediaDevices = require('@livekit/react-native-webrtc').mediaDevices;
-                    if (mediaDevices?.getUserMedia) {
-                        const stream = await mediaDevices.getUserMedia({ audio: true });
-                        stream.getTracks().forEach((track) => track.stop());
-                    }
-                } catch (permissionErr) {
-                    console.warn('iOS Microphone permission check failed:', permissionErr);
-                    Alert.alert(
-                        'Mikrofon İzni Gerekli',
-                        'SalesAI sesli yapay zeka ile konuşabilmek için Ayarlar > Gizlilik ve Güvenlik > Mikrofon bölümünden SalesAI uygulamasına izin vermelisiniz.',
-                        [
-                            { text: 'İptal', style: 'cancel' },
-                            { text: 'Ayarları Aç', onPress: () => Linking.openSettings() }
-                        ]
-                    );
                     throw new Error('Temsilciyle konuşmak için mikrofon izni gereklidir.');
                 }
             }
@@ -125,6 +107,12 @@ function NativeSessionScreen() {
             }
 
             const data = await res.json();
+            debug('session token fetched', {
+                sessionId: data?.sessionId,
+                roomName: data?.roomName,
+                hasToken: Boolean(data?.token),
+                avatarProvider: data?.avatarProvider
+            });
             setConnDetails(data);
             setConnectionState('connecting');
         } catch (err) {
@@ -247,9 +235,28 @@ function RoomView({ agentName, setAgentName, avatarProvider, handleDisconnect })
     const [isMuted, setIsMuted] = useState(false);
     const [isSharingScreen, setIsSharingScreen] = useState(false);
     const [reconnecting, setReconnecting] = useState(false);
-    const [captions, setCaptions] = useState('');
     const [isDeafened, setIsDeafened] = useState(false);
     const [chatInput, setChatInput] = useState('');
+
+    function debug(...args) {
+        console.log('[mobile-room]', ...args);
+    }
+
+    function summarizeLocalAudioState(participant) {
+        const pubs = Array.from(participant?.trackPublications?.values?.() || []);
+        const audioPubs = pubs.filter((pub) => pub?.source === Track.Source.Microphone || pub?.kind === Track.Kind?.Audio);
+        return {
+            publicationCount: pubs.length,
+            audioPublicationCount: audioPubs.length,
+            audioPublications: audioPubs.map((pub) => ({
+                sid: pub.trackSid,
+                subscribed: pub.subscribed,
+                muted: pub.isMuted,
+                source: pub.source,
+                hasTrack: Boolean(pub.track)
+            }))
+        };
+    }
 
     const sendChatMessage = async () => {
         if (!chatInput.trim() || !room?.localParticipant) return;
@@ -261,50 +268,55 @@ function RoomView({ agentName, setAgentName, avatarProvider, handleDisconnect })
             if (typeof room.localParticipant.sendChatMessage === 'function') {
                 await room.localParticipant.sendChatMessage(text).catch(() => {});
             }
-            setCaptions(`Siz: ${text}`);
             Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light).catch(() => {});
         } catch (e) {
             console.warn('Failed to send text message:', e);
         }
     };
 
-    // Look for remote camera tracks (the agent video stream)
-    const remoteVideoTracks = useTracks([Track.Source.Camera]);
-    const hasVideo = remoteVideoTracks.length > 0;
+    // Guided tours arrive as remote screen-share tracks, separately from the
+    // agent avatar camera. Keep local shares out of the main presentation.
+    const cameraTracks = useTracks([Track.Source.Camera]);
+    const screenTracks = useTracks([Track.Source.ScreenShare]);
+    const remoteVideoTrack = cameraTracks.find((trackRef) => !trackRef.participant?.isLocal);
+    const remoteScreenTrack = screenTracks.find((trackRef) => !trackRef.participant?.isLocal);
+    const localScreenTrack = screenTracks.find((trackRef) => trackRef.participant?.isLocal);
+    const hasVideo = Boolean(remoteVideoTrack);
 
     // Transcription + connection-lifecycle listeners, now on the real room.
     useEffect(() => {
         if (!room) return;
 
-        if (room.localParticipant) {
-            room.localParticipant.setMicrophoneEnabled(true).catch((err) => {
-                console.warn('Failed to enable microphone:', err);
-            });
-        }
+        debug('room context ready', {
+            roomName: room.name,
+            localIdentity: room.localParticipant?.identity
+        });
 
-        let unsubscribe = null;
-        try {
-            if (typeof room.registerTextStreamHandler === 'function') {
-                unsubscribe = room.registerTextStreamHandler('lk.transcription', async (reader) => {
-                    const text = await reader.readAll();
-                    if (text) {
-                        setCaptions(text);
-                        setTimeout(() => setCaptions((prev) => (prev === text ? '' : prev)), 6000);
-                    }
-                });
-            }
-        } catch (e) {
-            console.warn('TextStreamHandler registration failed, using event fallback:', e);
-        }
+        let microphoneActivationStarted = false;
+        const activateMicrophone = async () => {
+            if (microphoneActivationStarted || !room.localParticipant) return;
+            microphoneActivationStarted = true;
+            try {
+                await AudioSession.startAudioSession();
+                await AudioSession.setDefaultRemoteAudioTrackVolume(1);
 
-        const handleTranscription = (segments) => {
-            const text = segments.map((s) => s.text).join(' ');
-            if (text) {
-                setCaptions(text);
-                setTimeout(() => setCaptions((prev) => (prev === text ? '' : prev)), 6000);
+                // On iOS an audio track created while AVAudioSession is still
+                // activating can be published as unmuted but contain silence.
+                // Recreate it once, after the room is fully connected.
+                if (Platform.OS === 'ios') {
+                    await room.localParticipant.setMicrophoneEnabled(false);
+                }
+                await room.localParticipant.setMicrophoneEnabled(true);
+            } catch (err) {
+                microphoneActivationStarted = false;
+                console.warn('Failed to activate microphone:', err);
+            } finally {
+                debug('post-connect microphone activation attempted', summarizeLocalAudioState(room.localParticipant));
             }
         };
-        room.on('transcriptionReceived', handleTranscription);
+
+        room.on(RoomEvent.Connected, activateMicrophone);
+        if (room.state === ConnectionState.Connected) activateMicrophone();
 
         const handleParticipantConnected = (participant) => {
             if (participant.identity.startsWith('agent_') || participant.identity.includes('worker')) {
@@ -318,6 +330,24 @@ function RoomView({ agentName, setAgentName, avatarProvider, handleDisconnect })
         const onReconnected = () => setReconnecting(false);
         room.on(RoomEvent.Reconnecting, onReconnecting);
         room.on(RoomEvent.Reconnected, onReconnected);
+
+        const handleLocalTrackPublished = (publication) => {
+            debug('local track published', {
+                source: publication?.source,
+                kind: publication?.kind,
+                sid: publication?.trackSid,
+                hasTrack: Boolean(publication?.track)
+            });
+        };
+        const handleLocalTrackUnpublished = (publication) => {
+            debug('local track unpublished', {
+                source: publication?.source,
+                kind: publication?.kind,
+                sid: publication?.trackSid
+            });
+        };
+        room.on(RoomEvent.LocalTrackPublished, handleLocalTrackPublished);
+        room.on(RoomEvent.LocalTrackUnpublished, handleLocalTrackUnpublished);
 
         // Agent-initiated stop: the agent-worker can't stop this device's own
         // screen share track, so it asks over the data channel instead.
@@ -336,11 +366,12 @@ function RoomView({ agentName, setAgentName, avatarProvider, handleDisconnect })
         room.on(RoomEvent.DataReceived, handleData);
 
         return () => {
-            if (unsubscribe) unsubscribe();
-            room.off('transcriptionReceived', handleTranscription);
             room.off('participantConnected', handleParticipantConnected);
+            room.off(RoomEvent.Connected, activateMicrophone);
             room.off(RoomEvent.Reconnecting, onReconnecting);
             room.off(RoomEvent.Reconnected, onReconnected);
+            room.off(RoomEvent.LocalTrackPublished, handleLocalTrackPublished);
+            room.off(RoomEvent.LocalTrackUnpublished, handleLocalTrackUnpublished);
             room.off(RoomEvent.DataReceived, handleData);
         };
     }, [room, setAgentName]);
@@ -415,12 +446,35 @@ function RoomView({ agentName, setAgentName, avatarProvider, handleDisconnect })
                 <Text style={styles.agentTitle}>{reconnecting ? 'Yeniden bağlanıyor…' : agentName}</Text>
             </View>
 
-            {/* Video or Voice visualizer, branded per avatarProvider */}
+            {/* AI screen share takes priority; keep its camera/avatar as context. */}
             <View style={styles.visualizerContainer}>
-                <AvatarView hasVideo={hasVideo} videoTrackRef={remoteVideoTracks[0]} avatarProvider={avatarProvider} />
-            </View>
+                {remoteScreenTrack ? (
+                    <>
+                        <VideoTrack trackRef={remoteScreenTrack} objectFit="contain" style={styles.screenShareTrack} />
+                        <View style={styles.remoteShareBadge}>
+                            <Text style={styles.shareBadgeText}>AI size ürünü gösteriyor</Text>
+                        </View>
+                        {remoteVideoTrack && (
+                            <View style={styles.agentCameraPreview}>
+                                <VideoTrack trackRef={remoteVideoTrack} style={styles.previewVideoTrack} />
+                            </View>
+                        )}
+                    </>
+                ) : (
+                    <AvatarView hasVideo={hasVideo} videoTrackRef={remoteVideoTrack} avatarProvider={avatarProvider} />
+                )}
 
-            <Captions text={captions} />
+                {isSharingScreen && localScreenTrack && (
+                    <View style={styles.localScreenPreview}>
+                        <VideoTrack trackRef={localScreenTrack} style={styles.previewVideoTrack} />
+                    </View>
+                )}
+                {isSharingScreen && (
+                    <View style={styles.localShareBadge}>
+                        <Text style={styles.shareBadgeText}>Ekranınız paylaşılıyor</Text>
+                    </View>
+                )}
+            </View>
 
             <CallControls
                 isMuted={isMuted}
@@ -550,6 +604,66 @@ const styles = StyleSheet.create({
         justifyContent: 'center',
         alignItems: 'center',
         marginVertical: 20,
+        width: '100%',
+        overflow: 'hidden',
+        borderRadius: 24,
+    },
+    screenShareTrack: {
+        width: '100%',
+        height: '100%',
+        backgroundColor: '#050508',
+    },
+    previewVideoTrack: {
+        width: '100%',
+        height: '100%',
+        backgroundColor: '#050508',
+    },
+    agentCameraPreview: {
+        position: 'absolute',
+        top: 14,
+        right: 14,
+        width: 82,
+        height: 112,
+        overflow: 'hidden',
+        borderRadius: 14,
+        borderWidth: 1,
+        borderColor: 'rgba(255, 255, 255, 0.25)',
+        backgroundColor: '#050508',
+    },
+    localScreenPreview: {
+        position: 'absolute',
+        right: 14,
+        bottom: 14,
+        width: 128,
+        height: 78,
+        overflow: 'hidden',
+        borderRadius: 12,
+        borderWidth: 1,
+        borderColor: '#6d5efc',
+        backgroundColor: '#050508',
+    },
+    remoteShareBadge: {
+        position: 'absolute',
+        top: 14,
+        left: 14,
+        borderRadius: 16,
+        backgroundColor: 'rgba(0, 0, 0, 0.72)',
+        paddingHorizontal: 12,
+        paddingVertical: 7,
+    },
+    localShareBadge: {
+        position: 'absolute',
+        left: 14,
+        bottom: 14,
+        borderRadius: 16,
+        backgroundColor: 'rgba(109, 94, 252, 0.92)',
+        paddingHorizontal: 12,
+        paddingVertical: 7,
+    },
+    shareBadgeText: {
+        color: '#ffffff',
+        fontSize: 11,
+        fontWeight: '700',
     },
     chatInputContainer: {
         flexDirection: 'row',

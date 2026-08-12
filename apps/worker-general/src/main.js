@@ -45,10 +45,14 @@ async function main() {
                 return;
 
             case 'close-stale-sessions':
+                // lastActivityAt (agent-worker heartbeat, updated every 60s while
+                // the room connection is alive) instead of startedAt — a fixed
+                // session-age cutoff would risk cutting off genuinely long calls;
+                // no heartbeat for 5 minutes means the worker process died.
                 await Session.updateMany(
                     {
                         status: 'live',
-                        startedAt: { $lte: new Date(Date.now() - 2 * 60 * 60 * 1000) }
+                        lastActivityAt: { $lte: new Date(Date.now() - 5 * 60 * 1000) }
                     },
                     { status: 'ended', endedAt: new Date() }
                 );

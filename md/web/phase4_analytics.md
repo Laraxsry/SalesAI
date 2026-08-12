@@ -38,6 +38,12 @@
 - **Conversation explorer**: search box (hits the transcript search API),
   filter chips (sentiment, agent, date), row -> detail drawer with the
   auto-summary (TL;DR, topics, objections, next step) and full transcript.
+  - Session listesindeki (`/agents/:id/sessions`, `AgentSessions.jsx`) ziyaretçi ismi artık
+    sadece `visitorName`'e bakmıyor — `Session.confirmedContact.name` → `visitorName` →
+    `confirmedContact.email` → geçmiş `Lead` kaydı sırasıyla fallback yapıp "Anonim ziyaretçi"
+    etiketini sadece gerçekten hiçbir kimlik bilgisi yoksa gösteriyor (bkz.
+    `md/backend/phase2_realtime_agent.md`'deki `save_contact_info` tool'u ve
+    `md/backend/phase4_analytics_insights.md`).
 - **Leads inbox**: sortable by score; status workflow (`new -> contacted -> won/lost`);
   one-click export / CRM push.
 - **Knowledge gaps**: ranked unanswered questions with "add knowledge" CTA that

@@ -39,7 +39,8 @@ const LeadSchema = new Schema(
         contact: {
             email:   { type: String },
             company: { type: String },
-            name:    { type: String }
+            name:    { type: String },
+            phone:   { type: String }
         },
         /** Toplam engagement skoru (0-100). */
         score: { type: Number, default: 0, min: 0, max: 100 },

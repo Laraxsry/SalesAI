@@ -24,6 +24,11 @@ const SessionSchema = new Schema(
         },
         startedAt: { type: Date, default: Date.now },
         endedAt: { type: Date },
+        // Heartbeat from agent-worker while the room connection is alive — lets
+        // close-stale-sessions detect a truly dead session (worker crashed,
+        // no clean disconnect) within minutes instead of waiting on a fixed
+        // session-age cutoff that would risk cutting off genuinely long calls.
+        lastActivityAt: { type: Date, default: Date.now, index: true },
         // rolled-up analytics (durations, topics, sentiment)
         summary: { type: Schema.Types.Mixed },
         // Phase 5: which channel started this session, for web-vs-widget
@@ -32,7 +37,16 @@ const SessionSchema = new Schema(
         pageUrl: { type: String },
         referrer: { type: String },
         // Phase 3: Single-use transient auth tokens (cookies/localStorage) for session handover.
-        transientAuth: { type: Schema.Types.Mixed }
+        transientAuth: { type: Schema.Types.Mixed },
+        // Contact info the agent read back to the visitor and got explicit
+        // confirmation on (via the save_contact_info tool), written live
+        // during the call — higher confidence than extract-lead's post-call
+        // regex parse of the raw transcript.
+        confirmedContact: {
+            name: { type: String },
+            email: { type: String },
+            phone: { type: String }
+        }
     },
     { timestamps: true }
 );

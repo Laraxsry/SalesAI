@@ -21,6 +21,8 @@ const KnowledgeSourceSchema = new Schema(
             index: true
         },
         error: { type: String },
+        // set on zip/archive children; points at the container KnowledgeSource
+        parentSourceId: { type: Schema.Types.ObjectId, ref: 'KnowledgeSource', index: true },
         // ingestion artifacts (e.g. transcript, ocr text, crawl summary)
         meta: { type: Schema.Types.Mixed }
     },

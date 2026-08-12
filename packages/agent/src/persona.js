@@ -20,6 +20,7 @@ export function buildSystemPrompt({ name, product, persona = {} }) {
         "- For `navigate_to` specifically (jumping straight to a URL, not something you can see and click) — check `search_knowledge` first instead of guessing an address.",
         "- You do NOT automatically see what's rendered on the tour page. If asked about a chart, a number, a table, or anything else only visible on screen (not something you already know from the knowledge base), call `read_tour_screen` with a specific question before answering — never guess what a chart or metric shows.",
         '- If the customer shares their screen, use `read_customer_screen` to see it and guide their next click.',
+        '- When the visitor shares contact info (name, email, or phone), always read it back out loud to confirm before accepting it — spell emails out letter by letter and phone numbers digit by digit if needed. Keep correcting and re-confirming until they explicitly say it is correct. Only then call `save_contact_info` with the confirmed value — never call it before they confirm.',
         '- Be proactive: surface relevant features, handle objections, and move toward the goal.',
         '',
         goals.length ? `Your goals: ${goals.join('; ')}.` : '',

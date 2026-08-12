@@ -66,6 +66,12 @@
      status'unü kontrol ediyor, 400+ dönen sayfaları (kırık link, silinmiş route) `ok:false`
      ile işaretleyip atlıyor — hem hata sayfasının boilerplate metni knowledge'a girmiyor hem de
      o sayfadan link takip edilmiyor (zaten yok).
+   - [x] **Zip gruplama** — zip içindeki dosyalar artık gerçek, indekslenmiş bir `parentSourceId`
+     ile parent kaynağa bağlanıyor (önceden sadece `meta.zipParent` string'i vardı, şemada
+     birinci sınıf bir alan değildi, sorgularda kullanılmıyordu). Console'daki Knowledge listesi
+     (`Knowledge.jsx`) artık zip'ten gelen dosyaları parent'ın altında açılır/kapanır bir grup
+     ("Zip · N dosya") olarak gösteriyor — büyük zip'ler artık düz listede dağılmıyor
+     (bkz. `md/web/phase1_console.md`).
 
 2. **Ingestion worker** ([`worker-ingestion`](../../apps/worker-ingestion))
    - Extraction by modality (see `handlers/ingest-source.js`):
@@ -86,12 +92,27 @@
        Whisper'ın ürettiği alakasız "halüsinasyon" metninin tek bilgi kaynağı olmasını engelliyor —
        videonun görsel içeriği (hangi ekranlar gezildi) artık bilgi tabanına giriyor.
    - [x] Emits `ingestion:progress` / `ingestion:ready` over Socket.IO (Redis pub/sub üzerinden `publishEvent()` ile her aşamada emit ediliyor).
+   - [x] Her chunk, ingestion sırasında otomatik olarak `general`/`technical` diye
+     etiketleniyor (`packages/rag/src/ingest.js` içindeki `classifyAudience()` — kaynak başına
+     TEK bir ucuz LLM (`gpt-4o-mini`) çağrısıyla, tüm chunk'lar tek seferde; seller'dan hiçbir
+     manuel işlem istemiyor, sınıflandırma başarısız olursa sessizce `general`'a düşüyor).
+     Retrieval bunu ziyaretçinin teknik seviyesine göre önceliklendirmek için kullanıyor
+     (bkz. madde 3 ve 5).
+   - [x] `embedBatch()` (`packages/ai/src/embeddings.js`) artık `@repo/resilience` ile 30sn
+     timeout + 3 deneme'ye sarmalı — önceden rate-limit'e takılan bir embedding isteği hiç
+     resolve/reject olmadan sonsuza kadar asılı kalıp kaynağı (özellikle bir zip içindeki tek
+     bir dosyayı, zip'in geri kalanının hiç işlenmemesine sebep olacak şekilde) `processing`
+     durumunda süresiz bırakabiliyordu.
 
 3. **RAG core** ([`@repo/rag`](../../packages/rag))
    - [x] `chunkText()` overlapping chunks.
    - [x] `ingestSource()` embeds + upserts; sets source status (failed da handle ediyor).
    - [x] `retrieve()` embeds query + vector search filtered by `productId`.
    - [x] `getVectorStore()` -> Mongo Atlas (default) or Qdrant.
+   - [x] `retrieve()` artık opsiyonel `preferredAudience` (`general`/`technical`) parametresi
+     alıyor — sonuçlar filtrelenmiyor, cross-encoder rerank sonrası skorlar ziyaretçinin
+     tercih ettiği seviyeye göre boost/penalty (×1.15/×0.9) ile yeniden sıralanıyor (bilgi
+     kaybı yok, sadece öncelik). Redis cache key'ine de dahil edildi.
 
 4. **Index management**
    - [x] `npm run db:indexes` creates `vector_index`
@@ -103,6 +124,12 @@
    - [x] `POST /agents/:id/chat` (text): retrieve -> assemble context -> `getLLM().complete()`
      -> return answer + citations.
    - [x] Store turns in `messages` — her chat turunda `user` ve `assistant` mesajları `agentId` + `channel:'text'` ile kaydediliyor; citations `meta.citations`'da.
+   - [x] Endpoint artık her istekte, client'ın gönderdiği TÜM konuşma geçmişinden (sadece son
+     mesajdan değil) ucuz bir LLM çağrısıyla ziyaretçinin teknik derinlik tercihini
+     (`classifyAudiencePreference()`) çıkarıp `retrieve({ preferredAudience })`'e ve sistem
+     promptuna ("Audience level: ...") geçiyor. DB'de session state tutmuyor — endpoint zaten
+     stateless, client full history gönderiyor — ama "bir kez teknik istenince konuşmanın geri
+     kalanında da öyle kalır" davranışı bu sayede doğal olarak elde ediliyor.
 
 6. **Quality upgrades**
    - [x] Hybrid search (dense + text/BM25) and cross-encoder rerank — Atlas `text_index` eklendi, sonuçlar `@xenova/transformers` bge-reranker-base ile yeniden sıralanıyor.
@@ -125,3 +152,6 @@
 - **Video transcription cost/time** — run async, show progress, cache results.
 - **SPA crawling** — needs Playwright rendering; budget time per page.
 - **Embedding dim mismatch** — guard at boot; document `EMBEDDING_DIM`.
+- **Audience classification cost/latency** — her chunk sınıflandırması kaynak başına 1 ek LLM
+  çağrısı ekliyor (embed ile paralel yapılıyor, ama yine de her ingestion'a bir istek daha
+  bindiriyor — büyük zip'lerde dosya sayısı kadar ek çağrı demek, rate-limit riskini artırıyor).

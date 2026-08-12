@@ -26,6 +26,7 @@
     "@repo/avatar": "*",
     "@repo/config-env": "*",
     "@repo/database": "*",
+    "@repo/livekit": "*",
     "@repo/logger": "*",
     "@repo/realtime": "*",
     "@repo/screen": "*",

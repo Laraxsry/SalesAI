@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { useSearchParams, Link } from 'react-router-dom';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { useForm } from 'react-hook-form';
@@ -22,7 +22,10 @@ import {
     XCircle,
     Clock,
     UploadCloud,
-    Search
+    Search,
+    ChevronDown,
+    ChevronRight,
+    FolderArchive
 } from 'lucide-react';
 import { productsApi, knowledgeApi } from '../lib/api.js';
 import { useAuthStore } from '../store/auth.js';
@@ -78,6 +81,52 @@ function Dropzone({ file, accept, onFile }) {
                 className="hidden"
             />
         </label>
+    );
+}
+
+/** A single knowledge source row; renders as a collapsible group header when `isGroup` is set (zip uploads). */
+function SourceRow({ source: s, icon, isGroup, expanded, onToggle, childCount, onDelete }) {
+    const typeInfo = TYPES.find((t) => t.value === s.type) ?? TYPES[0];
+    const statusInfo = STATUS[s.status] ?? STATUS.pending;
+    const TypeIcon = icon || typeInfo.icon;
+    const StatusIcon = statusInfo.icon;
+
+    return (
+        <div className="flex items-center gap-3 rounded-[var(--radius-card)] border border-border bg-surface px-4 py-3">
+            {isGroup && (
+                <button
+                    onClick={onToggle}
+                    aria-label={expanded ? 'Daralt' : 'Genişlet'}
+                    className="shrink-0 text-text-muted transition-colors hover:text-text"
+                >
+                    {expanded ? <ChevronDown size={16} /> : <ChevronRight size={16} />}
+                </button>
+            )}
+            <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-surface-raised text-text-muted">
+                <TypeIcon size={15} />
+            </span>
+            <div className="min-w-0 flex-1">
+                <p className="truncate text-sm font-medium text-text">
+                    {s.title || s.url || typeInfo.label}
+                </p>
+                <p className="text-xs text-text-muted">
+                    {isGroup ? `Zip · ${childCount} dosya` : typeInfo.label}
+                </p>
+            </div>
+            <span
+                className={`flex items-center gap-1.5 rounded-full px-2.5 py-1 text-xs font-medium ${statusInfo.className}`}
+            >
+                <StatusIcon size={12} className={statusInfo.spin ? 'animate-spin' : ''} />
+                {statusInfo.label}
+            </span>
+            <button
+                onClick={() => onDelete(s._id)}
+                className="text-text-muted transition-colors hover:text-red-400"
+                title="Sil"
+            >
+                <Trash2 size={16} />
+            </button>
+        </div>
     );
 }
 
@@ -230,6 +279,7 @@ export function Knowledge() {
     const queryClient = useQueryClient();
     const [searchParams, setSearchParams] = useSearchParams();
     const [showModal, setShowModal] = useState(false);
+    const [expandedGroups, setExpandedGroups] = useState(() => new Set());
     const productId = searchParams.get('product');
 
     const { data: products } = useQuery({
@@ -264,6 +314,32 @@ export function Knowledge() {
             socket.off('ingestion:ready', onUpdate);
         };
     }, [productId, queryClient]);
+
+    // Zip uploads create one child KnowledgeSource per file (parentSourceId set);
+    // group those under their parent instead of showing them as a flat pile.
+    const { topLevelSources, childrenByParent } = useMemo(() => {
+        const childrenByParent = new Map();
+        const topLevelSources = [];
+        for (const s of sources || []) {
+            if (s.parentSourceId) {
+                const list = childrenByParent.get(s.parentSourceId) || [];
+                list.push(s);
+                childrenByParent.set(s.parentSourceId, list);
+            } else {
+                topLevelSources.push(s);
+            }
+        }
+        return { topLevelSources, childrenByParent };
+    }, [sources]);
+
+    function toggleGroup(id) {
+        setExpandedGroups((prev) => {
+            const next = new Set(prev);
+            if (next.has(id)) next.delete(id);
+            else next.add(id);
+            return next;
+        });
+    }
 
     async function onDelete(id) {
         await knowledgeApi.remove(id);
@@ -325,7 +401,7 @@ export function Knowledge() {
                 </div>
             </div>
 
-            {sources?.length === 0 && (
+            {topLevelSources.length === 0 && (
                 <div className="flex flex-col items-center justify-center rounded-[var(--radius-card)] border border-dashed border-border py-16 text-center">
                     <FileText size={28} className="mb-3 text-text-muted" />
                     <p className="text-sm text-text-muted">Henüz knowledge kaynağı yok.</p>
@@ -335,40 +411,30 @@ export function Knowledge() {
                 </div>
             )}
 
-            {sources?.length > 0 && (
+            {topLevelSources.length > 0 && (
                 <div className="flex flex-col gap-2">
-                    {sources.map((s) => {
-                        const typeInfo = TYPES.find((t) => t.value === s.type) ?? TYPES[0];
-                        const statusInfo = STATUS[s.status] ?? STATUS.pending;
-                        const TypeIcon = typeInfo.icon;
-                        const StatusIcon = statusInfo.icon;
+                    {topLevelSources.map((s) => {
+                        const children = childrenByParent.get(s._id) || [];
+                        const isGroup = children.length > 0;
+                        const expanded = expandedGroups.has(s._id);
                         return (
-                            <div
-                                key={s._id}
-                                className="flex items-center gap-3 rounded-[var(--radius-card)] border border-border bg-surface px-4 py-3"
-                            >
-                                <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-surface-raised text-text-muted">
-                                    <TypeIcon size={15} />
-                                </span>
-                                <div className="min-w-0 flex-1">
-                                    <p className="truncate text-sm font-medium text-text">
-                                        {s.title || s.url || typeInfo.label}
-                                    </p>
-                                    <p className="text-xs text-text-muted">{typeInfo.label}</p>
-                                </div>
-                                <span
-                                    className={`flex items-center gap-1.5 rounded-full px-2.5 py-1 text-xs font-medium ${statusInfo.className}`}
-                                >
-                                    <StatusIcon size={12} className={statusInfo.spin ? 'animate-spin' : ''} />
-                                    {statusInfo.label}
-                                </span>
-                                <button
-                                    onClick={() => onDelete(s._id)}
-                                    className="text-text-muted transition-colors hover:text-red-400"
-                                    title="Sil"
-                                >
-                                    <Trash2 size={16} />
-                                </button>
+                            <div key={s._id}>
+                                <SourceRow
+                                    source={s}
+                                    icon={isGroup ? FolderArchive : undefined}
+                                    isGroup={isGroup}
+                                    expanded={expanded}
+                                    onToggle={isGroup ? () => toggleGroup(s._id) : undefined}
+                                    childCount={children.length}
+                                    onDelete={onDelete}
+                                />
+                                {isGroup && expanded && (
+                                    <div className="ml-6 mt-2 flex flex-col gap-2 border-l border-border pl-4">
+                                        {children.map((c) => (
+                                            <SourceRow key={c._id} source={c} onDelete={onDelete} />
+                                        ))}
+                                    </div>
+                                )}
                             </div>
                         );
                     })}

@@ -173,7 +173,8 @@ export function AgentSessions() {
                                 >
                                     <div className="mb-1 flex items-center justify-between gap-2">
                                         <span className="truncate text-sm font-medium text-text">
-                                            {s.visitorName || 'Anonim ziyaretçi'}
+                                            {s.confirmedContact?.name || s.visitorName || s.confirmedContact?.email
+                                                || s.lead?.name || s.lead?.email || 'Anonim ziyaretçi'}
                                         </span>
                                         <span className={`shrink-0 rounded-full px-2 py-0.5 text-[11px] font-medium ${STATUS_STYLE[s.status]}`}>
                                             {STATUS_LABEL[s.status]}

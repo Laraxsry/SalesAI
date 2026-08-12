@@ -22,17 +22,21 @@ function normalizeQuery(query) {
     return query.trim().toLowerCase().replace(/\s+/g, ' ');
 }
 
+/** Score multiplier applied to chunks matching (favoring) / not matching (penalizing) the visitor's audience preference. */
+const AUDIENCE_BOOST = 1.15;
+const AUDIENCE_PENALTY = 0.9;
+
 /**
  * Retrieves the most relevant knowledge chunks for a query.
- * Caches results per (productId, normalized query) in Redis.
- * @param {{ productId:string, query:string, topK?:number, modality?:string }} input
- * @returns {Promise<Array<{id:string, sourceId:string, text:string, score:number}>>}
+ * Caches results per (productId, normalized query, preferredAudience) in Redis.
+ * @param {{ productId:string, query:string, topK?:number, modality?:string, preferredAudience?:'general'|'technical' }} input
+ * @returns {Promise<Array<{id:string, sourceId:string, text:string, score:number, audience?:string}>>}
  */
-export async function retrieve({ productId, query, topK = 8, modality }) {
+export async function retrieve({ productId, query, topK = 8, modality, preferredAudience = 'general' }) {
     const redis = getRedis();
     const normalized = normalizeQuery(query);
     const modalityKey = modality ? `:${modality}` : '';
-    const cacheKey = `rag:cache:${productId}:${normalized}:${topK}${modalityKey}`;
+    const cacheKey = `rag:cache:${productId}:${normalized}:${topK}${modalityKey}:${preferredAudience}`;
 
     try {
         const cached = await redis.get(cacheKey);
@@ -67,7 +71,19 @@ export async function retrieve({ productId, query, topK = 8, modality }) {
     // Rerank using Cross-Encoder
     // Dynamic import to avoid loading transformers if not needed immediately
     const { rerank } = await import('@repo/ai');
-    const rerankedResults = await rerank(query, mergedResults, topK);
+    let rerankedResults = await rerank(query, mergedResults, topK);
+
+    // Bias ranking toward the visitor's preferred depth without discarding results
+    // (a "technical" chunk may still be the best/only answer to a "general" question).
+    rerankedResults = rerankedResults
+        .map((r) => ({
+            ...r,
+            score:
+                r.audience === preferredAudience
+                    ? r.score * AUDIENCE_BOOST
+                    : r.score * AUDIENCE_PENALTY
+        }))
+        .sort((a, b) => b.score - a.score);
 
     try {
         // Cache for 24 hours (86400 seconds)

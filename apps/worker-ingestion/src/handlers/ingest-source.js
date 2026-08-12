@@ -178,7 +178,8 @@ export async function ingestZipEntries({ buffer, parentSourceId, productId }) {
             type: 'document',
             title: baseName,
             status: 'processing',
-            meta: { zipParent: parentSourceId, zipEntry: entry.entryName }
+            parentSourceId,
+            meta: { zipEntry: entry.entryName }
         });
 
         try {

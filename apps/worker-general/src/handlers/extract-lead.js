@@ -27,8 +27,13 @@ export async function extractLead({ session, messages, analysis: _analysis, work
     const EMAIL_REGEX = /[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}/;
     const transcript = messages.map(m => m.text || '').join(' ');
 
+    // Agent'ın sesli olarak okuyup ziyaretçiden onay aldığı değerler (bkz.
+    // save_contact_info tool'u, apps/agent-worker/src/agent.js) ham transkript
+    // regex'inden daha güvenilir — varsa öncelik onlarda.
+    const confirmed = session.confirmedContact || {};
+
     const emailMatch = transcript.match(EMAIL_REGEX);
-    const email = emailMatch ? emailMatch[0].toLowerCase() : null;
+    const email = confirmed.email || (emailMatch ? emailMatch[0].toLowerCase() : null);
     if (email) {
         signals.push({ type: 'email_shared', value: email, weight: 20 });
         score += 20;
@@ -79,11 +84,14 @@ export async function extractLead({ session, messages, analysis: _analysis, work
         return null;
     }
 
-    // Ziyaretçi kimliğini belli eden hiçbir bilgi yoksa (email paylaşmadı,
-    // hesaplı visitor adı yok) "Anonim lead" kaydı oluşturma — skor ne olursa
+    const name = confirmed.name || session.visitorName;
+    const phone = confirmed.phone || null;
+
+    // Ziyaretçi kimliğini belli eden hiçbir bilgi yoksa (email/telefon
+    // paylaşmadı, isim yok) "Anonim lead" kaydı oluşturma — skor ne olursa
     // olsun, satış ekibinin ulaşabileceği bir iletişim bilgisi olmadan lead
     // takip edilemez.
-    const hasContactInfo = Boolean(email || session.visitorName);
+    const hasContactInfo = Boolean(email || name || phone);
     if (!hasContactInfo) {
         Logger.info('[extract-lead] iletişim bilgisi yok, anonim lead oluşturulmadı', {
             sessionId: String(session._id),
@@ -102,7 +110,8 @@ export async function extractLead({ session, messages, analysis: _analysis, work
             contact: {
                 email: email || undefined,
                 company: company || undefined,
-                name: session.visitorName || undefined
+                name: name || undefined,
+                phone: phone || undefined
             },
             score,
             status: score >= 50 ? 'qualified' : 'new',

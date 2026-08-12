@@ -36,6 +36,16 @@
    - [x] `screenModes` array on the agent doc gates `tour` and `vision` tools — unauthorised calls return an error without executing.
    - [x] Record screen actions in `messages.meta` for the transcript timeline — `tour_started`, `navigate_to`, `highlight`, `vision_read` events saved to Message with `role:'system'`.
    - [x] `stop_screen_share` tool — "ekran paylaşımını kapat" artık gerçekten kapatıyor: tur (mode A) track'i agent-worker tarafından unpublish edilip Playwright browser kapatılıyor; müşterinin kendi ekranı (mode B) agent'ın sahip olmadığı bir track olduğu için LiveKit data-channel üzerinden `salesai:stop_screen_share` sinyali gönderilip visitor (web + mobile) bunu dinleyip `setScreenShareEnabled(false)` çağırıyor. Önceden bu tool hiç tanımlı değildi, LLM "kapattım" diyip aslında hiçbir şey yapmıyordu.
+   - [x] **Kritik crash fix** — `stop_screen_share`, tur track'ini kaldırırken
+     `ctx.room.localParticipant.unpublishTrack()`'e (string track SID bekleyen bir fonksiyona)
+     track NESNESİNİN kendisini veriyordu; JS bunu `"[object Object]"`'e coerce edip native
+     `livekit-ffi` (Rust) katmanında bir `unwrap()` panic'ine sebep oluyor, tüm agent-worker
+     process'ini anında çökertiyordu (ses + transcript aynı anda kesiliyordu). Artık doğru
+     `tourVideoTrack.sid` gönderiliyor. Ayrıca frame-capture döngüsü (`scheduleTourFrame`,
+     1.5sn'de bir screenshot) ile `unpublishTrack()` çağrısı arasında bir yarış durumu daha
+     bulundu — bir capture cycle hâlâ devam ederken track kaldırılırsa aynı native panic'i
+     tetikleyebiliyordu; `tourCaptureInFlight` bayrağı ve `isTourActive`'in en başta senkron
+     olarak `false` yapılması ile bu da ayrıca kapatıldı.
 
 4. **Performance**
    - [x] Pool/limit concurrent tour browsers (global `activeBrowsers` Set ile max 3 tarayıcı limiti, `MAX_TOUR_BROWSERS` env var ile ayarlanabilir).

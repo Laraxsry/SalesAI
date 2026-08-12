@@ -42,11 +42,16 @@ erDiagram
 ### KnowledgeSource
 `productId`, `type` ∈ `text|document|image|video|url|api`, `title`, `content`,
 `fileKey` (S3), `url`, `status` ∈ `pending|processing|ready|failed`, `error`,
-`meta` (transcript/OCR/crawl artifacts).
+`parentSourceId` (self-ref, set on zip-archive children — the parent zip
+KnowledgeSource is a container row with no chunks of its own), `meta`
+(transcript/OCR/crawl artifacts, `zipEntry`/`zipSummary`).
 
 ### KnowledgeChunk
 `productId`, `sourceId`, `text`, `embedding` (`[Number]`, 3072-dim),
-`modality` ∈ `text|image|video|web`, `metadata`.
+`modality` ∈ `text|image|video|web`, `audience` ∈ `general|technical` (auto-
+classified during ingestion, one cheap LLM call per source — see Phase 1;
+used to bias retrieval toward the visitor's depth preference, not to filter),
+`metadata`.
 Atlas index **`vector_index`** on `embedding` (cosine) with `productId` +
 `modality` filters.
 
@@ -63,7 +68,12 @@ Atlas index **`vector_index`** on `embedding` (cosine) with `productId` +
 
 ### Session
 `agentId`, `shareLinkId`, `roomName` (LiveKit), `visitorName`,
-`status` ∈ `live|ended|failed`, `screenMode`, `startedAt`, `endedAt`, `summary`.
+`status` ∈ `live|ended|failed`, `screenMode`, `startedAt`, `endedAt`,
+`lastActivityAt` (agent-worker heartbeat, updated every 60s while the room
+connection is alive — lets a dead session be told apart from a genuinely
+long call, see Phase 2), `confirmedContact { name, email, phone }` (written
+live, once the visitor confirms a value the agent read back to them — see
+`save_contact_info` tool, Phase 2), `summary`.
 
 ### Message
 `sessionId`, `role` ∈ `user|assistant|tool|system`, `text`, `meta`
@@ -77,7 +87,8 @@ Atlas index **`vector_index`** on `embedding` (cosine) with `productId` +
   `unanswered[]`, `sentiment`, `dropOff`, `nextStep`.
 - **SessionEvent** — `sessionId`, `type`, `at`, `meta` (funnel/timeline events).
 - **AnalyticsRollup** — `scope` (agent/product), `scopeId`, `bucket`, `metrics{}`.
-- **Lead** — `sessionId`, `workspaceId`, `contact{}`, `score`, `status`, `signals[]`.
+- **Lead** — `sessionId`, `workspaceId`, `contact { email, company, name, phone }`,
+  `score`, `status`, `signals[]`.
 
 ### Embed / SDK (Phase 5)
 - **EmbedConfig** — `agentId`, `theme{}`, `launcher{}`, `greeting`, `micAutoPrompt`,

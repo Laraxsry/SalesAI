@@ -40,6 +40,7 @@ export class MongoVectorStore {
                     sourceId: 1,
                     text: 1,
                     metadata: 1,
+                    audience: 1,
                     score: { $meta: 'vectorSearchScore' }
                 }
             }
@@ -50,6 +51,7 @@ export class MongoVectorStore {
             sourceId: String(r.sourceId),
             text: r.text,
             score: r.score,
+            audience: r.audience,
             metadata: r.metadata
         }));
     }
@@ -103,6 +105,7 @@ export class MongoVectorStore {
                     sourceId: 1,
                     text: 1,
                     metadata: 1,
+                    audience: 1,
                     score: { $meta: 'searchScore' }
                 }
             }
@@ -113,6 +116,7 @@ export class MongoVectorStore {
             sourceId: String(r.sourceId),
             text: r.text,
             score: r.score,
+            audience: r.audience,
             metadata: r.metadata
         }));
     }

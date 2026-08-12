@@ -12,6 +12,40 @@ import { chatRateLimit } from '../middleware/public-rate-limits.js';
 
 export const agentsRouter = Router();
 
+/**
+ * Infers whether the visitor wants surface-level or technical-depth answers,
+ * from the *entire* conversation so far (not just the last message) — this
+ * makes the preference "sticky" once the visitor asks for technical depth,
+ * without needing any server-side session state (the client already resends
+ * full history on every request). Cheap model, non-fatal on failure.
+ * @param {Array<{role:string, content:string}>} messages
+ * @returns {Promise<'general'|'technical'>}
+ */
+async function classifyAudiencePreference(messages) {
+    const userText = messages
+        .filter((m) => m.role === 'user')
+        .map((m) => m.content)
+        .join('\n');
+    if (!userText.trim()) return 'general';
+
+    try {
+        const llm = getLLM();
+        const response = await llm.complete({
+            model: 'gpt-4o-mini',
+            system: `Decide the depth level a sales assistant should answer at, based on the visitor's messages so far.
+Respond ONLY with valid JSON (no markdown): {"audience": "general"|"technical"}
+- "technical": the visitor asked for implementation/API/architecture detail, used technical terminology, or explicitly asked to go deeper/more technical.
+- "general": everything else (default).
+Once the visitor has shown technical interest at any point in the conversation, keep answering "technical".`,
+            messages: [{ role: 'user', content: userText }]
+        });
+        const parsed = JSON.parse(response.text);
+        return parsed.audience === 'technical' ? 'technical' : 'general';
+    } catch {
+        return 'general';
+    }
+}
+
 /** List all agents for a product. */
 agentsRouter.get('/', requireAuth, async (req, res, next) => {
     try {
@@ -52,6 +86,13 @@ agentsRouter.post('/:id/activate', requireAuth, async (req, res, next) => {
             { status: 'active' },
             { new: true }
         );
+
+        // Rotate: every (re)activation deactivates this agent's previous share
+        // links so a leaked/old link stops working once the agent is
+        // reactivated, instead of silently staying valid forever alongside
+        // the new one (agent.status alone only gates *new* sessions while
+        // paused — it never invalidated the link itself).
+        await ShareLink.updateMany({ agentId: agent._id, active: true }, { active: false });
 
         const link = await ShareLink.create({ agentId: agent._id, token: shareToken() });
         const base = process.env.VISITOR_PUBLIC_URL || 'http://localhost:5174';
@@ -300,9 +341,19 @@ agentsRouter.get('/', requireAuth, async (req, res, next) => {
 /** List all sessions for an agent */
 agentsRouter.get('/:id/sessions', requireAuth, async (req, res, next) => {
     try {
-        const { Session } = await import('@repo/database');
+        const { Session, Lead } = await import('@repo/database');
         const sessions = await Session.find({ agentId: req.params.id }).sort({ createdAt: -1 });
-        res.json(sessions);
+
+        // Fallback identity source for sessions that ended before the live
+        // confirmedContact tool existed (or the visitor never confirmed
+        // anything mid-call) — extract-lead's post-call regex parse still
+        // found something. Sessions UI prefers confirmedContact over this.
+        const leads = await Lead.find({ sessionId: { $in: sessions.map((s) => s._id) } })
+            .select('sessionId contact')
+            .lean();
+        const leadBySession = new Map(leads.map((l) => [String(l.sessionId), l.contact]));
+
+        res.json(sessions.map((s) => ({ ...s.toObject(), lead: leadBySession.get(String(s._id)) || null })));
     } catch (err) {
         next(err);
     }
@@ -325,16 +376,22 @@ agentsRouter.post('/:id/chat', chatRateLimit, requestTimeout(30_000), async (req
         const lastUserMessage = messages.filter(m => m.role === 'user').pop();
         const query = lastUserMessage?.content || '';
 
-        // 1. Bilgi arama (Retrieval)
+        // 1. Ziyaretçinin teknik derinlik tercihini konuşma geçmişinden çıkar
+        const preferredAudience = await classifyAudiencePreference(messages);
+
+        // 2. Bilgi arama (Retrieval)
         let citations = [];
         let contextText = '';
         if (query) {
-            const chunks = await retrieve({ productId: String(agent.productId), query, topK: 5 });
+            const chunks = await retrieve({ productId: String(agent.productId), query, topK: 5, preferredAudience });
             citations = chunks.map(c => ({ sourceId: c.sourceId, text: c.text, score: c.score }));
             contextText = chunks.map((c, i) => `[Citation ${i+1}]\n${c.text}`).join('\n\n');
         }
 
-        // 2. Yapay Zekaya (LLM) Bağlamı ve Soruyu Gönderme
+        // 3. Yapay Zekaya (LLM) Bağlamı ve Soruyu Gönderme
+        const audienceInstruction = preferredAudience === 'technical'
+            ? 'The visitor wants technical depth — feel free to use precise terminology, implementation/architecture detail.'
+            : "The visitor wants a clear, non-technical explanation — cover the substance without jargon or implementation detail unless they ask for it.";
         const systemPrompt = `
 You are ${agent.name}, an expert AI sales agent.
 Your tone is: ${agent.persona?.tone || 'friendly, expert, concise'}.
@@ -343,6 +400,7 @@ Your goals: ${(agent.persona?.goals || []).join(', ')}.
 Answer the user's questions strictly based on the following retrieved knowledge context.
 If the answer is not in the context, politely say you don't know, but try to be helpful.
 When using information from the context, use citations like [Citation 1].
+${audienceInstruction}
 
 === KNOWLEDGE CONTEXT ===
 ${contextText || 'No specific context found.'}
@@ -355,7 +413,7 @@ ${contextText || 'No specific context found.'}
             messages: messages
         });
 
-        // 3. Konuşma turlarını DB'ye kaydet (fire-and-forget, hata non-fatal)
+        // 4. Konuşma turlarını DB'ye kaydet (fire-and-forget, hata non-fatal)
         Message.insertMany([
             {
                 agentId: agent._id,
@@ -374,7 +432,7 @@ ${contextText || 'No specific context found.'}
             }
         ]).catch(err => console.warn('[agents] message persist failed:', err?.message));
 
-        // 4. Yanıtı dön
+        // 5. Yanıtı dön
         res.json({
             role: 'assistant',
             content: response.text,

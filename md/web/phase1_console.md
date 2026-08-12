@@ -38,6 +38,10 @@
     (`ingestion:progress`, `ingestion:ready`).
   - "Add live software": enter the product URL (+ optional OpenAPI/MCP) to enable
     crawling and live tool access.
+  - Zip yüklemeleri artık düz listede dağılmıyor — parent kaynağın altında açılır/kapanır
+    bir grup ("Zip · N dosya") olarak gösteriliyor (`SourceRow` bileşeni,
+    `KnowledgeSource.parentSourceId`'ye göre gruplanıyor; bkz.
+    `md/backend/phase1_rag_ingestion.md`).
 
 - **Agent builder**
   - Persona form (tone, language, goals, guardrails).

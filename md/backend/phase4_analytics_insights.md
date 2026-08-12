@@ -53,6 +53,20 @@
    - [x] `PATCH /analytics/leads/:id/status` — Lead durumu güncelleme (new → contacted → won/lost workflow).
    - [x] Optional webhook/CRM push — `POST/GET/PATCH/DELETE /integrations/webhooks` ile workspace başına yapılandırılabilir outbound webhook altyapısı eklendi. HMAC-SHA256 imzalama, 3x retry (backoff), dead-letter kaydı ve manuel test endpoint’i ile tamamlandı. *(Walkthrough üzerindeki manuel test adımları ile tüm webhook akışı doğrulandı)*
    - [x] İletişim bilgisi olmayan (email paylaşılmamış, `visitorName` yok) oturumlar için "Anonim lead" kaydı açılmıyor — skor eşiği geçse bile `extract-lead.js` artık en az bir contact alanı zorunlu kılıyor.
+   - [x] `extract-lead.js` artık `session.confirmedContact` (ziyaretçinin agent'a sesli
+     verip agent'ın geri okuyup onayını aldığı email/isim/telefon — bkz.
+     `save_contact_info` tool'u, `md/backend/phase2_realtime_agent.md`) varsa bunu ham
+     transcript regex'ine göre ÖNCELİKLENDİRİYOR — hem STT hatalarına karşı daha güvenilir
+     hem de "Anonim ziyaretçi" etiketlemesinin kaynağı artık belirsiz bir regex değil,
+     ziyaretçinin bizzat onayladığı değer. `Lead.contact`'a `phone` alanı eklendi
+     (önceden sadece `email/company/name` vardı, telefon için regex fallback yok —
+     tek güvenilir kaynak `confirmedContact.phone`).
+   - [x] `GET /agents/:id/sessions` artık ilgili `Lead.contact`'ı join edip `lead:{name,email}`
+     olarak döndürüyor — Console Sessions listesi (`AgentSessions.jsx`), önceden SADECE
+     `session.visitorName`'e bakıp konuşmada email verilse (ve arka planda regex ile
+     başarıyla bir Lead oluşsa) bile "Anonim ziyaretçi" gösteriyordu; artık
+     `confirmedContact.name` → `visitorName` → `confirmedContact.email` → geçmiş Lead
+     kaydı sırasıyla fallback yapıyor (bkz. `md/web/phase4_analytics.md`).
    - [ ] **Açık:** Ziyaretçi host site'da kendi hesabıyla giriş yapmışsa (end-customer login), bu kimliğin widget'a otomatik aktarılıp Lead'e bağlanması — `packages/sdk`'ye bir `identify({ name, email })` API'si + embed session'a `visitorInfo` alanı eklenmesi gerekiyor. Şu an SDK'da böyle bir mekanizma yok (bkz. `packages/sdk/src/index.js`); bilgi bırakmadıysa lead hâlâ oluşmuyor.
 
 5. **Transcript search** *(Postman full-text search ile doğrulandı)*
@@ -81,7 +95,7 @@
 | `SessionSummary` | `sessionId`, `tldr`, `topics[]`, `objections[]`, `unanswered[]`, `sentiment`, `dropOff`, `nextStep`, `generatedAt` |
 | `SessionEvent` | `sessionId`, `type`, `at`, `meta` |
 | `AnalyticsRollup` | `scope` (agent/product), `scopeId`, `bucket` (hour/day), `bucketAt`, `metrics{}` — compound unique index |
-| `Lead` | `sessionId`, `workspaceId`, `agentId`, `contact{}`, `score`, `status`, `signals[]` |
+| `Lead` | `sessionId`, `workspaceId`, `agentId`, `contact { email, company, name, phone }`, `score`, `status`, `signals[]` |
 
 ---
 

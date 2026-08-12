@@ -36,6 +36,7 @@ export class QdrantVectorStore {
                     sourceId: it.sourceId,
                     text: it.text,
                     modality: it.modality || 'text',
+                    audience: it.audience || 'general',
                     metadata: it.metadata || {}
                 }
             }))
@@ -57,6 +58,7 @@ export class QdrantVectorStore {
             sourceId: r.payload?.sourceId,
             text: r.payload?.text,
             score: r.score,
+            audience: r.payload?.audience,
             metadata: r.payload?.metadata
         }));
     }

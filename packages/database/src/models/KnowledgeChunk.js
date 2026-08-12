@@ -20,6 +20,8 @@ const KnowledgeChunkSchema = new Schema(
         embedding: { type: [Number], default: undefined },
         // modality + provenance for filtering and citation
         modality: { type: String, enum: ['text', 'image', 'video', 'web'], default: 'text' },
+        // auto-classified during ingestion; used to bias retrieval toward the visitor's depth preference
+        audience: { type: String, enum: ['general', 'technical'], default: 'general', index: true },
         metadata: { type: Schema.Types.Mixed }
     },
     { timestamps: true }

@@ -55,6 +55,20 @@ renderer accordingly.
 - In-call: avatar centered, live captions, mute, "share my screen", end.
 - Screen-share button publishes the visitor's screen track (enables mode B).
 - Errors: mic blocked, link expired, agent paused -> graceful messages.
+- `POST /sessions` çağrısının (session mint) tek seferlik olduğu garanti edildi —
+  `Visit.jsx`'teki `useEffect`, React 18 StrictMode'un dev-only çift-çalıştırma davranışına
+  (mount → cleanup → tekrar mount) karşı korumasızdı: `POST /sessions` iki kez tetiklenip
+  arka planda 2 ayrı gerçek session + LiveKit odası + agent-worker dispatch'i oluşturuyordu
+  (tarayıcı sadece birine bağlanıyordu, diğeri hiç kimse katılmadan yapayalnız kalıp DB'de
+  `live` takılı kalıyordu). `startedForTokenRef` (token bazlı, StrictMode'un simüle ettiği
+  remount'ta sıfırlanmayan bir ref) ile fetch artık aynı token için en fazla bir kez
+  tetikleniyor. **Not:** ilk düzeltme, eski koddaki `ignore` bayrağıyla çakışıp yeni bir
+  regresyon yarattı — fetch tek seferde tetiklendiği için `ignore`'un koruduğu "stale
+  response" senaryosu artık imkânsızdı, ama StrictMode'un simüle cleanup'ı yine de tek
+  (ve gerçek) fetch'in kendi `ignore`'unu `true` yapıp `setConn(data)`'yı sessizce iptal
+  ediyordu — sayfa "AI temsilciye bağlanılıyor…" ekranında sonsuza kadar takılı kalıyordu
+  (backend'de session başarıyla oluşmasına rağmen). `ignore` mekanizması tamamen kaldırılarak
+  düzeltildi.
 
 ---
 

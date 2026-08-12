@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { useParams, useSearchParams } from 'react-router-dom';
 import { LiveKitRoom } from '@livekit/components-react';
 import { Logo } from '@repo/ui';
@@ -40,12 +40,31 @@ export function Visit() {
     const [debugAuth, setDebugAuth] = useState('');
     const [started, setStarted] = useState(false);
     const isDebug = searchParams.get('debug') === '1';
+    // Guards against React 18 StrictMode's dev-only double effect invocation
+    // (mount -> cleanup -> mount again). `ignore` below only prevents a stale
+    // run from calling setConn — it does nothing to stop the POST /sessions
+    // call itself from firing twice, which mints two real backend sessions +
+    // LiveKit rooms + agent-worker dispatches for a single page load. Refs
+    // survive StrictMode's simulated remount (same component instance), so
+    // tracking "already started for this token" here makes the mint
+    // idempotent per token while still re-minting if the token itself changes.
+    const startedForTokenRef = useRef(null);
 
     useEffect(() => {
         if (embed) return;
         if (isDebug && !started) return;
+        if (startedForTokenRef.current === token) return;
+        startedForTokenRef.current = token;
 
-        let ignore = false;
+        // No `ignore`/cleanup-based staleness guard here on purpose: the ref
+        // check above already guarantees `start()` runs at most once per
+        // token, so there is never a second overlapping fetch whose stale
+        // response could need discarding. An `ignore` flag flipped by
+        // StrictMode's dev-only simulated cleanup (mount -> cleanup ->
+        // remount, same as the ref surviving it) would otherwise silently
+        // swallow this single fetch's own response — `conn` never gets set,
+        // and the page hangs on "AI temsilciye bağlanılıyor…" forever even
+        // though the backend successfully minted the session.
         async function start() {
             try {
                 let body = { shareToken: token };
@@ -53,7 +72,7 @@ export function Visit() {
                     try {
                         body.transientAuth = JSON.parse(debugAuth);
                     } catch (e) {
-                        if (!ignore) setError('Geçersiz JSON formatı');
+                        setError('Geçersiz JSON formatı');
                         return;
                     }
                 }
@@ -66,19 +85,14 @@ export function Visit() {
                 const data = await res.json();
                 if (!res.ok) throw new Error(data.error || 'Bağlantı kurulamadı');
                 // conn: { sessionId, roomName, token, livekitUrl }
-                if (!ignore) setConn(data);
+                setConn(data);
             } catch (err) {
-                if (!ignore) {
-                    setError(err instanceof TypeError
-                        ? 'SalesAI hizmetine şu anda ulaşılamıyor. Lütfen biraz sonra tekrar deneyin.'
-                        : err.message);
-                }
+                setError(err instanceof TypeError
+                    ? 'SalesAI hizmetine şu anda ulaşılamıyor. Lütfen biraz sonra tekrar deneyin.'
+                    : err.message);
             }
         }
         start();
-        return () => {
-            ignore = true;
-        };
     }, [token, embed, isDebug, started, debugAuth]);
 
     useEffect(() => {

@@ -5,9 +5,9 @@ import { retrieve } from '@repo/rag';
  * wired by the agent-worker (it owns the GuidedTour + screen track). Here we
  * define the schema + the knowledge tool that only needs productId.
  *
- * @param {{ productId:string, tour?:object, screen?:object, stopScreenShare?:Function }} ctx
+ * @param {{ productId:string, tour?:object, screen?:object, stopScreenShare?:Function, saveContactInfo?:Function }} ctx
  */
-export function buildTools({ productId, tour, screen, stopScreenShare }) {
+export function buildTools({ productId, tour, screen, stopScreenShare, saveContactInfo }) {
     return [
         {
             name: 'search_knowledge',
@@ -90,6 +90,20 @@ export function buildTools({ productId, tour, screen, stopScreenShare }) {
                 properties: { question: { type: 'string' } }
             },
             handler: async ({ question }) => tour?.readScreen?.(question) ?? { ok: false }
+        },
+        {
+            name: 'save_contact_info',
+            description:
+                'Save a confirmed piece of contact info (name, email, or phone). Call this ONLY after reading the value back out loud to the visitor and receiving their explicit confirmation that it is correct — never before. Call once per field, right after it is confirmed.',
+            parameters: {
+                type: 'object',
+                properties: {
+                    field: { type: 'string', enum: ['name', 'email', 'phone'] },
+                    value: { type: 'string' }
+                },
+                required: ['field', 'value']
+            },
+            handler: async ({ field, value }) => saveContactInfo?.(field, value) ?? { ok: false }
         }
     ];
 }

@@ -11,10 +11,10 @@ import { VideoTrack } from '@livekit/react-native';
  */
 const PROVIDER_META = {
     'voice-only': { label: 'Sesli Görüşme', color: '#6d5efc', initials: 'AI' },
-    tavus: { label: 'Tavus Video Avatar', color: '#22d3ee', initials: 'TV' },
-    heygen: { label: 'HeyGen Video Avatar', color: '#a855f7', initials: 'HG' },
-    did: { label: 'D-ID Video Avatar', color: '#f472b6', initials: 'DID' },
-    simli: { label: 'Simli Video Avatar', color: '#34d399', initials: 'SM' }
+    tavus: { label: 'Tavus Video Avatarı', color: '#22d3ee', initials: 'TV' },
+    heygen: { label: 'HeyGen Video Avatarı', color: '#a855f7', initials: 'HG' },
+    did: { label: 'D-ID Video Avatarı', color: '#f472b6', initials: 'DID' },
+    simli: { label: 'Simli Video Avatarı', color: '#34d399', initials: 'SM' }
 };
 
 function metaFor(provider) {

@@ -5,6 +5,43 @@ import { useRouter } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import { useAuth } from './_layout';
 
+const SESSION_STATUS_LABELS = {
+    live: 'CANLI',
+    ended: 'SONLANDI',
+    active: 'AKTİF',
+};
+
+const AGENT_STATUS_LABELS = {
+    active: 'AKTİF',
+    paused: 'DURAKLATILDI',
+};
+
+const WORKSPACE_ROLE_LABELS = {
+    OWNER: 'Sahip',
+    ADMIN: 'Yönetici',
+    EDITOR: 'Editör',
+    MEMBER: 'Üye',
+    VIEWER: 'Görüntüleyici',
+};
+
+const TONE_LABELS = {
+    friendly: 'samimi',
+    expert: 'uzman',
+    consultative: 'danışman',
+    persuasive: 'ikna edici',
+    concise: 'öz',
+    'outcome-focused': 'sonuç odaklı',
+    confident: 'kendinden emin',
+};
+
+function formatTone(tone) {
+    if (!tone) return 'Samimi';
+    return tone
+        .split(',')
+        .map((part) => TONE_LABELS[part.trim().toLowerCase()] || part.trim())
+        .join(', ');
+}
+
 export default function DashboardScreen() {
     const router = useRouter();
     const { token, user, logout, apiFetch } = useAuth();
@@ -36,7 +73,7 @@ export default function DashboardScreen() {
             setError('');
             // 1. Fetch workspaces
             const wsRes = await apiFetch('/api/v1/workspaces');
-            if (!wsRes.ok) throw new Error('Failed to fetch workspaces');
+            if (!wsRes.ok) throw new Error('Çalışma alanları yüklenemedi.');
             const wsData = await wsRes.json();
             setWorkspaces(wsData);
 
@@ -58,7 +95,7 @@ export default function DashboardScreen() {
         try {
             // 2. Fetch products
             const prodRes = await apiFetch(`/api/v1/products?workspaceId=${workspaceId}`);
-            if (!prodRes.ok) throw new Error('Failed to fetch products');
+            if (!prodRes.ok) throw new Error('Ürünler yüklenemedi.');
             const prodData = await prodRes.json();
             setProducts(prodData);
 
@@ -87,7 +124,7 @@ export default function DashboardScreen() {
 
             // 4. Fetch agents for active product
             const agentsRes = await apiFetch(`/api/v1/agents?productId=${productId}`);
-            if (!agentsRes.ok) throw new Error('Failed to fetch agents');
+            if (!agentsRes.ok) throw new Error('Temsilciler yüklenemedi.');
             const agentsData = await agentsRes.json();
             setAgents(agentsData);
 
@@ -167,13 +204,13 @@ export default function DashboardScreen() {
             const res = await apiFetch(`/api/v1/agents/${agent._id}/${endpoint}`, {
                 method: 'POST',
             });
-            if (!res.ok) throw new Error(`Failed to update status to ${nextStatus}`);
+            if (!res.ok) throw new Error('Temsilci durumu güncellenemedi.');
             
             // Update state locally
             setAgents(prev => prev.map(a => a._id === agent._id ? { ...a, status: nextStatus } : a));
-            Alert.alert('Success', `Agent ${agent.name} is now ${nextStatus}`);
+            Alert.alert('Başarılı', `“${agent.name}” artık ${nextStatus === 'active' ? 'aktif' : 'duraklatıldı'}.`);
         } catch (err) {
-            Alert.alert('Error', err.message);
+            Alert.alert('Hata', err.message);
         }
     };
 
@@ -185,12 +222,12 @@ export default function DashboardScreen() {
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({ status: nextStatus }),
             });
-            if (!res.ok) throw new Error('Failed to update lead status');
+            if (!res.ok) throw new Error('Potansiyel müşteri durumu güncellenemedi.');
             
             setLeads(prev => prev.map(l => l._id === lead._id ? { ...l, status: nextStatus } : l));
-            Alert.alert('Success', 'Lead status updated successfully');
+            Alert.alert('Başarılı', 'Potansiyel müşteri durumu güncellendi.');
         } catch (err) {
-            Alert.alert('Error', err.message);
+            Alert.alert('Hata', err.message);
         }
     };
 
@@ -219,7 +256,7 @@ export default function DashboardScreen() {
         return (
             <View style={styles.centerContainer}>
                 <ActivityIndicator size="large" color="#6d5efc" />
-                <Text style={styles.loadingText}>Connecting to console workspaces...</Text>
+                <Text style={styles.loadingText}>Çalışma alanları yükleniyor…</Text>
             </View>
         );
     }
@@ -238,15 +275,15 @@ export default function DashboardScreen() {
             {/* Top Workspace Selector & Header */}
             <View style={styles.header}>
                 <View>
-                    <Text style={styles.brandTitle}>SalesAI Console</Text>
+                    <Text style={styles.brandTitle}>SalesAI Konsolu</Text>
                     {activeWorkspace && (
                         <Text style={styles.workspaceSubtitle}>
-                            Workspace: {activeWorkspace.name}
+                            Çalışma Alanı: {activeWorkspace.name}
                         </Text>
                     )}
                 </View>
                 <TouchableOpacity style={styles.logoutButton} onPress={handleLogout} activeOpacity={0.7}>
-                    <Text style={styles.logoutText}>Logout</Text>
+                    <Text style={styles.logoutText}>Çıkış</Text>
                 </TouchableOpacity>
             </View>
 
@@ -258,29 +295,29 @@ export default function DashboardScreen() {
                         contentContainerStyle={styles.tabContent}
                     >
                         {/* KPI Cards */}
-                        <Text style={styles.sectionTitle}>Performance Overview</Text>
+                        <Text style={styles.sectionTitle}>Performans Özeti</Text>
                         <View style={styles.kpiGrid}>
                             <View style={styles.kpiCard}>
                                 <Text style={styles.kpiValue}>{kpis.totalSessions}</Text>
-                                <Text style={styles.kpiLabel}>Total Sessions</Text>
+                                <Text style={styles.kpiLabel}>Toplam Görüşme</Text>
                             </View>
                             <View style={styles.kpiCard}>
-                                <Text style={styles.kpiValue}>{kpis.avgDuration}s</Text>
-                                <Text style={styles.kpiLabel}>Avg Duration</Text>
+                                <Text style={styles.kpiValue}>{kpis.avgDuration} sn</Text>
+                                <Text style={styles.kpiLabel}>Ort. Süre</Text>
                             </View>
                             <View style={styles.kpiCard}>
                                 <Text style={styles.kpiValue}>{kpis.completionRate}%</Text>
-                                <Text style={styles.kpiLabel}>Completion Rate</Text>
+                                <Text style={styles.kpiLabel}>Tamamlanma Oranı</Text>
                             </View>
                             <View style={styles.kpiCard}>
                                 <Text style={styles.kpiValue}>{kpis.unansweredRate}%</Text>
-                                <Text style={styles.kpiLabel}>Unanswered Rate</Text>
+                                <Text style={styles.kpiLabel}>Yanıtsızlık Oranı</Text>
                             </View>
                         </View>
 
                         {/* Live Monitoring Section */}
                         <View style={styles.sectionHeaderRow}>
-                            <Text style={styles.sectionTitle}>Active Live Sessions ({liveSessions.length})</Text>
+                            <Text style={styles.sectionTitle}>Aktif Canlı Görüşmeler ({liveSessions.length})</Text>
                             {liveSessions.length > 0 && <View style={styles.pulseDotLive} />}
                         </View>
 
@@ -292,18 +329,18 @@ export default function DashboardScreen() {
                                 activeOpacity={0.85}
                             >
                                 <View style={styles.sessionMetaRow}>
-                                    <Text style={styles.sessionVisitor}>{session.visitorName || 'Visitor'}</Text>
+                                    <Text style={styles.sessionVisitor}>{session.visitorName || 'Ziyaretçi'}</Text>
                                     <View style={styles.liveTag}>
-                                        <Text style={styles.liveTagText}>LIVE</Text>
+                                        <Text style={styles.liveTagText}>CANLI</Text>
                                     </View>
                                 </View>
-                                <Text style={styles.sessionAgent}>Speaking with {session.agentName}</Text>
-                                <Text style={styles.sessionTime}>Room: {session.roomName}</Text>
+                                <Text style={styles.sessionAgent}>Görüşülen temsilci: {session.agentName}</Text>
+                                <Text style={styles.sessionTime}>Oda: {session.roomName}</Text>
                             </TouchableOpacity>
                         ))}
                         {liveSessions.length === 0 && (
                             <View style={styles.emptyCard}>
-                                <Text style={styles.emptyCardText}>No active live calls currently.</Text>
+                                <Text style={styles.emptyCardText}>Şu anda aktif canlı görüşme yok.</Text>
                             </View>
                         )}
                     </ScrollView>
@@ -313,7 +350,7 @@ export default function DashboardScreen() {
                     <View style={{ flex: 1 }}>
                         <TextInput
                             style={styles.searchBar}
-                            placeholder="Search sessions or agents..."
+                            placeholder="Görüşme veya temsilci ara…"
                             placeholderTextColor="#6c727f"
                             value={searchQuery}
                             onChangeText={handleSearch}
@@ -332,22 +369,22 @@ export default function DashboardScreen() {
                                     activeOpacity={0.85}
                                 >
                                     <View style={styles.sessionMetaRow}>
-                                        <Text style={styles.sessionVisitor}>{item.visitorName || 'Visitor'}</Text>
+                                        <Text style={styles.sessionVisitor}>{item.visitorName || 'Ziyaretçi'}</Text>
                                         <View style={[styles.badge, item.status === 'live' ? styles.badgeLive : styles.badgeEnded]}>
                                             <Text style={[styles.badgeText, item.status === 'live' ? styles.badgeLiveText : styles.badgeEndedText]}>
-                                                {item.status.toUpperCase()}
+                                                {SESSION_STATUS_LABELS[item.status] || item.status?.toUpperCase()}
                                             </Text>
                                         </View>
                                     </View>
-                                    <Text style={styles.sessionAgent}>Agent: {item.agentName}</Text>
+                                    <Text style={styles.sessionAgent}>Temsilci: {item.agentName}</Text>
                                     <Text style={styles.sessionTime}>
-                                        Date: {new Date(item.createdAt).toLocaleString('tr-TR')}
+                                        Tarih: {new Date(item.createdAt).toLocaleString('tr-TR')}
                                     </Text>
                                 </TouchableOpacity>
                             )}
                             ListEmptyComponent={() => (
                                 <View style={styles.emptyCard}>
-                                    <Text style={styles.emptyCardText}>No past conversations found.</Text>
+                                    <Text style={styles.emptyCardText}>Geçmiş görüşme bulunamadı.</Text>
                                 </View>
                             )}
                         />
@@ -363,13 +400,13 @@ export default function DashboardScreen() {
                         renderItem={({ item }) => (
                             <View style={styles.leadCard}>
                                 <View style={styles.leadHeader}>
-                                    <Text style={styles.leadEmail}>{item.contact?.email || 'Anonymous Lead'}</Text>
+                                    <Text style={styles.leadEmail}>{item.contact?.email || 'İsimsiz Potansiyel Müşteri'}</Text>
                                     <View style={styles.scoreBadge}>
-                                        <Text style={styles.scoreText}>Score: {item.score}</Text>
+                                        <Text style={styles.scoreText}>Puan: {item.score}</Text>
                                     </View>
                                 </View>
                                 {item.contact?.company ? (
-                                    <Text style={styles.leadCompany}>Company: {item.contact.company}</Text>
+                                    <Text style={styles.leadCompany}>Şirket: {item.contact.company}</Text>
                                 ) : null}
 
                                 {/* Lead Status Actions — read-only for VIEWER role */}
@@ -379,21 +416,21 @@ export default function DashboardScreen() {
                                         onPress={() => updateLeadStatus(item, 'new')}
                                         disabled={isViewer}
                                     >
-                                        <Text style={[styles.leadStatusBtnText, item.status === 'new' && styles.leadStatusBtnActiveText]}>New</Text>
+                                        <Text style={[styles.leadStatusBtnText, item.status === 'new' && styles.leadStatusBtnActiveText]}>Yeni</Text>
                                     </TouchableOpacity>
                                     <TouchableOpacity
                                         style={[styles.leadStatusBtn, item.status === 'contacted' && styles.leadStatusBtnActive, isViewer && styles.leadStatusBtnDisabled]}
                                         onPress={() => updateLeadStatus(item, 'contacted')}
                                         disabled={isViewer}
                                     >
-                                        <Text style={[styles.leadStatusBtnText, item.status === 'contacted' && styles.leadStatusBtnActiveText]}>Contacted</Text>
+                                        <Text style={[styles.leadStatusBtnText, item.status === 'contacted' && styles.leadStatusBtnActiveText]}>İletişime Geçildi</Text>
                                     </TouchableOpacity>
                                     <TouchableOpacity
                                         style={[styles.leadStatusBtn, item.status === 'converted' && styles.leadStatusBtnActive, isViewer && styles.leadStatusBtnDisabled]}
                                         onPress={() => updateLeadStatus(item, 'converted')}
                                         disabled={isViewer}
                                     >
-                                        <Text style={[styles.leadStatusBtnText, item.status === 'converted' && styles.leadStatusBtnActiveText]}>Won</Text>
+                                        <Text style={[styles.leadStatusBtnText, item.status === 'converted' && styles.leadStatusBtnActiveText]}>Kazanıldı</Text>
                                     </TouchableOpacity>
                                 </View>
 
@@ -404,7 +441,7 @@ export default function DashboardScreen() {
                                             style={styles.contactBtn}
                                             onPress={() => Linking.openURL(`mailto:${item.contact.email}`)}
                                         >
-                                            <Text style={styles.contactBtnText}>📧 Email Lead</Text>
+                                            <Text style={styles.contactBtnText}>E-posta Gönder</Text>
                                         </TouchableOpacity>
                                     )}
                                 </View>
@@ -412,7 +449,7 @@ export default function DashboardScreen() {
                         )}
                         ListEmptyComponent={() => (
                             <View style={styles.emptyCard}>
-                                <Text style={styles.emptyCardText}>No leads captured yet.</Text>
+                                <Text style={styles.emptyCardText}>Henüz potansiyel müşteri yok.</Text>
                             </View>
                         )}
                     />
@@ -429,11 +466,11 @@ export default function DashboardScreen() {
                                 <View style={{ flex: 1 }}>
                                     <Text style={styles.agentNameText}>{item.name}</Text>
                                     <Text style={styles.agentConfigText}>Avatar: {item.avatarProvider}</Text>
-                                    <Text style={styles.agentConfigText}>Tone: {item.persona?.tone || 'Friendly'}</Text>
+                                    <Text style={styles.agentConfigText}>Üslup: {formatTone(item.persona?.tone)}</Text>
                                 </View>
                                 <View style={styles.toggleRow}>
                                     <Text style={[styles.agentStatusIndicator, item.status === 'active' ? styles.indicatorActive : styles.indicatorPaused]}>
-                                        {item.status.toUpperCase()}
+                                        {AGENT_STATUS_LABELS[item.status] || item.status?.toUpperCase()}
                                     </Text>
                                     <Switch
                                         value={item.status === 'active'}
@@ -447,7 +484,7 @@ export default function DashboardScreen() {
                         )}
                         ListEmptyComponent={() => (
                             <View style={styles.emptyCard}>
-                                <Text style={styles.emptyCardText}>No agents defined in this product.</Text>
+                                <Text style={styles.emptyCardText}>Bu ürün için tanımlı temsilci yok.</Text>
                             </View>
                         )}
                     />
@@ -455,15 +492,15 @@ export default function DashboardScreen() {
 
                 {activeTab === 'settings' && (
                     <ScrollView contentContainerStyle={styles.tabContent}>
-                        <Text style={styles.sectionTitle}>User Account</Text>
+                        <Text style={styles.sectionTitle}>Kullanıcı Hesabı</Text>
                         <View style={styles.settingsCard}>
-                            <Text style={styles.settingsLabel}>Name</Text>
-                            <Text style={styles.settingsValue}>{user?.name || 'Seller User'}</Text>
-                            <Text style={styles.settingsLabel}>Email Address</Text>
+                            <Text style={styles.settingsLabel}>Ad Soyad</Text>
+                            <Text style={styles.settingsValue}>{user?.name || 'Satıcı Kullanıcı'}</Text>
+                            <Text style={styles.settingsLabel}>E-posta Adresi</Text>
                             <Text style={styles.settingsValue}>{user?.email || 'seller@salesai.com'}</Text>
                         </View>
 
-                        <Text style={[styles.sectionTitle, { marginTop: 24 }]}>Workspaces</Text>
+                        <Text style={[styles.sectionTitle, { marginTop: 24 }]}>Çalışma Alanları</Text>
                         <View style={styles.settingsCard}>
                             {workspaces.map((ws) => (
                                 <TouchableOpacity
@@ -475,9 +512,9 @@ export default function DashboardScreen() {
                                     }}
                                 >
                                     <Text style={[styles.workspaceText, activeWorkspace?.id === ws.id && styles.workspaceTextActive]}>
-                                        {ws.name} {ws.role ? `(${ws.role})` : ''}
+                                        {ws.name} {ws.role ? `(${WORKSPACE_ROLE_LABELS[ws.role] || ws.role})` : ''}
                                     </Text>
-                                    {activeWorkspace?.id === ws.id && <Text style={styles.activeIndicatorText}>Active</Text>}
+                                    {activeWorkspace?.id === ws.id && <Text style={styles.activeIndicatorText}>Aktif</Text>}
                                 </TouchableOpacity>
                             ))}
                         </View>
@@ -492,35 +529,35 @@ export default function DashboardScreen() {
                         <View style={[styles.iconWrapper, activeTab === 'home' && styles.iconWrapperActive]}>
                             <Ionicons name={activeTab === 'home' ? 'home' : 'home-outline'} size={22} color={activeTab === 'home' ? '#ffffff' : '#6c727f'} />
                         </View>
-                        <Text style={[styles.tabItemText, activeTab === 'home' && styles.tabItemTextActive]}>Home</Text>
+                        <Text style={[styles.tabItemText, activeTab === 'home' && styles.tabItemTextActive]}>Ana Sayfa</Text>
                     </TouchableOpacity>
                     
                     <TouchableOpacity style={styles.tabItem} onPress={() => setActiveTab('sessions')}>
                         <View style={[styles.iconWrapper, activeTab === 'sessions' && styles.iconWrapperActive]}>
                             <Ionicons name={activeTab === 'sessions' ? 'call' : 'call-outline'} size={22} color={activeTab === 'sessions' ? '#ffffff' : '#6c727f'} />
                         </View>
-                        <Text style={[styles.tabItemText, activeTab === 'sessions' && styles.tabItemTextActive]}>Calls</Text>
+                        <Text style={[styles.tabItemText, activeTab === 'sessions' && styles.tabItemTextActive]}>Görüşmeler</Text>
                     </TouchableOpacity>
 
                     <TouchableOpacity style={styles.tabItem} onPress={() => setActiveTab('leads')}>
                         <View style={[styles.iconWrapper, activeTab === 'leads' && styles.iconWrapperActive]}>
                             <Ionicons name={activeTab === 'leads' ? 'people' : 'people-outline'} size={22} color={activeTab === 'leads' ? '#ffffff' : '#6c727f'} />
                         </View>
-                        <Text style={[styles.tabItemText, activeTab === 'leads' && styles.tabItemTextActive]}>Leads</Text>
+                        <Text style={[styles.tabItemText, activeTab === 'leads' && styles.tabItemTextActive]}>Adaylar</Text>
                     </TouchableOpacity>
 
                     <TouchableOpacity style={styles.tabItem} onPress={() => setActiveTab('agents')}>
                         <View style={[styles.iconWrapper, activeTab === 'agents' && styles.iconWrapperActive]}>
                             <Ionicons name={activeTab === 'agents' ? 'hardware-chip' : 'hardware-chip-outline'} size={22} color={activeTab === 'agents' ? '#ffffff' : '#6c727f'} />
                         </View>
-                        <Text style={[styles.tabItemText, activeTab === 'agents' && styles.tabItemTextActive]}>Agents</Text>
+                        <Text style={[styles.tabItemText, activeTab === 'agents' && styles.tabItemTextActive]}>Temsilciler</Text>
                     </TouchableOpacity>
 
                     <TouchableOpacity style={styles.tabItem} onPress={() => setActiveTab('settings')}>
                         <View style={[styles.iconWrapper, activeTab === 'settings' && styles.iconWrapperActive]}>
                             <Ionicons name={activeTab === 'settings' ? 'settings' : 'settings-outline'} size={22} color={activeTab === 'settings' ? '#ffffff' : '#6c727f'} />
                         </View>
-                        <Text style={[styles.tabItemText, activeTab === 'settings' && styles.tabItemTextActive]}>Settings</Text>
+                        <Text style={[styles.tabItemText, activeTab === 'settings' && styles.tabItemTextActive]}>Ayarlar</Text>
                     </TouchableOpacity>
                 </View>
             </View>

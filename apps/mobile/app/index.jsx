@@ -36,7 +36,7 @@ export default function Home() {
         }
 
         if (!/^[a-zA-Z0-9_-]+$/.test(token)) {
-            setError('Paylaşım bağlantısı veya token formatı geçersiz.');
+            setError('Paylaşım bağlantısı veya erişim kodu formatı geçersiz.');
             return;
         }
 
@@ -58,7 +58,7 @@ export default function Home() {
 
                 <View style={styles.card}>
                     <Text style={styles.cardTitle}>AI Görüşmesine Katılın</Text>
-                    <Text style={styles.cardDesc}>Sesli ve görüntülü görüşmeyi başlatmak için temsilcinizin paylaşım bağlantısını veya tokenını girin.</Text>
+                    <Text style={styles.cardDesc}>Sesli ve görüntülü görüşmeyi başlatmak için temsilcinizin paylaşım bağlantısını veya erişim kodunu girin.</Text>
 
                     <TextInput
                         style={[styles.input, error ? styles.inputError : null]}
@@ -79,13 +79,6 @@ export default function Home() {
                         <Text style={styles.buttonText}>Temsilciye Bağlan</Text>
                     </TouchableOpacity>
 
-                    <TouchableOpacity 
-                        style={[styles.button, { backgroundColor: '#10b981', marginTop: 12 }]} 
-                        onPress={() => handleConnect('test-token-5686')} 
-                        activeOpacity={0.8}
-                    >
-                        <Text style={styles.buttonText}>⚡ Hızlı Bağlan (Demo Token: test-token-5686)</Text>
-                    </TouchableOpacity>
                 </View>
 
                 {savedCount > 0 && (

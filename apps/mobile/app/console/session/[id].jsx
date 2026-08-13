@@ -43,7 +43,7 @@ export default function SessionMonitorScreen() {
         try {
             // Using public route for transcripts
             const res = await apiFetch(`/api/v1/sessions/${id}/transcript`);
-            if (!res.ok) throw new Error('Failed to load transcripts');
+            if (!res.ok) throw new Error('Görüşme dökümü yüklenemedi.');
             const data = await res.json();
             setMessages(data);
             if (initial) setLoading(false);
@@ -124,7 +124,7 @@ export default function SessionMonitorScreen() {
         return (
             <View style={styles.centerContainer}>
                 <ActivityIndicator size="large" color="#6d5efc" />
-                <Text style={styles.loadingText}>Connecting to session transcripts...</Text>
+                <Text style={styles.loadingText}>Görüşme dökümü yükleniyor…</Text>
             </View>
         );
     }
@@ -141,19 +141,19 @@ export default function SessionMonitorScreen() {
             {/* Header info */}
             <View style={styles.header}>
                 <TouchableOpacity style={styles.backButton} onPress={() => router.back()} activeOpacity={0.7}>
-                    <Text style={styles.backButtonText}>← Back</Text>
+                    <Text style={styles.backButtonText}>← Geri</Text>
                 </TouchableOpacity>
                 <View style={styles.headerTitleContainer}>
                     <Text style={styles.headerTitle} numberOfLines={1}>
-                        {session?.visitorName || 'Visitor'}
+                        {session?.visitorName || 'Ziyaretçi'}
                     </Text>
                     <Text style={styles.headerSubtitle}>
-                        Room: {session?.roomName || 's_...'}
+                        Oda: {session?.roomName || 's_...'}
                     </Text>
                 </View>
                 <View style={[styles.statusBadge, isLive ? styles.badgeLive : styles.badgeEnded]}>
                     <Text style={[styles.badgeText, isLive ? styles.badgeLiveText : styles.badgeEndedText]}>
-                        {isLive ? 'LIVE' : 'ENDED'}
+                        {isLive ? 'CANLI' : 'SONLANDI'}
                     </Text>
                 </View>
             </View>
@@ -164,13 +164,13 @@ export default function SessionMonitorScreen() {
                     style={[styles.toggleBtn, viewMode === 'transcript' && styles.toggleBtnActive]}
                     onPress={() => setViewMode('transcript')}
                 >
-                    <Text style={[styles.toggleBtnText, viewMode === 'transcript' && styles.toggleBtnActiveText]}>Transcript</Text>
+                    <Text style={[styles.toggleBtnText, viewMode === 'transcript' && styles.toggleBtnActiveText]}>Görüşme Dökümü</Text>
                 </TouchableOpacity>
                 <TouchableOpacity 
                     style={[styles.toggleBtn, viewMode === 'summary' && styles.toggleBtnActive]}
                     onPress={() => setViewMode('summary')}
                 >
-                    <Text style={[styles.toggleBtnText, viewMode === 'summary' && styles.toggleBtnActiveText]}>AI Post-Call Summary</Text>
+                    <Text style={[styles.toggleBtnText, viewMode === 'summary' && styles.toggleBtnActiveText]}>AI Görüşme Özeti</Text>
                 </TouchableOpacity>
             </View>
 
@@ -178,7 +178,7 @@ export default function SessionMonitorScreen() {
             {isLive && viewMode === 'transcript' && (
                 <View style={styles.liveBanner}>
                     <View style={styles.pulseDot} />
-                    <Text style={styles.liveBannerText}>Real-time monitoring active</Text>
+                    <Text style={styles.liveBannerText}>Canlı izleme etkin</Text>
                 </View>
             )}
 
@@ -209,7 +209,7 @@ export default function SessionMonitorScreen() {
                             <View style={[styles.messageRow, isAssistant ? styles.rowAssistant : styles.rowUser]}>
                                 <View style={[styles.bubble, isAssistant ? styles.bubbleAssistant : styles.bubbleUser]}>
                                     <Text style={styles.bubbleRole}>
-                                        {isAssistant ? 'AI Agent' : 'Customer'}
+                                        {isAssistant ? 'AI Temsilcisi' : 'Müşteri'}
                                     </Text>
                                     <Text style={styles.bubbleText}>{item.text}</Text>
                                     {item.at && (
@@ -223,7 +223,7 @@ export default function SessionMonitorScreen() {
                     }}
                     ListEmptyComponent={() => (
                         <View style={styles.emptyContainer}>
-                            <Text style={styles.emptyText}>Waiting for conversation to begin...</Text>
+                            <Text style={styles.emptyText}>Görüşmenin başlaması bekleniyor…</Text>
                         </View>
                     )}
                     contentContainerStyle={styles.listContent}
@@ -237,10 +237,10 @@ export default function SessionMonitorScreen() {
                 <ScrollView contentContainerStyle={styles.summaryScrollContent}>
                     {summary ? (
                         <View style={styles.summaryCard}>
-                            <Text style={styles.summaryLabel}>TL;DR Summary</Text>
-                            <Text style={styles.summaryTextValue}>{summary.tldr || 'No summary generated yet.'}</Text>
+                            <Text style={styles.summaryLabel}>Kısa Özet</Text>
+                            <Text style={styles.summaryTextValue}>{summary.tldr || 'Henüz özet oluşturulmadı.'}</Text>
 
-                            <Text style={styles.summaryLabel}>Topics Discussed</Text>
+                            <Text style={styles.summaryLabel}>Konuşulan Konular</Text>
                             <View style={styles.chipsRow}>
                                 {(summary.topics || []).map((t, index) => (
                                     <View key={index} style={styles.chip}>
@@ -248,11 +248,11 @@ export default function SessionMonitorScreen() {
                                     </View>
                                 ))}
                                 {(!summary.topics || summary.topics.length === 0) && (
-                                    <Text style={styles.noDataText}>None</Text>
+                                    <Text style={styles.noDataText}>Yok</Text>
                                 )}
                             </View>
 
-                            <Text style={styles.summaryLabel}>Customer Objections</Text>
+                            <Text style={styles.summaryLabel}>Müşteri İtirazları</Text>
                             <View style={styles.chipsRow}>
                                 {(summary.objections || []).map((o, index) => (
                                     <View key={index} style={[styles.chip, { backgroundColor: 'rgba(248, 113, 113, 0.15)' }]}>
@@ -260,22 +260,22 @@ export default function SessionMonitorScreen() {
                                     </View>
                                 ))}
                                 {(!summary.objections || summary.objections.length === 0) && (
-                                    <Text style={styles.noDataText}>None</Text>
+                                    <Text style={styles.noDataText}>Yok</Text>
                                 )}
                             </View>
 
-                            <Text style={styles.summaryLabel}>Unanswered Questions</Text>
+                            <Text style={styles.summaryLabel}>Yanıtsız Sorular</Text>
                             <View style={styles.unansweredList}>
                                 {(summary.unanswered || []).map((q, index) => (
                                     <Text key={index} style={styles.unansweredItem}>• {q}</Text>
                                 ))}
                                 {(!summary.unanswered || summary.unanswered.length === 0) && (
-                                    <Text style={styles.noDataText}>None</Text>
+                                    <Text style={styles.noDataText}>Yok</Text>
                                 )}
                             </View>
 
-                            <Text style={styles.summaryLabel}>Next Recommended Step</Text>
-                            <Text style={styles.nextStepText}>{summary.nextStep || 'Follow up with details'}</Text>
+                            <Text style={styles.summaryLabel}>Önerilen Sonraki Adım</Text>
+                            <Text style={styles.nextStepText}>{summary.nextStep || 'Ayrıntılarla takip edin'}</Text>
                         </View>
                     ) : (
                         <View style={styles.emptyContainer}>
@@ -283,7 +283,7 @@ export default function SessionMonitorScreen() {
                                 <ActivityIndicator size="small" color="#6d5efc" style={{ marginBottom: 12 }} />
                             ) : null}
                             <Text style={styles.emptyText}>
-                                {isLive ? 'Görüşme hala devam ediyor. Sonlandığında analiz raporu oluşturulacaktır.' : 'Analiz raporu henüz oluşturulmadı.'}
+                                {isLive ? 'Görüşme hâlâ devam ediyor. Sonlandığında analiz raporu oluşturulacaktır.' : 'Analiz raporu henüz oluşturulmadı.'}
                             </Text>
                         </View>
                     )}

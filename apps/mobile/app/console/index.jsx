@@ -22,7 +22,7 @@ export default function LoginScreen() {
 
     const handleLogin = async () => {
         if (!email.trim() || !password.trim()) {
-            setError('Please enter both email and password');
+            setError('Lütfen e-posta ve şifre alanlarını doldurun.');
             return;
         }
 
@@ -37,8 +37,11 @@ export default function LoginScreen() {
             });
 
             if (!res.ok) {
-                const data = await res.json().catch(() => ({}));
-                throw new Error(data.error || 'Invalid credentials');
+                throw new Error(
+                    res.status === 429
+                        ? 'Çok fazla giriş denemesi yaptınız. Lütfen daha sonra tekrar deneyin.'
+                        : 'E-posta veya şifre hatalı.'
+                );
             }
 
             const data = await res.json();
@@ -48,7 +51,7 @@ export default function LoginScreen() {
             router.replace('/console/dashboard');
         } catch (err) {
             console.error('Login failed:', err);
-            setError(err.message);
+            setError(err.message || 'Giriş yapılamadı. Lütfen tekrar deneyin.');
         } finally {
             setLoading(false);
         }
@@ -63,16 +66,16 @@ export default function LoginScreen() {
             <ScrollView contentContainerStyle={styles.scrollContainer} keyboardShouldPersistTaps="handled">
                 <View style={styles.header}>
                     <Text style={styles.brand}>SalesAI</Text>
-                    <Text style={styles.tagline}>Seller Console Monitor</Text>
+                    <Text style={styles.tagline}>Satıcı Konsolu</Text>
                 </View>
 
                 <View style={styles.card}>
-                    <Text style={styles.cardTitle}>Seller Login</Text>
-                    <Text style={styles.cardDesc}>Enter your seller credentials to access agents, workspaces, leads, and live call analytics.</Text>
+                    <Text style={styles.cardTitle}>Satıcı Girişi</Text>
+                    <Text style={styles.cardDesc}>Temsilcilere, çalışma alanlarına, potansiyel müşterilere ve canlı görüşme analizlerine erişmek için satıcı hesabınızla giriş yapın.</Text>
 
                     <TextInput
                         style={[styles.input, error ? styles.inputError : null]}
-                        placeholder="Email Address"
+                        placeholder="E-posta adresi"
                         placeholderTextColor="#6c727f"
                         value={email}
                         onChangeText={(text) => {
@@ -86,7 +89,7 @@ export default function LoginScreen() {
 
                     <TextInput
                         style={[styles.input, error ? styles.inputError : null]}
-                        placeholder="Password"
+                        placeholder="Şifre"
                         placeholderTextColor="#6c727f"
                         secureTextEntry
                         value={password}
@@ -109,21 +112,21 @@ export default function LoginScreen() {
                         {loading ? (
                             <ActivityIndicator size="small" color="#ffffff" />
                         ) : (
-                            <Text style={styles.buttonText}>Login to Console</Text>
+                            <Text style={styles.buttonText}>Konsola Giriş Yap</Text>
                         )}
                     </TouchableOpacity>
                 </View>
 
                 <TouchableOpacity style={styles.backLink} onPress={() => router.push('/console/register')} activeOpacity={0.7}>
-                    <Text style={styles.backLinkText}>No account yet? Create one</Text>
+                    <Text style={styles.backLinkText}>Hesabınız yok mu? Kayıt olun</Text>
                 </TouchableOpacity>
 
                 <TouchableOpacity style={styles.backLink} onPress={() => router.replace('/')} activeOpacity={0.7}>
-                    <Text style={styles.backLinkText}>Go Back to Visitor App</Text>
+                    <Text style={styles.backLinkText}>Ziyaretçi Uygulamasına Dön</Text>
                 </TouchableOpacity>
 
                 <View style={styles.footer}>
-                    <Text style={styles.footerText}>Powered by SalesAI Dashboard</Text>
+                    <Text style={styles.footerText}>SalesAI altyapısıyla</Text>
                 </View>
             </ScrollView>
         </KeyboardAvoidingView>

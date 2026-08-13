@@ -43,7 +43,7 @@ export default function ConsoleLayout() {
         if (refreshInFlight.current) return refreshInFlight.current;
         if (!refreshToken) {
             logout();
-            throw new Error('Session expired');
+            throw new Error('Oturumun süresi doldu.');
         }
 
         refreshInFlight.current = (async () => {
@@ -52,7 +52,7 @@ export default function ConsoleLayout() {
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({ refreshToken }),
             });
-            if (!res.ok) throw new Error('Session refresh failed');
+            if (!res.ok) throw new Error('Oturum yenilenemedi.');
 
             const tokens = await res.json();
             setToken(tokens.accessToken);
@@ -107,7 +107,7 @@ export default function ConsoleLayout() {
                     headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify({ refreshToken: saved.refreshToken }),
                 });
-                if (!res.ok) throw new Error('Session refresh failed');
+                if (!res.ok) throw new Error('Oturum yenilenemedi.');
 
                 const tokens = await res.json();
                 setToken(tokens.accessToken);

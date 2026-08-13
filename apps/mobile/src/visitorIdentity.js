@@ -56,7 +56,7 @@ export async function registerPushToken(expoPushToken, platform) {
             headers: { 'Content-Type': 'application/json', 'Bypass-Tunnel-Reminder': 'true' },
             body: JSON.stringify({ visitorId, expoPushToken, platform })
         });
-        if (!res.ok) throw new Error('Failed to register device');
+        if (!res.ok) throw new Error('Cihaz kaydedilemedi.');
         return await res.json();
     } catch (err) {
         console.warn('Push token registration failed:', err?.message);
@@ -73,7 +73,7 @@ export async function requestMagicLink(email) {
         body: JSON.stringify({ email, visitorId })
     });
     const data = await res.json().catch(() => ({}));
-    if (!res.ok) throw new Error(data.error || 'Failed to request magic link');
+    if (!res.ok) throw new Error('Giriş bağlantısı gönderilemedi.');
     return data;
 }
 
@@ -85,7 +85,7 @@ export async function verifyMagicLink(token) {
         body: JSON.stringify({ token })
     });
     const data = await res.json().catch(() => ({}));
-    if (!res.ok) throw new Error(data.error || 'Invalid or expired link');
+    if (!res.ok) throw new Error('Bağlantı geçersiz veya süresi dolmuş.');
 
     const state = await load();
     await persist({ ...state, visitorId: data.visitorId, email: data.email, accessToken: data.accessToken });

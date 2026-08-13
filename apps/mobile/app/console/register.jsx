@@ -17,11 +17,11 @@ export default function RegisterScreen() {
 
     const handleRegister = async () => {
         if (!name.trim() || !email.trim() || !password.trim()) {
-            setError('Please fill in name, email and password');
+            setError('Lütfen ad, e-posta ve şifre alanlarını doldurun.');
             return;
         }
         if (password.length < 8) {
-            setError('Password must be at least 8 characters');
+            setError('Şifre en az 8 karakter olmalıdır.');
             return;
         }
 
@@ -36,8 +36,11 @@ export default function RegisterScreen() {
             });
 
             if (!res.ok) {
-                const data = await res.json().catch(() => ({}));
-                throw new Error(data.error || 'Could not create account');
+                throw new Error(
+                    res.status === 409
+                        ? 'Bu e-posta adresiyle daha önce kayıt oluşturulmuş.'
+                        : 'Hesap oluşturulamadı. Lütfen tekrar deneyin.'
+                );
             }
 
             const data = await res.json();
@@ -63,16 +66,16 @@ export default function RegisterScreen() {
             <ScrollView contentContainerStyle={styles.scrollContainer} keyboardShouldPersistTaps="handled">
                 <View style={styles.header}>
                     <Text style={styles.brand}>SalesAI</Text>
-                    <Text style={styles.tagline}>Create your seller account</Text>
+                    <Text style={styles.tagline}>Satıcı hesabınızı oluşturun</Text>
                 </View>
 
                 <View style={styles.card}>
-                    <Text style={styles.cardTitle}>Seller Sign Up</Text>
-                    <Text style={styles.cardDesc}>Create an account to build agents, monitor calls, and track leads — from web or mobile.</Text>
+                    <Text style={styles.cardTitle}>Satıcı Kaydı</Text>
+                    <Text style={styles.cardDesc}>Temsilci oluşturmak, görüşmeleri izlemek ve potansiyel müşterileri takip etmek için hesap oluşturun.</Text>
 
                     <TextInput
                         style={[styles.input, error ? styles.inputError : null]}
-                        placeholder="Full Name"
+                        placeholder="Ad soyad"
                         placeholderTextColor="#6c727f"
                         value={name}
                         onChangeText={(text) => {
@@ -85,7 +88,7 @@ export default function RegisterScreen() {
 
                     <TextInput
                         style={[styles.input, error ? styles.inputError : null]}
-                        placeholder="Email Address"
+                        placeholder="E-posta adresi"
                         placeholderTextColor="#6c727f"
                         value={email}
                         onChangeText={(text) => {
@@ -99,7 +102,7 @@ export default function RegisterScreen() {
 
                     <TextInput
                         style={[styles.input, error ? styles.inputError : null]}
-                        placeholder="Password (min. 8 characters)"
+                        placeholder="Şifre (en az 8 karakter)"
                         placeholderTextColor="#6c727f"
                         secureTextEntry
                         value={password}
@@ -122,17 +125,17 @@ export default function RegisterScreen() {
                         {loading ? (
                             <ActivityIndicator size="small" color="#ffffff" />
                         ) : (
-                            <Text style={styles.buttonText}>Create Account</Text>
+                            <Text style={styles.buttonText}>Hesap Oluştur</Text>
                         )}
                     </TouchableOpacity>
                 </View>
 
                 <TouchableOpacity style={styles.backLink} onPress={() => router.replace('/console')} activeOpacity={0.7}>
-                    <Text style={styles.backLinkText}>Already have an account? Log in</Text>
+                    <Text style={styles.backLinkText}>Zaten hesabınız var mı? Giriş yapın</Text>
                 </TouchableOpacity>
 
                 <View style={styles.footer}>
-                    <Text style={styles.footerText}>Powered by SalesAI Dashboard</Text>
+                    <Text style={styles.footerText}>SalesAI altyapısıyla</Text>
                 </View>
             </ScrollView>
         </KeyboardAvoidingView>

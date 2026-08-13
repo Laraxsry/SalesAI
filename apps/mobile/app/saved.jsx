@@ -96,7 +96,7 @@ export default function SavedScreen() {
             <View style={styles.notifCard}>
                 <View style={{ flex: 1 }}>
                     <Text style={styles.notifTitle}>Bildirimler</Text>
-                    <Text style={styles.notifDesc}>Takip mesajları ve agent müsaitliği için bildirim al.</Text>
+                    <Text style={styles.notifDesc}>Takip mesajları ve temsilci müsaitliği için bildirim al.</Text>
                 </View>
                 <Switch
                     value={notificationsOn}

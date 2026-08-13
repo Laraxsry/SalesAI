@@ -22,7 +22,7 @@ export default function SavedConversationScreen() {
                     headers: { Authorization: `Bearer ${accessToken}` },
                 });
                 const data = await res.json().catch(() => []);
-                if (!res.ok) throw new Error(data.error || 'Görüşme yüklenemedi.');
+                if (!res.ok) throw new Error('Görüşme yüklenemedi.');
                 if (active) setMessages(data);
             } catch (err) {
                 if (active) setError(err.message);

@@ -98,12 +98,11 @@ function NativeSessionScreen() {
                     'Content-Type': 'application/json',
                     'Bypass-Tunnel-Reminder': 'true'
                 },
-                body: JSON.stringify({ shareToken: token, visitorName: 'Mobile Visitor', visitorId: visitorId || undefined }),
+                body: JSON.stringify({ shareToken: token, visitorName: 'Mobil Ziyaretçi', visitorId: visitorId || undefined }),
             });
 
             if (!res.ok) {
-                const errData = await res.json().catch(() => ({}));
-                throw new Error(errData.error || 'Görüşme başlatılamadı. Bağlantı geçersiz veya süresi dolmuş olabilir.');
+                throw new Error('Görüşme başlatılamadı. Bağlantı geçersiz veya süresi dolmuş olabilir.');
             }
 
             const data = await res.json();

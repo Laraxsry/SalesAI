@@ -280,6 +280,8 @@ function RoomView({ agentName, setAgentName, avatarProvider, handleDisconnect })
     const remoteVideoTrack = cameraTracks.find((trackRef) => !trackRef.participant?.isLocal);
     const remoteScreenTrack = screenTracks.find((trackRef) => !trackRef.participant?.isLocal);
     const localScreenTrack = screenTracks.find((trackRef) => trackRef.participant?.isLocal);
+    const primaryScreenTrack = remoteScreenTrack || localScreenTrack;
+    const isPresentingScreen = Boolean(primaryScreenTrack);
     const hasVideo = Boolean(remoteVideoTrack);
 
     // Transcription + connection-lifecycle listeners, now on the real room.
@@ -438,67 +440,63 @@ function RoomView({ agentName, setAgentName, avatarProvider, handleDisconnect })
     };
 
     return (
-        <View style={styles.innerContainer}>
+        <View style={[styles.innerContainer, isPresentingScreen && styles.presentationContainer]}>
             {/* Header info */}
-            <View style={styles.topBar}>
+            <View style={[styles.topBar, isPresentingScreen && styles.presentationTopBar]}>
                 <View style={[styles.statusDot, reconnecting && styles.statusDotWarn]} />
                 <Text style={styles.agentTitle}>{reconnecting ? 'Yeniden bağlanıyor…' : agentName}</Text>
             </View>
 
-            {/* AI screen share takes priority; keep its camera/avatar as context. */}
-            <View style={styles.visualizerContainer}>
-                {remoteScreenTrack ? (
+            {/* Any shared screen becomes the primary view and is never cropped. */}
+            <View style={[styles.visualizerContainer, isPresentingScreen && styles.presentationVisualizer]}>
+                {primaryScreenTrack ? (
                     <>
-                        <VideoTrack trackRef={remoteScreenTrack} objectFit="contain" style={styles.screenShareTrack} />
-                        <View style={styles.remoteShareBadge}>
-                            <Text style={styles.shareBadgeText}>AI size ürünü gösteriyor</Text>
+                        <VideoTrack trackRef={primaryScreenTrack} objectFit="contain" style={styles.screenShareTrack} />
+                        <View style={remoteScreenTrack ? styles.remoteShareBadge : styles.localShareBadge}>
+                            <Text style={styles.shareBadgeText}>
+                                {remoteScreenTrack ? 'AI size ürünü gösteriyor' : 'Ekranınız paylaşılıyor'}
+                            </Text>
                         </View>
-                        {remoteVideoTrack && (
-                            <View style={styles.agentCameraPreview}>
-                                <VideoTrack trackRef={remoteVideoTrack} style={styles.previewVideoTrack} />
-                            </View>
-                        )}
                     </>
                 ) : (
                     <AvatarView hasVideo={hasVideo} videoTrackRef={remoteVideoTrack} avatarProvider={avatarProvider} />
                 )}
 
-                {isSharingScreen && localScreenTrack && (
-                    <View style={styles.localScreenPreview}>
-                        <VideoTrack trackRef={localScreenTrack} style={styles.previewVideoTrack} />
-                    </View>
-                )}
-                {isSharingScreen && (
+                {isSharingScreen && !localScreenTrack && (
                     <View style={styles.localShareBadge}>
                         <Text style={styles.shareBadgeText}>Ekranınız paylaşılıyor</Text>
                     </View>
                 )}
             </View>
 
-            <CallControls
-                isMuted={isMuted}
-                toggleMute={toggleMute}
-                isDeafened={isDeafened}
-                toggleDeafen={toggleDeafen}
-                isSharingScreen={isSharingScreen}
-                toggleScreenShare={toggleScreenShare}
-                handleDisconnect={onEndPress}
-            />
-
-            <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : 'height'} style={styles.chatInputContainer}>
-                <TextInput
-                    style={styles.chatInput}
-                    placeholder="Yazarak da mesaj gönderebilirsiniz…"
-                    placeholderTextColor="#64748b"
-                    value={chatInput}
-                    onChangeText={setChatInput}
-                    onSubmitEditing={sendChatMessage}
-                    returnKeyType="send"
+            <View style={[styles.controlsWrapper, isPresentingScreen && styles.presentationControls]}>
+                <CallControls
+                    isMuted={isMuted}
+                    toggleMute={toggleMute}
+                    isDeafened={isDeafened}
+                    toggleDeafen={toggleDeafen}
+                    isSharingScreen={isSharingScreen}
+                    toggleScreenShare={toggleScreenShare}
+                    handleDisconnect={onEndPress}
                 />
-                <TouchableOpacity style={styles.sendButton} onPress={sendChatMessage}>
-                    <Text style={styles.sendButtonText}>Gönder</Text>
-                </TouchableOpacity>
-            </KeyboardAvoidingView>
+            </View>
+
+            {!isPresentingScreen && (
+                <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : 'height'} style={styles.chatInputContainer}>
+                    <TextInput
+                        style={styles.chatInput}
+                        placeholder="Yazarak da mesaj gönderebilirsiniz…"
+                        placeholderTextColor="#64748b"
+                        value={chatInput}
+                        onChangeText={setChatInput}
+                        onSubmitEditing={sendChatMessage}
+                        returnKeyType="send"
+                    />
+                    <TouchableOpacity style={styles.sendButton} onPress={sendChatMessage}>
+                        <Text style={styles.sendButtonText}>Gönder</Text>
+                    </TouchableOpacity>
+                </KeyboardAvoidingView>
+            )}
         </View>
     );
 }
@@ -516,6 +514,10 @@ const styles = StyleSheet.create({
         justifyContent: 'space-between',
         paddingVertical: 40,
         paddingHorizontal: 24,
+    },
+    presentationContainer: {
+        paddingVertical: 0,
+        paddingHorizontal: 0,
     },
     centerContainer: {
         flex: 1,
@@ -583,6 +585,12 @@ const styles = StyleSheet.create({
         borderWidth: 1,
         borderColor: 'rgba(255, 255, 255, 0.05)',
     },
+    presentationTopBar: {
+        position: 'absolute',
+        top: Platform.OS === 'ios' ? 54 : 18,
+        zIndex: 3,
+        backgroundColor: 'rgba(11, 11, 18, 0.82)',
+    },
     statusDot: {
         width: 8,
         height: 8,
@@ -607,43 +615,20 @@ const styles = StyleSheet.create({
         overflow: 'hidden',
         borderRadius: 24,
     },
+    presentationVisualizer: {
+        ...StyleSheet.absoluteFillObject,
+        marginVertical: 0,
+        borderRadius: 0,
+        backgroundColor: '#050508',
+    },
     screenShareTrack: {
         width: '100%',
         height: '100%',
         backgroundColor: '#050508',
     },
-    previewVideoTrack: {
-        width: '100%',
-        height: '100%',
-        backgroundColor: '#050508',
-    },
-    agentCameraPreview: {
-        position: 'absolute',
-        top: 14,
-        right: 14,
-        width: 82,
-        height: 112,
-        overflow: 'hidden',
-        borderRadius: 14,
-        borderWidth: 1,
-        borderColor: 'rgba(255, 255, 255, 0.25)',
-        backgroundColor: '#050508',
-    },
-    localScreenPreview: {
-        position: 'absolute',
-        right: 14,
-        bottom: 14,
-        width: 128,
-        height: 78,
-        overflow: 'hidden',
-        borderRadius: 12,
-        borderWidth: 1,
-        borderColor: '#6d5efc',
-        backgroundColor: '#050508',
-    },
     remoteShareBadge: {
         position: 'absolute',
-        top: 14,
+        top: Platform.OS === 'ios' ? 106 : 68,
         left: 14,
         borderRadius: 16,
         backgroundColor: 'rgba(0, 0, 0, 0.72)',
@@ -653,7 +638,7 @@ const styles = StyleSheet.create({
     localShareBadge: {
         position: 'absolute',
         left: 14,
-        bottom: 14,
+        top: Platform.OS === 'ios' ? 106 : 68,
         borderRadius: 16,
         backgroundColor: 'rgba(109, 94, 252, 0.92)',
         paddingHorizontal: 12,
@@ -663,6 +648,23 @@ const styles = StyleSheet.create({
         color: '#ffffff',
         fontSize: 11,
         fontWeight: '700',
+    },
+    controlsWrapper: {
+        width: '100%',
+    },
+    presentationControls: {
+        position: 'absolute',
+        zIndex: 3,
+        left: 12,
+        right: 12,
+        bottom: Platform.OS === 'ios' ? 28 : 16,
+        width: 'auto',
+        borderRadius: 26,
+        paddingVertical: 8,
+        paddingHorizontal: 6,
+        backgroundColor: 'rgba(11, 11, 18, 0.84)',
+        borderWidth: 1,
+        borderColor: 'rgba(255, 255, 255, 0.08)',
     },
     chatInputContainer: {
         flexDirection: 'row',

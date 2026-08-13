@@ -66,6 +66,27 @@ export function buildTools({ productId, tour, screen, stopScreenShare, saveConta
             handler: async ({ selector }) => tour?.click?.(selector) ?? { ok: false }
         },
         {
+            name: 'scroll_page',
+            description:
+                'Scroll the shown dashboard to reveal content above or below the fold. Use this when the answer is further down the page, when the customer asks what else is there, or before reading the screen again. Returns whether the page is now at the top or the bottom.',
+            parameters: {
+                type: 'object',
+                properties: {
+                    direction: {
+                        type: 'string',
+                        enum: ['down', 'up', 'top', 'bottom'],
+                        description: "'down'/'up' move by screens; 'top'/'bottom' jump to either end."
+                    },
+                    amount: {
+                        type: 'number',
+                        description: "How many screens to move for 'down'/'up'. Defaults to 1."
+                    }
+                },
+                required: ['direction']
+            },
+            handler: async ({ direction, amount }) => tour?.scroll?.(direction, amount) ?? { ok: false }
+        },
+        {
             name: 'read_customer_screen',
             description: "Look at the customer's shared screen to guide their next action.",
             parameters: {

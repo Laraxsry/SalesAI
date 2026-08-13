@@ -11,6 +11,17 @@ describe('createSessionCostTracker', () => {
         expect(totalCostUsd).toBeCloseTo(realtimeCostUsd);
     });
 
+    it('accumulates chained-pipeline steps into the same conversation-cost bucket', () => {
+        const tracker = createSessionCostTracker({ alertThresholdUsd: 1000 });
+        tracker.addChainedStep({ type: 'llm_metrics', promptTokens: 1000, completionTokens: 200 });
+        tracker.addChainedStep({ type: 'tts_metrics', charactersCount: 400 });
+        tracker.addChainedStep({ type: 'stt_metrics', audioDurationMs: 5000 });
+        const { realtimeCostUsd, visionCostUsd, totalCostUsd } = tracker.snapshot();
+        expect(realtimeCostUsd).toBeGreaterThan(0);
+        expect(visionCostUsd).toBe(0);
+        expect(totalCostUsd).toBeCloseTo(realtimeCostUsd);
+    });
+
     it('accumulates vision frame cost and count independently of realtime cost', () => {
         const tracker = createSessionCostTracker({ alertThresholdUsd: 1000 });
         tracker.addVisionFrame();

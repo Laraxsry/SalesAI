@@ -29,9 +29,11 @@ describe('buildTools', () => {
             'navigate_to',
             'highlight',
             'click_element',
+            'scroll_page',
             'read_customer_screen',
             'stop_screen_share',
-            'read_tour_screen'
+            'read_tour_screen',
+            'save_contact_info'
         ]);
         for (const tool of tools) {
             expect(typeof tool.description).toBe('string');
@@ -74,6 +76,7 @@ describe('buildTools', () => {
             ['navigate_to', 'goto', { url: '/pricing' }, ['/pricing']],
             ['highlight', 'highlight', { selector: 'text=Ücretler' }, ['text=Ücretler']],
             ['click_element', 'click', { selector: 'text=Kaydet' }, ['text=Kaydet']],
+            ['scroll_page', 'scroll', { direction: 'down', amount: 2 }, ['down', 2]],
             ['read_tour_screen', 'readScreen', { question: 'what does the chart show?' }, ['what does the chart show?']]
         ];
 

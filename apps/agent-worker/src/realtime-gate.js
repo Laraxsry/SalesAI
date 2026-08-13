@@ -3,12 +3,13 @@ import { TrackKind } from '@livekit/rtc-node';
 /**
  * *** COST WARNING — read before touching this file ***
  *
- * `agent.js` calls `onStart` (via `createRealtimeGate`) to open the paid
- * OpenAI Realtime API connection (`openai.realtime.RealtimeModel`) — a
- * persistent websocket that starts accruing real audio-token cost the
- * moment it opens. This gate exists specifically so that opening it is tied
- * to a genuine "the visitor's microphone is actually live" signal, not to
- * "the agent joined the room" (free) or a time/log heuristic.
+ * `agent.js` calls `onStart` (via `createRealtimeGate`) to start the paid
+ * voice pipeline — a persistent OpenAI transcription websocket that starts
+ * accruing real per-minute cost the moment it opens, plus every LLM and TTS
+ * call the conversation then drives. This gate exists specifically so that
+ * opening it is tied to a genuine "the visitor's microphone is actually
+ * live" signal, not to "the agent joined the room" (free) or a time/log
+ * heuristic.
  *
  * Without this gate, a stale/ghost reconnect (e.g. a browser tab resuming
  * after sleep and silently rejoining an already-ended session — see
@@ -43,7 +44,7 @@ export function hasSubscribedAudioTrack(room) {
 }
 
 /**
- * Ensures `onStart` (the costly OpenAI Realtime connection) fires at most
+ * Ensures `onStart` (the costly OpenAI voice pipeline) fires at most
  * once, and only once real visitor audio exists to justify it. Pure
  * in-memory gating, no I/O — mirrors `session-cost-tracker.js`'s shape.
  *

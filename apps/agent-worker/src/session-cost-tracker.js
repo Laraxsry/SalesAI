@@ -1,4 +1,4 @@
-import { estimateRealtimeTurnCostUsd, estimateVisionCallCostUsd } from './cost.js';
+import { estimateChainedStepCostUsd, estimateRealtimeTurnCostUsd, estimateVisionCallCostUsd } from './cost.js';
 
 /**
  * Accumulates one session's estimated cost as it happens (Phase 7 — "alert
@@ -22,6 +22,19 @@ export function createSessionCostTracker({
 
     function addRealtimeTurn(metrics) {
         const cost = estimateRealtimeTurnCostUsd(metrics);
+        realtimeCostUsd += cost;
+        return cost;
+    }
+
+    /**
+     * One `stt_metrics` / `llm_metrics` / `tts_metrics` event from the chained
+     * (STT -> LLM -> TTS) pipeline. Accumulates into the same bucket as
+     * `addRealtimeTurn` — both are "what the conversation itself cost", which
+     * is what the `agent_voice_minutes` meter and the cost alert are about;
+     * only the pipeline producing it differs.
+     */
+    function addChainedStep(metrics) {
+        const cost = estimateChainedStepCostUsd(metrics);
         realtimeCostUsd += cost;
         return cost;
     }
@@ -50,5 +63,5 @@ export function createSessionCostTracker({
         };
     }
 
-    return { addRealtimeTurn, addVisionFrame, checkThreshold, snapshot };
+    return { addRealtimeTurn, addChainedStep, addVisionFrame, checkThreshold, snapshot };
 }

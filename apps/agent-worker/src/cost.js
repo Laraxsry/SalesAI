@@ -13,6 +13,19 @@ const DEFAULT_REALTIME_PRICING_USD_PER_1K = Object.freeze({
     outputAudio: Number(process.env.COST_REALTIME_OUTPUT_AUDIO_PER_1K ?? 0.08)
 });
 
+/**
+ * Same idea for the chained (STT -> LLM -> TTS) pipeline, whose per-turn cost
+ * the framework reports as three separate metric events with three different
+ * billing units: LLM text tokens, transcribed audio minutes, synthesized
+ * characters.
+ */
+const DEFAULT_CHAINED_PRICING_USD = Object.freeze({
+    llmInputPer1K: Number(process.env.COST_LLM_INPUT_TEXT_PER_1K ?? 0.00125),
+    llmOutputPer1K: Number(process.env.COST_LLM_OUTPUT_TEXT_PER_1K ?? 0.01),
+    sttPerMinute: Number(process.env.COST_STT_PER_MINUTE ?? 0.006),
+    ttsPer1KChars: Number(process.env.COST_TTS_PER_1K_CHARS ?? 0.015)
+});
+
 const DEFAULT_VISION_CALL_COST_USD = Number(process.env.COST_VISION_CALL_USD ?? 0.01);
 
 /**
@@ -40,6 +53,32 @@ export function estimateRealtimeTurnCostUsd(metrics, pricing = DEFAULT_REALTIME_
         (outputTextTokens / 1000) * pricing.outputText +
         (outputAudioTokens / 1000) * pricing.outputAudio
     );
+}
+
+/**
+ * Estimated USD cost of one chained-pipeline step, from whichever of the
+ * framework's `stt_metrics` / `llm_metrics` / `tts_metrics` events just fired.
+ * Unlike a realtime turn (one event covering the whole exchange), a chained
+ * turn bills as several partial events, so callers accumulate rather than
+ * treating any single return value as "the cost of this turn".
+ *
+ * @param {{type:string, promptTokens?:number, promptCachedTokens?:number, completionTokens?:number, audioDurationMs?:number, charactersCount?:number}} metrics
+ * @param {typeof DEFAULT_CHAINED_PRICING_USD} [pricing]
+ */
+export function estimateChainedStepCostUsd(metrics, pricing = DEFAULT_CHAINED_PRICING_USD) {
+    switch (metrics.type) {
+        case 'llm_metrics':
+            return (
+                ((metrics.promptTokens ?? 0) / 1000) * pricing.llmInputPer1K +
+                ((metrics.completionTokens ?? 0) / 1000) * pricing.llmOutputPer1K
+            );
+        case 'stt_metrics':
+            return ((metrics.audioDurationMs ?? 0) / 60_000) * pricing.sttPerMinute;
+        case 'tts_metrics':
+            return ((metrics.charactersCount ?? 0) / 1000) * pricing.ttsPer1KChars;
+        default:
+            return 0;
+    }
 }
 
 /** Estimated USD cost of one vision (screen-read) API call — a flat per-call rate, no token breakdown available. */

@@ -338,6 +338,77 @@ export class GuidedTour {
         await this.assertCurrentPageTrusted('click');
     }
 
+    /**
+     * Scroll the toured page so the agent can show what is below (or above)
+     * the fold. Wired to the `scroll_page` LLM tool.
+     *
+     * Scrolls the *scrolling container that actually owns the overflow*, not
+     * blindly `window`: product dashboards routinely put their content in an
+     * inner `overflow-y: auto` panel next to a fixed sidebar/header, and on
+     * those pages `window.scrollBy` moves nothing at all. The document is
+     * still preferred whenever it is itself scrollable, so ordinary pages
+     * behave the ordinary way.
+     *
+     * Scrolling cannot leave the page, so unlike goto()/click() there is no
+     * trust re-check to do here.
+     *
+     * @param {'down'|'up'|'top'|'bottom'} [direction]
+     * @param {number} [amount] screens to move, for 'down'/'up' only (default 1)
+     * @returns {Promise<{scrollTop:number, scrollHeight:number, atTop:boolean, atBottom:boolean}>}
+     *   where the page ended up, so the agent can tell whether more content
+     *   is left instead of scrolling into a dead end and narrating nothing.
+     */
+    async scroll(direction = 'down', amount = 1) {
+        if (!['down', 'up', 'top', 'bottom'].includes(direction)) {
+            throw new Error(`[GuidedTour] Unsupported scroll direction: ${direction}`);
+        }
+
+        await this.page.evaluate(
+            ({ direction: dir, amount: n }) => {
+                const doc = document.scrollingElement || document.documentElement;
+                const overflows = (el) => el.scrollHeight - el.clientHeight > 4;
+
+                let target = doc;
+                if (!overflows(doc)) {
+                    // Largest visible element that owns its own vertical overflow —
+                    // the main content panel, not a tiny scrollable dropdown.
+                    const panels = Array.from(document.querySelectorAll('div, main, section, article'))
+                        .filter((el) => overflows(el) && ['auto', 'scroll'].includes(getComputedStyle(el).overflowY))
+                        .sort((a, b) => b.clientHeight * b.clientWidth - a.clientHeight * a.clientWidth);
+                    if (panels.length > 0) target = panels[0];
+                }
+
+                // Less than a full screen per step, so the customer keeps a
+                // strip of the previous content as a visual anchor.
+                const step = target.clientHeight * 0.8 * (n > 0 ? n : 1);
+                if (dir === 'top') target.scrollTo({ top: 0, behavior: 'smooth' });
+                else if (dir === 'bottom') target.scrollTo({ top: target.scrollHeight, behavior: 'smooth' });
+                else target.scrollBy({ top: dir === 'up' ? -step : step, behavior: 'smooth' });
+
+                // Read back only after the animation has run — see below.
+                window.__tourScrollTarget = target;
+            },
+            { direction, amount }
+        );
+
+        // Smooth scrolling is animated and lazy-loaded rows render as they
+        // enter the viewport; without this the published video frame (and any
+        // read_tour_screen right after) would still show the pre-scroll page —
+        // and scrollTop would still read its pre-scroll value.
+        await this.page.waitForTimeout(1200);
+
+        const { scrollTop, scrollHeight, clientHeight } = await this.page.evaluate(() => {
+            const target = window.__tourScrollTarget || document.scrollingElement || document.documentElement;
+            return { scrollTop: target.scrollTop, scrollHeight: target.scrollHeight, clientHeight: target.clientHeight };
+        });
+        return {
+            scrollTop,
+            scrollHeight,
+            atTop: scrollTop <= 4,
+            atBottom: scrollTop + clientHeight >= scrollHeight - 4
+        };
+    }
+
     /** Returns a PNG screenshot buffer (the agent turns this into a frame). */
     async screenshot() {
         return this.page.screenshot({ type: 'png' });

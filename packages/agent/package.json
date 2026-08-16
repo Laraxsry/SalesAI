@@ -12,7 +12,8 @@
   },
   "dependencies": {
     "@repo/logger": "*",
-    "@repo/rag": "*"
+    "@repo/rag": "*",
+    "@repo/utils": "*"
   },
   "devDependencies": {
     "@repo/eslint-config": "*",

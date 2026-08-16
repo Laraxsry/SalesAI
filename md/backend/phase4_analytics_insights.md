@@ -125,7 +125,7 @@
 ## Test
 
 ```bash
-node backend_tests/phase4_analytics_insights.mjs
+node backend_tests/integration/phase4_analytics_insights.mjs
 ```
 
 26 test (6 kaynak kodu, 20 HTTP/DB):

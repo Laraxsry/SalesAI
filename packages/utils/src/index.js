@@ -62,6 +62,20 @@ export async function retry(fn, { attempts = 3, baseMs = 200 } = {}) {
     throw lastErr;
 }
 
+/**
+ * Agent/product docs store an ISO language code; prompts (persona system
+ * prompt, vision/caption prompts) read better — and steer the model more
+ * reliably — with the language spelled out. Single shared map so
+ * `packages/agent/src/persona.js` and vision-captioning prompts
+ * (`apps/worker-ingestion`) can't drift out of sync with each other.
+ */
+export const LANGUAGE_NAMES = { en: 'English', tr: 'Turkish', de: 'German', fr: 'French', es: 'Spanish' };
+
+/** Resolves an ISO language code to its spelled-out name; falls back to the code itself if unmapped. */
+export function languageName(code) {
+    return LANGUAGE_NAMES[code] || code;
+}
+
 // Phase 8: Security utilities
 export { redactPII, redactFields } from './pii-redactor.js';
 export { logAudit, extractRequestMeta, AUDIT_ACTIONS } from './audit.js';

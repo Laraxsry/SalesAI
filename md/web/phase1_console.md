@@ -42,6 +42,26 @@
     bir grup ("Zip · N dosya") olarak gösteriliyor (`SourceRow` bileşeni,
     `KnowledgeSource.parentSourceId`'ye göre gruplanıyor; bkz.
     `md/backend/phase1_rag_ingestion.md`).
+  - **Knowledge detay/düzenleme modalı** (`KnowledgeDetailModal`, `Knowledge.jsx`) — bir
+    satıra tıklayınca açılır. Tip + `fileKey`'e göre dallanıyor: `text` ve PDF-olmayan
+    `document` (docx/txt/md/json/xml) için çıkarılan metin (`meta.extractedText`)
+    düzenlenip kaydedilebiliyor (kaydedince sadece değişen chunk'lar senkron re-embed
+    edilir — `reingestSourceIncremental()`, bkz. `md/backend/phase1_rag_ingestion.md`);
+    PDF (`react-pdf`/`pdfjs-dist`,
+    sayfa gezinmeli gerçek render), image/video ise sadece görüntüleniyor (medya +
+    salt-okunur AI açıklaması/transkript). Zip çocuklarının `fileKey`'i olmadığından
+    (orijinal dosya hiç saklanmıyor) otomatik olarak düzenlenebilir-metin görünümüne
+    düşüyorlar. `fileKey`'i olan her kaynakta "Dosyayı değiştir" ile dosya değiştirilip
+    tüm ingestion pipeline'ı yeniden çalıştırılabiliyor. Başlık her tipte düzenlenebilir.
+    `url`/`api` tipinde artık tek blok crawl-metni yerine sayfa URL'si başlık + altında o
+    sayfanın chunk'ları (genel/teknik etiketiyle, `GET /knowledge/:id/chunks`) şeklinde gruplu
+    gösteriliyor.
+    Backend: `GET /knowledge/:id/download-url`, `PATCH /knowledge/:id` (bkz.
+    `md/backend/phase1_rag_ingestion.md`). Zip **parent** satırına (container,
+    `meta.zipSummary` set) tıklanınca içerik/medya/düzenleme bölümleri hiç
+    gösterilmiyor — o satırın kendi içeriği yok, her dosyası ayrı bir çocuk
+    kaynak — sadece metadata paneli (+ zip özeti: toplam/işlenen/başarısız/
+    atlanan) gösteriliyor.
 
 - **Agent builder**
   - Persona form (tone, language, goals, guardrails).

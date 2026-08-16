@@ -1,13 +1,30 @@
 import { Router } from 'express';
 import { validate } from '@repo/validation';
-import { KnowledgeSourceInput } from '@repo/contracts';
-import { KnowledgeSource } from '@repo/database';
+import { KnowledgeSourceInput, KnowledgeSourceUpdateInput } from '@repo/contracts';
+import { KnowledgeSource, KnowledgeChunk, Product, Membership } from '@repo/database';
 import { enqueue, QUEUES } from '@repo/queue';
 import { requireAuth } from '@repo/auth';
-import { presignUpload } from '@repo/storage';
+import { presignUpload, presignDownload } from '@repo/storage';
 import { shortId } from '@repo/utils';
 
 export const knowledgeRouter = Router();
+
+/**
+ * Resolves a KnowledgeSource and checks the caller is a member of the
+ * workspace that owns it (same check as `GET /products/:id`) — unlike the
+ * existing list/delete routes below, this file now also exposes a raw file
+ * download URL and lets a workspace member overwrite a source's content, so
+ * new endpoints get the membership check the older ones were missing.
+ */
+async function loadOwnedSource(id, userId) {
+    const source = await KnowledgeSource.findById(id);
+    if (!source) return { source: null, membership: null };
+    const product = await Product.findById(source.productId).select('workspaceId');
+    const membership = product
+        ? await Membership.findOne({ workspaceId: product.workspaceId, userId })
+        : null;
+    return { source, membership };
+}
 
 /**
  * POST /knowledge/upload-url
@@ -76,8 +93,242 @@ knowledgeRouter.get('/:productId', requireAuth, async (req, res, next) => {
 });
 
 /**
+ * GET /knowledge/:id/download-url
+ *
+ * Short-lived presigned GET for the source's underlying file (document/image/
+ * video), used by the Console detail modal to render/preview it. Zip-child
+ * sources have no fileKey (see ingestZipEntries) — 404s.
+ */
+knowledgeRouter.get('/:id/download-url', requireAuth, async (req, res, next) => {
+    try {
+        const { source, membership } = await loadOwnedSource(req.params.id, req.user.sub);
+        if (!source) return res.status(404).json({ error: 'Knowledge source not found' });
+        if (!membership) return res.status(403).json({ error: 'Not a member of this workspace' });
+        if (!source.fileKey) return res.status(404).json({ error: 'This source has no file' });
+
+        const url = await presignDownload(source.fileKey);
+        res.json({ url });
+    } catch (err) {
+        next(err);
+    }
+});
+
+/**
+ * Re-downloads and re-extracts the original file (`@repo/rag`'s
+ * `extractDocumentText()`, the same paragraph-preserving function ingestion
+ * itself uses) for `document` sources that still have their file — including
+ * zip children, whose own file lives inside their *parent's* fileKey
+ * (`extractZipMemberText()` re-opens the archive and pulls just that
+ * member). Returns `null` when that isn't possible/fails so the caller can
+ * fall back.
+ */
+async function reExtractDocumentText(source) {
+    if (source.type !== 'document') return null;
+
+    if (source.parentSourceId && source.meta?.zipEntry) {
+        try {
+            const parent = await KnowledgeSource.findById(source.parentSourceId).select('fileKey');
+            if (!parent?.fileKey) return null;
+            const { extractZipMemberText } = await import('@repo/rag');
+            const url = await presignDownload(parent.fileKey);
+            const response = await fetch(url);
+            if (!response.ok) return null;
+            const zipBuffer = Buffer.from(await response.arrayBuffer());
+            return await extractZipMemberText(zipBuffer, source.meta.zipEntry);
+        } catch (err) {
+            console.warn('[knowledge] zip member re-extraction failed, falling back:', err.message);
+            return null;
+        }
+    }
+
+    if (!source.fileKey) return null;
+    const ext = (source.fileKey || '').split('.').pop()?.toLowerCase();
+    const isZip = ext === 'zip' || (source.mimeType || '').includes('zip');
+    if (isZip) return null;
+
+    try {
+        const { extractDocumentText } = await import('@repo/rag');
+        const url = await presignDownload(source.fileKey);
+        const response = await fetch(url);
+        if (!response.ok) return null;
+        const buffer = Buffer.from(await response.arrayBuffer());
+        return await extractDocumentText(buffer, { mime: source.mimeType || '', ext });
+    } catch (err) {
+        console.warn('[knowledge] content re-extraction failed, falling back:', err.message);
+        return null;
+    }
+}
+
+/**
+ * Joins the source's already-embedded chunks — lossy (`chunkText()`
+ * collapses all whitespace, including paragraph breaks, before embedding —
+ * see `packages/rag/src/chunk.js`) but the last-resort fallback when
+ * re-extraction isn't possible (non-document types: image/video/url/api) or
+ * fails.
+ */
+async function joinChunkText(source) {
+    const chunks = await KnowledgeChunk.find({ sourceId: source._id }).sort({ _id: 1 }).select('text');
+    return chunks.map((c) => c.text).join('\n\n');
+}
+
+/**
+ * GET /knowledge/:id/content
+ *
+ * Returns the text the AI actually knows for this source. Trusts
+ * `meta.extractedText` whenever it's already set — that's the ONLY place a
+ * hand edit from `PATCH /:id` is stored (the underlying file is never
+ * touched by an edit), so unconditionally re-deriving from the file here
+ * would silently discard every edit the next time this endpoint is called,
+ * which is exactly what re-deriving unconditionally used to do. Only
+ * missing `meta.extractedText` (a source that predates this field, or one
+ * whose file was just replaced — `PATCH /:id`'s fileKey branch explicitly
+ * `$unset`s it) triggers re-derivation: prefer re-extracting fresh from the
+ * file (`reExtractDocumentText()` — paragraph-preserving, same as
+ * ingestion) over the lossy chunk-join fallback.
+ */
+knowledgeRouter.get('/:id/content', requireAuth, async (req, res, next) => {
+    try {
+        const { source, membership } = await loadOwnedSource(req.params.id, req.user.sub);
+        if (!source) return res.status(404).json({ error: 'Knowledge source not found' });
+        if (!membership) return res.status(403).json({ error: 'Not a member of this workspace' });
+
+        let extractedText = source.meta?.extractedText;
+        if (!extractedText) extractedText = await reExtractDocumentText(source);
+        if (!extractedText) extractedText = await joinChunkText(source);
+
+        if (extractedText && extractedText !== source.meta?.extractedText) {
+            await KnowledgeSource.findByIdAndUpdate(source._id, { 'meta.extractedText': extractedText }).catch(() => {});
+        }
+        res.json({ extractedText: extractedText || '' });
+    } catch (err) {
+        next(err);
+    }
+});
+
+/**
+ * GET /knowledge/:id/chunks
+ *
+ * Lists the source's already-embedded chunks (id, text, audience,
+ * metadata) — used by the Console detail modal for url/api sources to group
+ * retrieved chunks under the crawled page they came from
+ * (`metadata.pageUrl`, set per-segment by `handleIngestSource()`/
+ * `extractFromUrl()`) instead of showing one undifferentiated crawl blob,
+ * and to let a seller see exactly what the agent will retrieve (and how
+ * it was classified: general vs. technical).
+ */
+knowledgeRouter.get('/:id/chunks', requireAuth, async (req, res, next) => {
+    try {
+        const { source, membership } = await loadOwnedSource(req.params.id, req.user.sub);
+        if (!source) return res.status(404).json({ error: 'Knowledge source not found' });
+        if (!membership) return res.status(403).json({ error: 'Not a member of this workspace' });
+
+        const chunks = await KnowledgeChunk.find({ sourceId: source._id })
+            .sort({ _id: 1 })
+            .select('text audience metadata');
+        res.json(
+            chunks.map((c) => ({
+                id: String(c._id),
+                text: c.text,
+                audience: c.audience,
+                pageUrl: c.metadata?.pageUrl
+            }))
+        );
+    } catch (err) {
+        next(err);
+    }
+});
+
+/**
+ * PATCH /knowledge/:id
+ *
+ * Three mutually exclusive shapes, resolved in this order:
+ *  - `fileKey` present  -> replace the underlying file, re-run the full
+ *    ingest pipeline (OCR/Whisper/Vision) from scratch, same as creation.
+ *  - `content`/`extractedText` present -> save the already-extracted text
+ *    directly (no re-download/re-extraction) and re-chunk+embed only the
+ *    chunks that actually changed vs. the previous text
+ *    (`reingestSourceIncremental()`, `packages/rag/src/ingest.js`).
+ *  - otherwise -> title-only rename, no re-ingestion.
+ */
+knowledgeRouter.patch(
+    '/:id',
+    requireAuth,
+    validate({ body: KnowledgeSourceUpdateInput }),
+    async (req, res, next) => {
+        try {
+            const { source, membership } = await loadOwnedSource(req.params.id, req.user.sub);
+            if (!source) return res.status(404).json({ error: 'Knowledge source not found' });
+            if (!membership) return res.status(403).json({ error: 'Not a member of this workspace' });
+
+            const { title, content, extractedText, fileKey, mimeType } = req.body;
+
+            if (fileKey) {
+                await KnowledgeSource.findByIdAndUpdate(source._id, {
+                    fileKey,
+                    mimeType,
+                    status: 'pending',
+                    ...(title !== undefined && { title }),
+                    $unset: {
+                        error: '',
+                        'meta.extractedText': '',
+                        'meta.transcript': '',
+                        'meta.frameCount': '',
+                        'meta.frameCaptionCount': ''
+                    }
+                });
+                await enqueue(QUEUES.INGESTION, 'ingest-source', {
+                    sourceId: String(source._id),
+                    productId: String(source.productId),
+                    type: source.type
+                });
+                return res.json({ ok: true, status: 'pending' });
+            }
+
+            const editedText = content ?? extractedText;
+            if (editedText !== undefined) {
+                // Captured before overwriting — reingestSourceIncremental() needs the
+                // pre-edit text to diff against so it only re-embeds what changed.
+                const oldText = content !== undefined ? source.content || '' : source.meta?.extractedText || '';
+
+                if (title !== undefined) source.title = title;
+                if (content !== undefined) source.content = content;
+                if (extractedText !== undefined) {
+                    source.meta = { ...(source.meta || {}), extractedText };
+                    source.markModified('meta');
+                }
+                await source.save();
+
+                const modality = { image: 'image', video: 'video', url: 'web', api: 'web' }[source.type] || 'text';
+                const { reingestSourceIncremental } = await import('@repo/rag');
+                try {
+                    await reingestSourceIncremental({
+                        sourceId: String(source._id),
+                        productId: String(source.productId),
+                        oldText,
+                        newText: editedText,
+                        modality
+                    });
+                } catch (embedErr) {
+                    await KnowledgeSource.findByIdAndUpdate(source._id, { status: 'failed', error: embedErr.message }).catch(() => {});
+                    throw embedErr;
+                }
+                return res.json({ ok: true, status: 'ready' });
+            }
+
+            if (title !== undefined) {
+                source.title = title;
+                await source.save();
+            }
+            res.json({ ok: true });
+        } catch (err) {
+            next(err);
+        }
+    }
+);
+
+/**
  * DELETE /api/v1/knowledge/:id
- * 
+ *
  * Deletes a knowledge source and its associated chunks from the vector store.
  */
 knowledgeRouter.delete('/:id', requireAuth, async (req, res, next) => {

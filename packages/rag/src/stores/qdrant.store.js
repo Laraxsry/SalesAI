@@ -68,4 +68,30 @@ export class QdrantVectorStore {
             filter: { must: [{ key: 'sourceId', match: { value: sourceId } }] }
         });
     }
+
+    /** @param {string} sourceId @returns {Promise<{id:string, text:string}[]>} */
+    async listBySource(sourceId) {
+        const out = [];
+        let offset;
+        // Qdrant scroll() paginates — loop until it stops returning a next_page_offset.
+        for (;;) {
+            const res = await this.client.scroll(COLLECTION, {
+                filter: { must: [{ key: 'sourceId', match: { value: sourceId } }] },
+                with_payload: ['text'],
+                with_vector: false,
+                limit: 256,
+                offset
+            });
+            for (const point of res.points) out.push({ id: String(point.id), text: point.payload?.text });
+            offset = res.next_page_offset;
+            if (!offset) break;
+        }
+        return out;
+    }
+
+    /** @param {string[]} ids */
+    async deleteByIds(ids) {
+        if (!ids.length) return;
+        await this.client.delete(COLLECTION, { points: ids });
+    }
 }

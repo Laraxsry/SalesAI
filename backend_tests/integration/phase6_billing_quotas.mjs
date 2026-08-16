@@ -1,7 +1,7 @@
 import '@repo/config-env/load';
 import assert from 'node:assert/strict';
 import { connectDB, disconnectDB, User, Workspace, Membership, Plan, Subscription, Invitation, UsageRecord } from '@repo/database';
-import { recordUsage, getWorkspaceUsageAndQuotas } from '../apps/api/src/services/billing-service.js';
+import { recordUsage, getWorkspaceUsageAndQuotas } from '../../apps/api/src/services/billing-service.js';
 
 async function runTests() {
     console.log('--- Starting Phase 6: Team, Billing & Quotas Tests ---');

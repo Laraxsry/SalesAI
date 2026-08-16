@@ -40,7 +40,14 @@ vi.mock('@repo/database', () => ({
     KnowledgeSource: { create: vi.fn(), findById: vi.fn(), findByIdAndUpdate: vi.fn() },
     Product: { findById: vi.fn() }
 }));
-vi.mock('@repo/rag', () => ({ ingestSource: vi.fn() }));
+// extractDocumentText lives in @repo/rag too (packages/rag/src/document-text.js)
+// — only ingestSource is mocked here, extractDocumentText (and its real
+// pdf-parse/mammoth stack, see the comment on buildMinimalPdfBuffer above)
+// stays the genuine implementation.
+vi.mock('@repo/rag', async (importOriginal) => {
+    const actual = await importOriginal();
+    return { ...actual, ingestSource: vi.fn() };
+});
 vi.mock('@repo/ai', () => ({ describeImage: vi.fn(), transcribeAudio: vi.fn() }));
 vi.mock('@repo/storage', () => ({ presignDownload: vi.fn() }));
 vi.mock('@repo/realtime', () => ({
@@ -61,6 +68,11 @@ beforeEach(() => {
     vi.clearAllMocks();
     let counter = 0;
     KnowledgeSource.create.mockImplementation(async (doc) => ({ _id: `child-${++counter}`, ...doc }));
+    // Real Mongoose findByIdAndUpdate() always returns a thenable Query;
+    // ingestZipEntries() now `.catch()`es it directly (to persist
+    // meta.extractedText before embedding), so the mock needs to resolve
+    // too, or that chain throws synchronously on the plain vi.fn() default.
+    KnowledgeSource.findByIdAndUpdate.mockResolvedValue({});
     ingestSource.mockResolvedValue({ chunks: 1 });
 });
 

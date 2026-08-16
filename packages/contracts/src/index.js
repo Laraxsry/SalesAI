@@ -143,6 +143,19 @@ export const KnowledgeSourceInput = z.object({
     url: z.string().url().optional()
 });
 
+// PATCH /knowledge/:id — title-only rename, editable-text save (content for
+// type=text, extractedText for editable document/zip-child sources), or a
+// file replacement (fileKey/mimeType, which re-runs the whole ingest pipeline).
+export const KnowledgeSourceUpdateInput = z
+    .object({
+        title: z.string().optional(),
+        content: z.string().optional(),
+        extractedText: z.string().optional(),
+        fileKey: z.string().optional(),
+        mimeType: z.string().optional()
+    })
+    .refine((val) => Object.keys(val).length > 0, { message: 'En az bir alan gerekli' });
+
 // ─── Agent persona / configuration ────────────────────────────
 export const AgentConfigInput = z.object({
     productId: z.string(),

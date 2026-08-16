@@ -1,4 +1,6 @@
-import { S3Client, PutObjectCommand, GetObjectCommand, CreateBucketCommand, HeadBucketCommand } from '@aws-sdk/client-s3';
+import {
+    S3Client, PutObjectCommand, GetObjectCommand, CreateBucketCommand, HeadBucketCommand, PutBucketCorsCommand
+} from '@aws-sdk/client-s3';
 import { getSignedUrl } from '@aws-sdk/s3-request-presigner';
 
 const client = new S3Client({
@@ -47,5 +49,47 @@ export async function ensureBucket() {
         } else {
             throw err;
         }
+    }
+    await ensureBucketCors();
+}
+
+/**
+ * Presigned GET/PUT URLs are handed straight to the browser (Console file
+ * upload, and the Knowledge detail modal's PDF/image/video preview) — without
+ * a CORS policy on the bucket itself the browser blocks the cross-origin
+ * fetch before the presigned signature is ever checked ("No
+ * 'Access-Control-Allow-Origin' header is present"). This is a property of
+ * the S3/MinIO bucket, entirely separate from the Express app's own `cors()`
+ * middleware in apps/api/src/main.js — configuring one does nothing for the
+ * other. Reuses the same `CORS_ORIGIN` allowlist as that middleware so the
+ * two stay in sync; idempotent, safe to re-apply on every boot.
+ */
+async function ensureBucketCors() {
+    const allowedOrigins = (process.env.CORS_ORIGIN || '').split(',').filter(Boolean);
+    const origins = allowedOrigins.length > 0 ? allowedOrigins : process.env.NODE_ENV === 'production' ? [] : ['*'];
+    if (origins.length === 0) return; // prod'da CORS_ORIGIN set edilmemişse hiçbir origin'e izin verme
+
+    try {
+        await client.send(
+            new PutBucketCorsCommand({
+                Bucket: BUCKET,
+                CORSConfiguration: {
+                    CORSRules: [
+                        {
+                            AllowedMethods: ['GET', 'PUT', 'HEAD'],
+                            AllowedOrigins: origins,
+                            AllowedHeaders: ['*'],
+                            ExposeHeaders: ['ETag'],
+                            MaxAgeSeconds: 3600
+                        }
+                    ]
+                }
+            })
+        );
+    } catch (err) {
+        console.warn(
+            "[storage] bucket CORS ayarlanamadı (presigned URL'ler tarayıcıdan çalışmayabilir):",
+            err.message
+        );
     }
 }

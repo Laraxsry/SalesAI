@@ -60,6 +60,18 @@ export class MongoVectorStore {
         await KnowledgeChunk.deleteMany({ sourceId });
     }
 
+    /** @param {string} sourceId @returns {Promise<{id:string, text:string}[]>} */
+    async listBySource(sourceId) {
+        const chunks = await KnowledgeChunk.find({ sourceId }).select('text');
+        return chunks.map((c) => ({ id: String(c._id), text: c.text }));
+    }
+
+    /** @param {string[]} ids */
+    async deleteByIds(ids) {
+        if (!ids.length) return;
+        await KnowledgeChunk.deleteMany({ _id: { $in: ids.map((id) => new Types.ObjectId(id)) } });
+    }
+
     /**
      * @param {{ productId:string, query:string, topK?:number, modality?:string }} q
      * @returns {Promise<Array<{id:string, sourceId:string, text:string, score:number, metadata?:object}>>}

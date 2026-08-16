@@ -44,14 +44,18 @@ erDiagram
 `fileKey` (S3), `url`, `status` ∈ `pending|processing|ready|failed`, `error`,
 `parentSourceId` (self-ref, set on zip-archive children — the parent zip
 KnowledgeSource is a container row with no chunks of its own), `meta`
-(transcript/OCR/crawl artifacts, `zipEntry`/`zipSummary`).
+(transcript/OCR/crawl artifacts, `zipEntry`/`zipSummary`, and
+`extractedText` — the exact text handed to `ingestSource()`, persisted for
+every type so the Console detail modal can show/edit "what the AI actually
+knows" without re-downloading/re-extracting the file).
 
 ### KnowledgeChunk
 `productId`, `sourceId`, `text`, `embedding` (`[Number]`, 3072-dim),
 `modality` ∈ `text|image|video|web`, `audience` ∈ `general|technical` (auto-
 classified during ingestion, one cheap LLM call per source — see Phase 1;
 used to bias retrieval toward the visitor's depth preference, not to filter),
-`metadata`.
+`metadata` (e.g. `pageUrl` for `url`/`api` sources — which crawled page a
+chunk came from, set per-segment; see Phase 1's page-grouped chunk view).
 Atlas index **`vector_index`** on `embedding` (cosine) with `productId` +
 `modality` filters.
 
@@ -131,6 +135,10 @@ GET    /api/v1/products/:id
 POST   /api/v1/knowledge                 # add a source -> enqueues ingestion
 GET    /api/v1/knowledge/:productId      # list sources + status
 POST   /api/v1/knowledge/upload-url      # presigned S3 upload (image/video/doc)
+GET    /api/v1/knowledge/:id/download-url # presigned GET for the source's file (Console preview)
+GET    /api/v1/knowledge/:id/content     # meta.extractedText (backfills it if missing)
+GET    /api/v1/knowledge/:id/chunks      # this source's chunks (id, text, audience, metadata.pageUrl)
+PATCH  /api/v1/knowledge/:id             # rename / edit extracted text (incremental re-chunk) / replace file (re-ingests)
 DELETE /api/v1/knowledge/:id
 
 # Agents

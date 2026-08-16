@@ -1,5 +1,6 @@
 export { chunkText } from './chunk.js';
-export { ingestSource } from './ingest.js';
+export { ingestSource, reingestSourceIncremental } from './ingest.js';
+export { extractDocumentText, extractZipMemberText } from './document-text.js';
 export { retrieve } from './retrieve.js';
 export { getVectorStore } from './stores/index.js';
 // Phase 7 — chaos testing (scripts/chaos-test.js) needs to seed/clean up a

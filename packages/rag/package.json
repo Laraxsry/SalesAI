@@ -8,7 +8,8 @@
   },
   "scripts": {
     "lint": "eslint .",
-    "eval": "node scripts/eval.js"
+    "eval": "node scripts/eval.js",
+    "test": "vitest run"
   },
   "dependencies": {
     "@qdrant/js-client-rest": "^1.18.0",
@@ -16,11 +17,17 @@
     "@repo/database": "*",
     "@repo/logger": "*",
     "@repo/resilience": "*",
+    "adm-zip": "^0.6.0",
+    "diff": "^7.0.0",
     "ioredis": "^5.11.1",
+    "mammoth": "^1.12.0",
+    "pdf-parse": "^2.4.5",
     "ssrf-req-filter": "^1.1.1"
   },
   "devDependencies": {
     "@repo/eslint-config": "*",
-    "eslint": "^9.17.0"
+    "@repo/testing": "*",
+    "eslint": "^9.17.0",
+    "vitest": "^4.1.10"
   }
 }

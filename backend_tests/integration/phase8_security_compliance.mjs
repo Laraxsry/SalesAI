@@ -340,14 +340,14 @@ await test('/sessions endpoint — 20 istek/dk limitinden sonra 429 döner', asy
 console.log('\n── 11. Envelope Encryption Utility ──');
 
 await test('encryptField — boş/null değeri olduğu gibi döner', async () => {
-    const { encryptField, decryptField } = await import('../packages/utils/src/crypto.js');
+    const { encryptField, decryptField } = await import('../../packages/utils/src/crypto.js');
     assert.equal(encryptField(''), '', 'Empty string should pass through');
     assert.equal(encryptField(null), null, 'Null should pass through');
     assert.equal(encryptField(undefined), undefined, 'Undefined should pass through');
 });
 
 await test('encryptField/decryptField — FIELD_ENCRYPTION_KEY yoksa dev modunda çalışır', async () => {
-    const { encryptField, decryptField } = await import('../packages/utils/src/crypto.js');
+    const { encryptField, decryptField } = await import('../../packages/utils/src/crypto.js');
     const original = 'https://api.example.com/v1';
     // Key yoksa plaintext döner
     const result = encryptField(original);
@@ -366,7 +366,7 @@ await test('encryptField/decryptField — FIELD_ENCRYPTION_KEY ile round-trip do
 
     try {
         // Modül cache'i temizle (fresh import için)
-        const cryptoModule = await import('../packages/utils/src/crypto.js?' + Date.now());
+        const cryptoModule = await import('../../packages/utils/src/crypto.js?' + Date.now());
         const { encryptField, decryptField } = cryptoModule;
 
         const plaintext = 'https://secret-api.example.com/endpoint';
@@ -401,7 +401,7 @@ await test('encryptField/decryptField — FIELD_ENCRYPTION_KEY ile round-trip do
 });
 
 await test('validateEncryptionKey — geçersiz key tespiti', async () => {
-    const { validateEncryptionKey } = await import('../packages/utils/src/crypto.js');
+    const { validateEncryptionKey } = await import('../../packages/utils/src/crypto.js');
     const original = process.env.FIELD_ENCRYPTION_KEY;
 
     // Geçersiz key: çok kısa
@@ -427,7 +427,7 @@ await test('Agent kaynak kodu — encryptField/decryptField setter/getter var', 
     const { join, dirname } = await import('node:path');
     const { fileURLToPath } = await import('node:url');
     const __dirname = dirname(fileURLToPath(import.meta.url));
-    const src = readFileSync(join(__dirname, '../packages/database/src/models/Agent.js'), 'utf-8');
+    const src = readFileSync(join(__dirname, '../../packages/database/src/models/Agent.js'), 'utf-8');
 
     assert.ok(src.includes('encryptSetter'), 'encryptSetter should be defined');
     assert.ok(src.includes('decryptGetter'), 'decryptGetter should be defined');
@@ -444,7 +444,7 @@ await test('config-env/load.js — SECRETS_BACKEND desteği var', async () => {
     const { join, dirname } = await import('node:path');
     const { fileURLToPath } = await import('node:url');
     const __dirname = dirname(fileURLToPath(import.meta.url));
-    const src = readFileSync(join(__dirname, '../packages/config-env/src/load.js'), 'utf-8');
+    const src = readFileSync(join(__dirname, '../../packages/config-env/src/load.js'), 'utf-8');
 
     assert.ok(src.includes('SECRETS_BACKEND'), 'SECRETS_BACKEND env var referenced');
     assert.ok(src.includes('loadFromAws'), 'AWS Secrets Manager function exists');
@@ -457,7 +457,7 @@ await test('config-env/load.js — SIGHUP hot-reload desteği var', async () => 
     const { join, dirname } = await import('node:path');
     const { fileURLToPath } = await import('node:url');
     const __dirname = dirname(fileURLToPath(import.meta.url));
-    const src = readFileSync(join(__dirname, '../packages/config-env/src/load.js'), 'utf-8');
+    const src = readFileSync(join(__dirname, '../../packages/config-env/src/load.js'), 'utf-8');
 
     assert.ok(src.includes('SIGHUP'), 'SIGHUP handler exists');
     assert.ok(src.includes('process.on'), 'process.on signal handler registered');
@@ -472,7 +472,7 @@ await test('@repo/realtime — createAdapter import edilmiş', async () => {
     const { join, dirname } = await import('node:path');
     const { fileURLToPath } = await import('node:url');
     const __dirname = dirname(fileURLToPath(import.meta.url));
-    const src = readFileSync(join(__dirname, '../packages/realtime/src/index.js'), 'utf-8');
+    const src = readFileSync(join(__dirname, '../../packages/realtime/src/index.js'), 'utf-8');
 
     assert.ok(src.includes("from '@socket.io/redis-adapter'"), 'Redis adapter imported');
     assert.ok(src.includes('createAdapter'), 'createAdapter function used');
@@ -487,7 +487,7 @@ await test('infra/DR_PLAYBOOK.md — dosya mevcut ve içerik dolu', async () => 
     const { join, dirname } = await import('node:path');
     const { fileURLToPath } = await import('node:url');
     const __dirname = dirname(fileURLToPath(import.meta.url));
-    const filePath = join(__dirname, '../infra/DR_PLAYBOOK.md');
+    const filePath = join(__dirname, '../../infra/DR_PLAYBOOK.md');
 
     assert.ok(existsSync(filePath), 'DR_PLAYBOOK.md should exist');
     const content = readFileSync(filePath, 'utf-8');
@@ -501,7 +501,7 @@ await test('infra/PENTEST_CHECKLIST.md — dosya mevcut ve OWASP içeriyor', asy
     const { join, dirname } = await import('node:path');
     const { fileURLToPath } = await import('node:url');
     const __dirname = dirname(fileURLToPath(import.meta.url));
-    const filePath = join(__dirname, '../infra/PENTEST_CHECKLIST.md');
+    const filePath = join(__dirname, '../../infra/PENTEST_CHECKLIST.md');
 
     assert.ok(existsSync(filePath), 'PENTEST_CHECKLIST.md should exist');
     const content = readFileSync(filePath, 'utf-8');

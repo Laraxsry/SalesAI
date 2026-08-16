@@ -109,7 +109,11 @@ export const productsApi = {
 export const knowledgeApi = {
     list: (productId) => apiFetch(`/knowledge/${productId}`),
     create: (payload) => apiFetch('/knowledge', { method: 'POST', body: payload }),
+    update: (id, payload) => apiFetch(`/knowledge/${id}`, { method: 'PATCH', body: payload }),
     remove: (id) => apiFetch(`/knowledge/${id}`, { method: 'DELETE' }),
+    downloadUrl: (id) => apiFetch(`/knowledge/${id}/download-url`),
+    content: (id) => apiFetch(`/knowledge/${id}/content`),
+    chunks: (id) => apiFetch(`/knowledge/${id}/chunks`),
     uploadUrl: (filename, contentType) =>
         apiFetch('/knowledge/upload-url', { method: 'POST', body: { filename, contentType } }),
     /** Uploads a file straight to storage via a presigned URL (bypasses our API/JSON pipeline). */

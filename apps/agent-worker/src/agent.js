@@ -4,7 +4,6 @@ import { fileURLToPath } from 'node:url';
 import { context as otelContext, trace } from '@opentelemetry/api';
 import { WorkerOptions, cli, defineAgent, voice } from '@livekit/agents';
 import * as openai from '@livekit/agents-plugin-openai';
-import * as silero from '@livekit/agents-plugin-silero';
 import {
     VideoSource, LocalVideoTrack, VideoBufferType, VideoStream, TrackKind, TrackSource, VideoFrame, RoomEvent
 } from '@livekit/rtc-node';
@@ -21,27 +20,6 @@ import { extractParentContext } from './trace-context.js';
 import { withToolCallMetrics } from './tool-metrics.js';
 import { createSessionCostTracker } from './session-cost-tracker.js';
 import { createRealtimeGate } from './realtime-gate.js';
-
-/**
- * Chat-completions options for the conversational LLM.
- *
- * `reasoning_effort` needs a per-model decision, and getting it wrong breaks
- * every single turn (the request 400s, the framework retries four times and
- * gives up, and the visitor just never hears an answer):
- *   - gpt-5* models reject function tools on /v1/chat/completions unless the
- *     effort is exactly 'none' — "Function tools with reasoning_effort are not
- *     supported for <model> in /v1/chat/completions. To use function tools,
- *     use /v1/responses or set reasoning_effort to 'none'." This agent always
- *     has tools attached, so 'none' is the only workable value (and the right
- *     one anyway: a voice turn can't wait on a reasoning pass).
- *   - non-reasoning models (gpt-4o*, …) reject the parameter outright, so it
- *     must be omitted rather than set to 'none'.
- *
- * @param {string} model
- */
-function buildLLMOptions(model) {
-    return /^gpt-5/.test(model) ? { model, reasoningEffort: 'none' } : { model };
-}
 
 /**
  * Runs the session with the trace context extracted from the LiveKit dispatch
@@ -553,33 +531,25 @@ async function runSession(ctx) {
         execute: t.handler
     }));
 
-    // ── Voice pipeline (chained STT -> LLM -> TTS) ──────────────────────────
-    // The speech language is the agent's own configured persona language, not
-    // a per-provider default: OpenAI's transcription models default to
-    // `language: 'en'`, and an English-pinned transcription of Turkish speech
-    // comes back *translated into English* ("Konuşabilir misin?" ->
-    // "Can we talk?") rather than mis-transcribed, which silently destroys
-    // both the transcript and everything the LLM reasons over.
-    const speechLanguage = agentDoc.persona?.language || 'en';
-
-    const vad = await silero.VAD.load();
-    const stt = new openai.STT({
-        model: process.env.OPENAI_STT_MODEL || 'gpt-4o-transcribe',
-        language: speechLanguage
+    // Speech-to-speech via the OpenAI Realtime API — one round trip per turn
+    // instead of a chained STT -> LLM -> TTS pipeline, which is what keeps
+    // turn-taking latency low. `gpt-realtime-2` is not a `gpt-5*` reasoning
+    // model, so it isn't subject to the /v1/chat/completions
+    // reasoning_effort/function-tools restriction that a chained
+    // chat-completions LLM call would hit.
+    const agentSession = new voice.AgentSession({
+        llm: new openai.realtime.RealtimeModel({
+            model: process.env.OPENAI_REALTIME_MODEL || 'gpt-realtime-2',
+            voice: 'cedar'
+        })
     });
-    const llmClient = new openai.LLM(buildLLMOptions(process.env.OPENAI_LLM_MODEL || 'gpt-5.1'));
-    const tts = new openai.TTS({
-        model: process.env.OPENAI_TTS_MODEL || 'gpt-4o-mini-tts',
-        voice: process.env.OPENAI_TTS_VOICE || 'alloy'
-    });
-    const agentSession = new voice.AgentSession({ vad, stt, llm: llmClient, tts });
 
-    // A provider error in any pipeline stage is emitted as an event, not
-    // thrown: a `recoverable` one (e.g. the LLM rejecting every request) then
-    // leaves the session running and listening forever while never producing
-    // a single reply. Without this listener that failure mode is completely
-    // silent — the visitor just gets no answer and the transcript holds only
-    // their own turns.
+    // A provider error is emitted as an event, not thrown: a `recoverable`
+    // one (e.g. the model rejecting every request) then leaves the session
+    // running and listening forever while never producing a single reply.
+    // Without this listener that failure mode is completely silent — the
+    // visitor just gets no answer and the transcript holds only their own
+    // turns.
     agentSession.on(voice.AgentSessionEventTypes.Error, (ev) => {
         log.error('agent session error', {
             type: ev.error?.type,
@@ -589,31 +559,23 @@ async function runSession(ctx) {
         });
     });
 
-    // Phase 7 — first-audio latency + cost. The framework reports per-turn
-    // metrics for whichever pipeline is in use: one `realtime_model_metrics`
-    // event per turn for a speech-to-speech model, or separate
-    // `llm_metrics`/`tts_metrics`/`stt_metrics` events for the chained
-    // pipeline. Both are handled so switching pipelines doesn't silently
-    // zero out the cost dashboard and the latency histogram. Time-to-first-
-    // audio is `ttftMs` for realtime and TTS `ttfbMs` for chained (`-1`/
-    // negative means the turn produced no audio at all — skipped, not a
-    // latency sample).
+    // Phase 7 — first-audio latency: the framework's own realtime-model
+    // metrics already measure time-to-first-audio-token per turn (`ttftMs`,
+    // -1 when a turn produced no audio at all — skipped, not a latency
+    // sample). Reusing this built-in instrumentation instead of
+    // approximating it with our own wall-clock timers around an opaque
+    // provider call.
     agentSession.on(voice.AgentSessionEventTypes.MetricsCollected, (ev) => {
         const metrics = ev.metrics;
-        const provider = metrics.metadata?.modelProvider || 'unknown';
+        if (metrics.type !== 'realtime_model_metrics') return;
 
-        if (metrics.type === 'realtime_model_metrics') {
-            if (metrics.ttftMs >= 0) publishMetric(SESSION_METRICS.FIRST_AUDIO_MS, metrics.ttftMs, { provider });
-            costTracker.addRealtimeTurn(metrics);
-        } else if (metrics.type === 'llm_metrics' || metrics.type === 'stt_metrics' || metrics.type === 'tts_metrics') {
-            if (metrics.type === 'tts_metrics' && metrics.ttfbMs >= 0) {
-                publishMetric(SESSION_METRICS.FIRST_AUDIO_MS, metrics.ttfbMs, { provider });
-            }
-            costTracker.addChainedStep(metrics);
-        } else {
-            return;
+        if (metrics.ttftMs >= 0) {
+            publishMetric(SESSION_METRICS.FIRST_AUDIO_MS, metrics.ttftMs, {
+                provider: metrics.metadata?.modelProvider || 'unknown'
+            });
         }
 
+        costTracker.addRealtimeTurn(metrics);
         if (costTracker.checkThreshold()) {
             log.error('session cost exceeded alert threshold', costTracker.snapshot());
         }
@@ -720,10 +682,9 @@ async function runSession(ctx) {
     );
 
     // The only thing that actually spends money is `agentSession.start()` —
-    // it opens the persistent OpenAI transcription websocket and starts
-    // billing every LLM/TTS call it drives. See realtime-gate.js for why this
-    // is gated on real visitor audio (COST WARNING documented there) instead
-    // of firing as soon as we join the room.
+    // it opens a persistent websocket to the OpenAI Realtime API. See
+    // realtime-gate.js for why this is gated on real visitor audio (COST
+    // WARNING documented there) instead of firing as soon as we join the room.
     const realtimeGate = createRealtimeGate({
         onStart: () => {
             log.info('realtime gate opened; starting agent session');
@@ -735,7 +696,7 @@ async function runSession(ctx) {
                     instructions: 'Greet the visitor warmly in one short sentence and ask how you can help. Do not call any tools.',
                     toolChoice: 'none'
                 });
-            }).catch((err) => log.error('failed to start agent session', { error: err.message }));
+            }).catch((err) => log.error('failed to start realtime session', { error: err.message }));
         }
     });
     ctx.room.on('trackSubscribed', (track, publication, participant) => {
@@ -759,7 +720,7 @@ async function runSession(ctx) {
     // (CLIENT_INITIATED/ROOM_DELETED/USER_REJECTED — see room_io.js in
     // @livekit/agents). An unclean disconnect (closed tab, dropped network)
     // never reaches that check, so without this watchdog: (a) if the paid
-    // OpenAI transcription websocket was already open, it stays connected —
+    // OpenAI Realtime websocket was already open, it stays connected —
     // reconnecting itself every maxSessionDuration — until this worker
     // process is restarted; (b) either way, `Session.status` stays 'live'
     // forever, blocking agent/product deletion. Deliberately NOT gated on
@@ -921,8 +882,7 @@ async function runSession(ctx) {
 /**
  * The realtime brain. LiveKit dispatches this worker into a visitor's room.
  * It loads the agent config, builds the persona + tools, attaches the chosen
- * avatar, and runs the voice conversation as a chained OpenAI pipeline
- * (silero VAD -> transcription -> chat completions -> TTS).
+ * avatar, and runs a speech-to-speech session backed by the OpenAI Realtime API.
  */
 export default defineAgent({
     entry: (ctx) => {

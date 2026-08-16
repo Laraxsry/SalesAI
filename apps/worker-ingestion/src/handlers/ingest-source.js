@@ -1,18 +1,10 @@
-import { KnowledgeSource, Product } from '@repo/database';
-import { ingestSource } from '@repo/rag';
+import { KnowledgeSource, Product, Agent } from '@repo/database';
+import { ingestSource, extractDocumentText } from '@repo/rag';
 import { describeImage, transcribeAudio } from '@repo/ai';
 import { presignDownload } from '@repo/storage';
 import { publishEvent, RT_EVENTS } from '@repo/realtime';
 import { extractFromUrl } from '../extractors/url.js';
-import { decryptField } from '@repo/utils';
-import { createRequire } from 'node:module';
-const require = createRequire(import.meta.url);
-// DOMMatrix polyfill for pdf-parse (pdfjs-dist) on Node.js 22+
-if (typeof global.DOMMatrix === 'undefined') {
-    global.DOMMatrix = class DOMMatrix {};
-}
-const { PDFParse } = require('pdf-parse');
-import mammoth from 'mammoth';
+import { decryptField, languageName } from '@repo/utils';
 import AdmZip from 'adm-zip';
 import ffmpeg from 'fluent-ffmpeg';
 import fs from 'node:fs/promises';
@@ -54,49 +46,32 @@ async function emitProgress(sourceId, stage, pct = 0) {
 }
 
 /**
- * Converts a document buffer to text using an actual magic-byte check first,
- * falling back to mime/extension. A genuine `%PDF-` signature always wins —
- * even if the mime/extension claims something else (e.g. a PDF mistakenly
- * uploaded/named as .docx) — since the real bytes are strictly more reliable
- * than a client-supplied label. Only once the signature check rules out PDF
- * do mime/extension decide between docx and plain text; an unrecognized
- * format still throws a clear error instead of pdf-parse's vague "Invalid
- * PDF structure". Shared by both standalone document sources and each file
- * inside a zip.
+ * Vision (`describeImage()`) prompts default to English regardless of the
+ * product's actual language — a Turkish product's PDF/DOCX sources come out
+ * Turkish for free (they're just the source text, no prompt involved), but
+ * an image/video keyframe caption always came back English, a real
+ * consistency risk (the agent could switch languages mid-conversation
+ * quoting one). `KnowledgeSource` has no language of its own — it's scoped
+ * to a `Product`, which can have multiple `Agent`s, each with their own
+ * `persona.language` — so this picks the earliest-created agent for the
+ * product as the best available signal and falls back to English if the
+ * product has none yet (nothing to disagree with).
  *
- * @param {Buffer} buffer
- * @param {{ mime?: string, ext?: string }} info
- * @returns {Promise<string>}
+ * @param {string} productId
+ * @returns {Promise<string>} ISO language code, e.g. 'tr'
  */
-export async function extractDocumentText(buffer, { mime = '', ext = '' } = {}) {
-    const isPdfBySignature = buffer.subarray(0, 5).toString('latin1') === '%PDF-';
-    const isDocx =
-        !isPdfBySignature &&
-        (mime.includes('wordprocessingml') || mime.includes('msword') || ext === 'docx');
-    const isPlainText =
-        !isPdfBySignature &&
-        !isDocx &&
-        (mime.startsWith('text/') || ext === 'md' || ext === 'txt' || ext === 'markdown' || ext === 'mdx' ||
-            ext === 'json' || ext === 'xml');
-
-    if (isPdfBySignature) {
-        const parser = new PDFParse({ data: buffer });
-        await parser.load();
-        const parsed = await parser.getText();
-        return parsed.text;
-    }
-    if (isDocx) {
-        const result = await mammoth.extractRawText({ buffer });
-        return result.value;
-    }
-    if (isPlainText) {
-        return buffer.toString('utf-8');
-    }
-    throw new Error(
-        `Desteklenmeyen veya bozuk dosya formatı (mimeType: "${mime || 'bilinmiyor'}", uzantı: "${ext || 'yok'}"). ` +
-        'Desteklenen formatlar: PDF, DOCX, TXT, MD, MDX, JSON, XML.'
-    );
+async function resolveKnowledgeLanguage(productId) {
+    const agent = await Agent.findOne({ productId }).sort({ createdAt: 1 }).select('persona.language');
+    return agent?.persona?.language || 'en';
 }
+
+// extractDocumentText() now lives in @repo/rag (packages/rag/src/document-text.js)
+// — apps/api's Knowledge detail-content backfill needs the exact same
+// paragraph-preserving extraction to re-derive `meta.extractedText` for
+// sources that predate its persistence, and re-exporting keeps every
+// existing import of it from this file (incl. backend_tests/unit) working
+// unchanged.
+export { extractDocumentText } from '@repo/rag';
 
 /**
  * Opens a .zip archive, creates a separate KnowledgeSource for each
@@ -185,6 +160,10 @@ export async function ingestZipEntries({ buffer, parentSourceId, productId }) {
         try {
             const entryBuffer = entry.getData();
             const entryText = await extractDocumentText(entryBuffer, { ext: entryExt });
+            // Zip children have no fileKey (the original bytes only ever
+            // lived inside the parent archive) — this is the only copy of
+            // their content, and what the Console detail modal edits.
+            await KnowledgeSource.findByIdAndUpdate(child._id, { 'meta.extractedText': entryText }).catch(() => {});
             await ingestSource({ sourceId: child._id, productId, text: entryText, modality: 'text' });
             summary.ingested += 1;
             await emitProgress(child._id.toString(), 'Hazır', 100);
@@ -211,6 +190,11 @@ export async function handleIngestSource({ sourceId, productId }) {
 
     let text = '';
     let modality = 'text';
+    // url/api only: per-page segments (see extractFromUrl) so each chunk can
+    // be tagged with the page it came from (`metadata.pageUrl`) instead of
+    // every crawled page being chunked as one undifferentiated blob — lets
+    // the Console detail modal group retrieved chunks by page.
+    let ingestSegments = null;
 
     // Used to clean up temporary files
     const tempFiles = [];
@@ -244,10 +228,12 @@ export async function handleIngestSource({ sourceId, productId }) {
                         console.warn('[ingest-source] demoSession decrypt failed, crawling anonymously:', err.message);
                     }
                 }
-                text = await extractFromUrl(source.url, urlAuth, (current, max) => {
+                const crawl = await extractFromUrl(source.url, urlAuth, (current, max) => {
                     const pct = 15 + Math.round((current / max) * 35); // 15%..50%
                     emitProgress(sourceId, `Sayfa ${current}/${max} taranıyor…`, pct).catch(() => {});
                 });
+                text = crawl.text;
+                ingestSegments = crawl.pages.map((p) => ({ text: p.text, metadata: { pageUrl: p.url } }));
                 modality = 'web';
                 await emitProgress(sourceId, 'URL içeriği alındı', 50);
                 break;
@@ -264,7 +250,8 @@ export async function handleIngestSource({ sourceId, productId }) {
                 const dataUrl = `data:${contentType};base64,${buffer.toString('base64')}`;
 
                 await emitProgress(sourceId, 'Görsel analiz ediliyor (Vision AI)…', 30);
-                text = await describeImage(dataUrl);
+                const imageLanguage = languageName(await resolveKnowledgeLanguage(productId));
+                text = await describeImage(dataUrl, `Describe this image in detail for search, in ${imageLanguage}.`);
                 modality = 'image';
                 await emitProgress(sourceId, 'Görsel analizi tamamlandı', 60);
                 break;
@@ -360,12 +347,13 @@ export async function handleIngestSource({ sourceId, productId }) {
                     });
                     await emitProgress(sourceId, 'Video kareleri analiz ediliyor…', 60);
 
+                    const frameLanguage = languageName(await resolveKnowledgeLanguage(productId));
                     const results = await Promise.allSettled(
                         frameFiles.map(async (filename) => {
                             const pngBuffer = await fs.readFile(path.join(frameDir, filename));
                             return describeImage(
                                 `data:image/png;base64,${pngBuffer.toString('base64')}`,
-                                'Describe what is shown on screen in this video frame.'
+                                `Describe what is shown on screen in this video frame, in ${frameLanguage}.`
                             );
                         })
                     );
@@ -409,8 +397,14 @@ export async function handleIngestSource({ sourceId, productId }) {
                 text = source.content || '';
         }
 
+        // Persisted so the Console detail modal can show/edit "what the AI
+        // actually knows" without re-downloading and re-extracting the file
+        // (transcript/OCR/vision output is otherwise only ever chunked into
+        // KnowledgeChunk, never kept on the source itself).
+        await KnowledgeSource.findByIdAndUpdate(sourceId, { 'meta.extractedText': text }).catch(() => {});
+
         await emitProgress(sourceId, 'Vektörleştiriliyor ve kaydediliyor…', 75);
-        const result = await ingestSource({ sourceId, productId, text, modality });
+        const result = await ingestSource({ sourceId, productId, text: ingestSegments || text, modality });
 
         // Publish completion
         await publishEvent(RT_EVENTS.INGESTION_READY, {

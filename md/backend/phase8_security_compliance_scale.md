@@ -315,7 +315,7 @@ GET    /api/v1/audit-logs               # filtrelenmiş, sayfalı (requireAuth +
 - [x] `/sessions` rate limiter: 429 döner.
 - [x] DR drill: MongoDB PITR'dan restore başarılı.
 
-*(Yukarıdaki tüm tamamlanmış kabul kriterleri, 'backend_tests/phase8_security_compliance.mjs' otomatik test paketi (33/33) ve Postman üzerinden manuel test rehberi ile 28.07.2026 tarihinde doğrulanmıştır.)*
+*(Yukarıdaki tüm tamamlanmış kabul kriterleri, 'backend_tests/integration/phase8_security_compliance.mjs' otomatik test paketi (33/33) ve Postman üzerinden manuel test rehberi ile 28.07.2026 tarihinde doğrulanmıştır. Dosya 2026-08-16'da backend_tests/unit ve backend_tests/integration ayrımına taşındı, iç yollar buna göre güncellendi — bkz. backend_tests/README.md.)*
 
 ---
 
@@ -338,7 +338,7 @@ GET    /api/v1/audit-logs               # filtrelenmiş, sayfalı (requireAuth +
 ## Test
 
 ```bash
-node backend_tests/phase8_security_compliance.mjs
+node backend_tests/integration/phase8_security_compliance.mjs
 ```
 
 Test kapsamı (planlanan):

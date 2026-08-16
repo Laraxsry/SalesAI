@@ -28,12 +28,12 @@ import { dirname, join } from 'path';
 import express from 'express';
 import http from 'node:http';
 import { connectDB, disconnectDB, Agent, Session, Message, Product, Workspace, SessionSummary, Lead } from '@repo/database';
-import { registerRoutes } from '../apps/api/src/routes/index.js';
+import { registerRoutes } from '../../apps/api/src/routes/index.js';
 import { signTokens } from '@repo/auth';
 import mongoose from 'mongoose';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
-const ROOT = join(__dirname, '..');
+const ROOT = join(__dirname, '..', '..');
 
 let passed = 0;
 let failed = 0;

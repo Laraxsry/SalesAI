@@ -28,6 +28,15 @@
      client yüklediği dosyanın gerçek MIME tipini gönderir, worker uzantı yerine bunu kullanır.
    - [x] MinIO bucket (`salesai-uploads`) API ayağa kalkarken `ensureBucket()` ile otomatik oluşturuluyor
      (önceden bucket yoksa presigned URL çalışmıyordu).
+   - [x] `ensureBucket()` artık bucket'a CORS politikası da uyguluyor (`ensureBucketCors()`,
+     `packages/storage/src/index.js`) — presigned GET/PUT URL'leri tarayıcıya doğrudan veriliyor
+     (dosya upload'ı ve Knowledge detay modalının PDF/görsel/video önizlemesi), ama S3/MinIO'da
+     CORS bucket'ın kendi özelliği, `apps/api`'nin Express `cors()` middleware'inden tamamen ayrı —
+     biri diğerini kapsamıyor. CORS'suz bucket'a yapılan tarayıcı `fetch()`'i, presigned imza hiç
+     kontrol edilmeden "No 'Access-Control-Allow-Origin' header" hatasıyla engelleniyordu. Aynı
+     `CORS_ORIGIN` allowlist'i kullanıyor (dev'de boşsa `*`, prod'da boşsa hiçbir origin — Express
+     middleware'iyle aynı davranış). **Mevcut ortamlarda etkili olması için API'nin yeniden
+     başlatılması gerekiyor** (politika sadece boot'ta `ensureBucket()` çağrısında uygulanıyor).
    - [x] `Product.websiteUrl` girildiğinde, aynı URL otomatik olarak bir `KnowledgeSource`
      (`type: 'url'`) olarak da oluşturulup ingestion kuyruğuna alınsın. `POST /products` ve
      `PATCH /products/:id`'de `websiteUrl` set/güncellendiğinde `syncWebsiteUrlSource()` yardımcı
@@ -72,6 +81,90 @@
      (`Knowledge.jsx`) artık zip'ten gelen dosyaları parent'ın altında açılır/kapanır bir grup
      ("Zip · N dosya") olarak gösteriyor — büyük zip'ler artık düz listede dağılmıyor
      (bkz. `md/web/phase1_console.md`).
+   - [x] **Doküman düzenlemede kısmi re-chunk (token tasarrufu)** — `PATCH /knowledge/:id`
+     ile bir kaynağın metnini (text `content` veya document `meta.extractedText`) elle
+     düzenleyip kaydetmek, önceden kaynağın TÜM chunk'larını silip metni baştan
+     chunk'layıp embed edip audience-classify ediyordu — küçük bir düzeltme bile büyük
+     bir dokümanda tüm chunk'ları yeniden embed etmek anlamına geliyordu. Yeni
+     `reingestSourceIncremental()` (`packages/rag/src/ingest.js`) sadece gerçekten
+     DEĞİŞEN chunk'ları işliyor: `chunkText()` metnin deterministik saf bir fonksiyonu
+     olduğu için (offset/pozisyon takibi GEREKMİYOR, şema değişikliği yok), eski ve yeni
+     tam metin ayrı ayrı chunk'lanıp iki dizi `diffChunks()` (`packages/rag/src/chunk-diff.js`,
+     `diff` paketinin `diffArrays()`'i ile LCS tabanlı) ile karşılaştırılıyor — ortak
+     (değişmeyen) chunk'lar hiç dokunulmadan kalıyor, sadece eklenen/çıkarılan chunk'lar
+     embed/silinip ekleniyor. **Güvenlik ağı**: DB'deki mevcut chunk'lar `chunkText(eski
+     metin)`'in ürettiğiyle (multiset olarak, `multisetEqual()`) eşleşmiyorsa (ör. kaynak bu
+     özellikten önce ingest edilmiş), sessizce tam `ingestSource()` yoluna düşülüyor —
+     asla yanlış/eksik chunk bırakmıyor, sadece optimizasyonu kaybediyor. Vector store'lara
+     (`mongo.store.js`, `qdrant.store.js`) `listBySource()` ve `deleteByIds()` eklendi.
+     Unit test: `backend_tests/unit/chunk-diff.mjs`; mock'lu entegrasyon testleri:
+     `packages/rag/src/ingest.test.js` (yeni — paket artık vitest ile test ediliyor,
+     `packages/agent`'takiyle aynı `@repo/testing/vitest-preset` deseni). **Düzeltme**:
+     `getVectorStore()` (`packages/rag/src/stores/index.js`) ham store örneğini değil,
+     elle yazılmış sabit bir metod listesi ileten bir facade döndürüyor — yeni
+     `listBySource()`/`deleteByIds()` ilk seferde bu facade'a eklenmeyi unutulmuştu
+     (`store.listBySource is not a function`, sadece gerçek Mongo'ya karşı ortaya çıktı,
+     mock'lu testler yakalayamadı). Facade'a eklendi + `stores/index.test.js` (yeni)
+     bundan sonra facade'ın store class'ının HER metodunu ilettiğini garanti ediyor.
+   - [x] **Görsel/video açıklamaları artık ürünün diline uyuyor** — `describeImage()`
+     (image + video keyframe caption'ları) önceden sabit İngilizce prompt kullanıyordu, PDF/DOCX
+     kaynaklar (kaynak metin doğrudan kullanıldığı için) hangi dildeyse öyle kalırken görsel/video
+     açıklamaları her zaman İngilizce geliyordu — agent bir görsel chunk'ından bahsederken aniden
+     dil değiştirebilirdi. `apps/worker-ingestion/src/handlers/ingest-source.js`'e yeni
+     `resolveKnowledgeLanguage(productId)` — ürünün ilk `Agent`'ının `persona.language`'ini
+     kullanıyor (yoksa `'en'`) — ve prompt'lara `Describe this image in detail for search, in
+     ${language}.` şeklinde ekleniyor. `LANGUAGE_NAMES`/`languageName()` `packages/agent/src/persona.js`'den
+     `packages/utils/src/index.js`'e taşındı (tek kaynak, ikisi de aynı haritayı kullanıyor).
+   - [x] **URL/API — tekrarlayan nav/header temizliği** — `extractPage()`
+     (`apps/worker-ingestion/src/extractors/url.js`) artık her sayfanın metnini satır satır
+     (`\n` ile ayrılmış, boş satırlar atılmış) döndürüyor; `extractFromUrl()` tüm sayfalar
+     toplandıktan sonra yeni `stripRepeatedBoilerplate()`'i çağırıyor — sayfaların en az
+     `URL_CRAWL_BOILERPLATE_THRESHOLD` (varsayılan %60, en az 3 sayfa şartıyla) kadarında
+     BİREBİR aynı görünen satırları (sidebar nav, header, oturum açmış kullanıcı bilgisi)
+     siliyor, sayfaya özgü içerik kalıyor. DOM selector'üne değil salt istatistiğe dayanıyor
+     (hangi satır kaç farklı sayfada geçiyor), bu yüzden herhangi bir müşteri sitesinin DOM
+     yapısına özel bir yapılandırma gerektirmiyor. **Sebep**: temizlik olmadan her sayfanın
+     metninin büyük kısmı (bazı panellerde neredeyse tamamı) diğer tüm sayfalarla birebir
+     aynıydı — hem embedding token'ları boşa gidiyordu hem de vektör araması sayfaları
+     ayırt edemiyordu (agent sayfaların gerçek içeriğine hakim olamıyordu). Unit test:
+     `backend_tests/unit/strip-repeated-boilerplate.mjs`.
+   - [x] **URL/API — sayfa başına chunk gruplama** — `extractFromUrl()`
+     (`apps/worker-ingestion/src/extractors/url.js`) artık hem birleştirilmiş `text`'i (`meta.extractedText`
+     için, salt görüntüleme) hem de ham `pages: [{url, text}]` dizisini döndürüyor. `ingestSource()`
+     (`packages/rag/src/ingest.js`) artık `text` parametresi olarak tek bir string yerine
+     `{text, metadata}[]` (segment) dizisi kabul edebiliyor — her segment ayrı ayrı chunk'lanıp
+     embed ediliyor, `deleteBySource()` yine tek seferde (baştaki, tüm segmentler için) çağrılıyor.
+     `handleIngestSource()`'un `url`/`api` case'i her sayfayı kendi segmenti olarak `{metadata:{pageUrl}}`
+     ile geçiyor — sonuç: her `KnowledgeChunk.metadata.pageUrl` hangi sayfadan geldiğini biliyor.
+     Yeni `GET /knowledge/:id/chunks` endpoint'i bunları döndürüyor; Console modalı `url`/`api`
+     tipinde artık tek bir crawl-metni bloğu yerine, sayfa URL'si başlık + altında o sayfanın
+     chunk'ları (genel/teknik etiketiyle) şeklinde gruplu gösteriyor — hem okunabilir hem de
+     seller'ın "bu chunk'lar yeterli mi" diye kendi gözüyle denetleyebilmesini sağlıyor.
+   - [x] **Knowledge detay/düzenleme** — ingestion sırasında çıkarılan metin
+     (transkript/OCR/vision açıklaması/crawl metni) artık `KnowledgeSource.meta.extractedText`'e
+     kalıcı yazılıyor (`handlers/ingest-source.js`, `handleIngestSource()` ve
+     `ingestZipEntries()` içinde — önceden bu metin hiçbir yerde saklanmıyordu, sadece
+     chunk'lanıp embed ediliyordu). Yeni `GET /knowledge/:id/download-url` (presigned dosya
+     URL'i, workspace membership kontrolüyle) ve `PATCH /knowledge/:id` (rename / metin
+     düzenleme + senkron re-embed / dosya değiştirme + tam pipeline'ı yeniden kuyruğa alma)
+     endpoint'leri eklendi (`KnowledgeSourceUpdateInput` contract'ı). Console'da satıra
+     tıklayınca açılan detay modalı bunları kullanıyor — bkz. `md/web/phase1_console.md`.
+   - [x] `extractDocumentText()` (`packages/rag/src/document-text.js`'e taşındı, önceden
+     `apps/worker-ingestion/src/handlers/ingest-source.js`'de tanımlıydı — o dosya artık
+     `@repo/rag`'den re-export ediyor, mevcut import'lar bozulmadı) — `apps/api`'nin
+     `GET /knowledge/:id/content` backfill'i de aynı fonksiyonu kullanabilsin diye paylaşıldı.
+     **Sebep**: `meta.extractedText`'i olmayan eski kaynaklar için chunk'lardan metni yeniden
+     birleştirmek (`chunkText()`'in embed öncesi TÜM whitespace'i tek boşluğa indirmesi
+     yüzünden — `packages/rag/src/chunk.js`) paragraf yapısını tamamen kaybediyordu, kullanıcıya
+     tek satırlık "duvar gibi" metin gösteriyordu. Artık `document` tipi + `fileKey`'i olan
+     (zip olmayan) kaynaklarda backfill, dosyayı yeniden indirip `extractDocumentText()` ile
+     yeniden çıkarıyor — ingestion'ın ürettiğiyle birebir aynı, paragraf aralarını koruyan metin.
+     Chunk-birleştirme sadece dosyaya erişimi olmayan durumlarda (image/video/url/api)
+     fallback olarak kalıyor. **Zip çocukları da dahil**: `extractZipMemberText(zipBuffer, entryName)`
+     (aynı dosyada) çocuğun `parentSourceId`'sinden PARENT'ın `fileKey`'ini (arşivin kendisi)
+     indirip yeniden açıyor, ilgili üyeyi adm-zip ile çıkarıp `extractDocumentText()`'e veriyor —
+     zip çocuklarının kendi `fileKey`'i olmasa da (bkz. `ingestZipEntries`), paragraf yapısını
+     koruyan tam yeniden-çıkarma standalone dosyalarla aynı şekilde çalışıyor.
 
 2. **Ingestion worker** ([`worker-ingestion`](../../apps/worker-ingestion))
    - Extraction by modality (see `handlers/ingest-source.js`):

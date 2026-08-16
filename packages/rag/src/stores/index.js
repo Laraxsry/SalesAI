@@ -44,6 +44,13 @@ export function getVectorStore() {
             }),
         keywordQuery: primary.keywordQuery ? (args) => primary.keywordQuery(args) : undefined,
         upsert: (items) => primary.upsert(items),
-        deleteBySource: (sourceId) => primary.deleteBySource(sourceId)
+        deleteBySource: (sourceId) => primary.deleteBySource(sourceId),
+        // Same "primary only, no fallback" reasoning as upsert/deleteBySource
+        // above — reingestSourceIncremental() (packages/rag/src/ingest.js)
+        // reads+deletes specific chunk ids for a partial re-chunk; falling
+        // that read back to a different store than the one the ids actually
+        // live in would just return the wrong (or no) chunks.
+        listBySource: (sourceId) => primary.listBySource(sourceId),
+        deleteByIds: (ids) => primary.deleteByIds(ids)
     };
 }

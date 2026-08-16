@@ -18,7 +18,7 @@ import sharp from 'sharp';
 import http from 'node:http';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
-const ROOT = join(__dirname, '..');
+const ROOT = join(__dirname, '..', '..');
 
 let passed = 0;
 let failed = 0;
@@ -284,7 +284,7 @@ async function run() {
         const { port } = ssrfServer.address();
         const origin = `http://127.0.0.1:${port}`;
 
-        const { GuidedTour } = await import('../packages/screen/src/cobrowse.js');
+        const { GuidedTour } = await import('../../packages/screen/src/cobrowse.js');
         ssrfTour = new GuidedTour({ startUrl: `${origin}/` });
         await ssrfTour.open();
 
@@ -331,7 +331,7 @@ async function run() {
     let trustedServer, sisterServer, evilServer;
     let multiTour, redirectTour, clickTour;
     try {
-        const { GuidedTour } = await import('../packages/screen/src/cobrowse.js');
+        const { GuidedTour } = await import('../../packages/screen/src/cobrowse.js');
 
         evilServer = http.createServer((_req, res) => {
             res.writeHead(200, { 'Content-Type': 'text/html' });

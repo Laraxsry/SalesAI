@@ -2,7 +2,7 @@ import '@repo/config-env/load';
 import express from 'express';
 import http from 'node:http';
 import { connectDB, Agent, Session, Message, KnowledgeSource } from '@repo/database';
-import { registerRoutes } from '../apps/api/src/routes/index.js';
+import { registerRoutes } from '../../apps/api/src/routes/index.js';
 import { signTokens } from '@repo/auth';
 import mongoose from 'mongoose';
 

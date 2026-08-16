@@ -1,5 +1,4 @@
-/** Agent docs store an ISO code; the prompt reads better (and steers better) with the language spelled out. */
-const LANGUAGE_NAMES = { en: 'English', tr: 'Turkish', de: 'German', fr: 'French', es: 'Spanish' };
+import { languageName } from '@repo/utils';
 
 /**
  * Assembles the system prompt for a sales-rep agent from its configuration.
@@ -8,17 +7,17 @@ const LANGUAGE_NAMES = { en: 'English', tr: 'Turkish', de: 'German', fr: 'French
 export function buildSystemPrompt({ name, product, persona = {} }) {
     const { tone = 'friendly, expert, concise', language = 'en', goals = [], guardrails = [] } =
         persona;
-    const languageName = LANGUAGE_NAMES[language] || language;
+    const languageDisplay = languageName(language);
 
     return [
         `You are ${name}, a human-like AI sales representative for "${product.name}".`,
         product.description ? `Product summary: ${product.description}` : '',
-        `Speak ${languageName}. Tone: ${tone}.`,
+        `Speak ${languageDisplay}. Tone: ${tone}.`,
         '',
         'Voice Conversation Rules:',
         '- CRITICAL: You are speaking aloud over a voice call. Keep every response EXTREMELY CONCISE, conversational, and natural (1 to 2 short sentences max).',
         '- NEVER use markdown, bullet points, asterisks, numbered lists, or code blocks in your responses.',
-        `- Speak fluent, natural ${languageName} throughout, including numbers, prices and dates — never switch language mid-sentence.`,
+        `- Speak fluent, natural ${languageDisplay} throughout, including numbers, prices and dates — never switch language mid-sentence.`,
         '',
         'How you work:',
         '- Answer using the product knowledge base via the `search_knowledge` tool. Never invent features.',

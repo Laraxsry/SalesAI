@@ -78,7 +78,114 @@
    - [x] Aggregate unanswered questions across `SessionSummary` documents.
    - [x] Expose `GET /analytics/knowledge-gaps` (product scope, sorted by count).
 
-7. **Console CRUD Management** *(Walkthrough Bölüm 8 - Postman ve Otomatik Testlerle doğrulandı)*
+7. **Proaktif içerik-tutarlılık analizi (Knowledge GAP raporu)** — **madde 6 ile
+   KARIŞTIRILMAMALI**: madde 6 REAKTİF (gerçek ziyaretçi trafiğinden,
+   `SessionSummary.unanswered` aggregation'ı); bu madde PROAKTİF — ziyaretçi
+   trafiği hiç gerekmeden, ürün sahibinin isteği üzerine knowledge
+   içeriğinin KENDİSİNİ LLM ile analiz ediyor.
+   - [x] Yeni `KnowledgeGapReport` modeli (`productId`, `requestedBy`,
+     `status` ∈ `processing|ready|failed`, `sourceCount`, `truncated`,
+     `findings: [{type: inconsistency|thin|missing, title, description,
+     sourceIds[]}]`) — bkz. Data model additions.
+   - [x] `POST /knowledge/:productId/gap-analysis` (`apps/api/src/routes/knowledge.js`)
+     — `requireAuth` + ürünün workspace'ine üyelik kontrolü (`loadOwnedProduct()`,
+     bu dosyanın diğer birçok endpoint'inde OLMAYAN, buraya özel eklenen bir
+     kontrol — gerçek LLM maliyeti olan bir işlem tetiklediği için) +
+     `can(membership.role, 'knowledge:analyze')` — rastlantı eseri
+     `packages/access`'teki mevcut `EDITOR: 'knowledge:*'` bu yeni izni zaten
+     `EDITOR`/`ADMIN`/`OWNER`'a veriyor, `packages/access`'te değişiklik
+     GEREKMEDİ. **Günlük kota şu an DEVRE DIŞI** — geliştirme aşamasında
+     kullanıcı isteğiyle kaldırıldı (`GAP_ANALYSIS_DAILY_LIMIT = Infinity`,
+     `apps/api/src/routes/knowledge.js`), ileride geri eklenecek. Bir
+     ÖNCEKİ halinde (kota aktifken) gerçek bir bug bulundu ama şu an
+     kapsam dışı bırakıldığı için düzeltilmedi, sadece koda TODO olarak
+     not düşüldü: sayaç `status`'a bakmadan (`createdAt`'e göre) TÜM
+     raporları sayıyordu — başarısız (`status:'failed'`) bir deneme bile
+     kotadan düşüyordu, kullanıcı bir LLM hatasından sonra o gün bir daha
+     hiç deneyemiyordu. Kota geri eklenirken sadece `status:'ready'`
+     raporlar sayılmalı.
+   - [x] `GET /knowledge/:productId/gap-analysis` — son 10 raporu +
+     `canRequestNow` (Console butonunun disabled durumu buradan okunuyor)
+     döndürür.
+   - [x] `apps/worker-general/src/handlers/analyze-knowledge-gaps.js` (yeni,
+     `analyze-session.js` ile aynı genel kalıp: ucuz model, katı JSON şema
+     promptu, hata durumunda `status:'failed'`) — ürünün TÜM `status:'ready'`
+     knowledge kaynaklarını (zip container'lar hariç, `meta.zipSummary`)
+     `meta.extractedText`'ten (Phase 1'de artık HER tipte persist ediliyor,
+     tek bir uniform alan) **map-reduce** ile karşılaştırıyor:
+     - **Map**: her kaynağın ham metni (`GAP_ANALYSIS_EXCERPT_CHARS`,
+       varsayılan 1500 kar/kaynak) `GAP_ANALYSIS_MAP_BATCH_SIZE` (varsayılan
+       18) kişilik gruplara bölünüp, `mapWithConcurrency()`
+       (`packages/utils/src/index.js` — önceden sadece
+       `apps/worker-ingestion`'ın URL sentez adımında vardı, buraya da
+       gerektiği için paylaşılan yere taşındı) ile en fazla
+       `GAP_ANALYSIS_MAP_CONCURRENCY` (varsayılan 5) grup PARALEL LLM
+       çağrısıyla kısa, YORUM İÇERMEYEN "olgu özeti"ne (fiyat/adım/sayı/kural
+       gibi karşılaştırılabilir iddialar) indirgeniyor. Bir grubun çağrısı
+       başarısız olursa o gruptaki kaynaklar TAMAMEN düşmüyor — ham
+       excerpt'ten kaba bir fallback digest (`FALLBACK_DIGEST_CHARS`, 300 kar)
+       kullanılıyor, sadece loglanıyor.
+     - **Reduce**: map fazının ürettiği (ham metinden ÇOK daha küçük)
+       digest'lerin TAMAMI TEK bir final `gpt-4o-mini` çağrısına verilip
+       asıl GAP analizi (tutarsızlık/yetersiz-detay/eksik-konu) burada,
+       TÜM kaynaklar aynı anda görülerek yapılıyor — karşılaştırma
+       yeteneği SADECE bu adımda var (map fazında her kaynak bağımsız
+       özetleniyor, birbirleriyle kıyaslanmıyor). `MAX_REDUCE_DIGESTS`
+       (env `GAP_ANALYSIS_MAX_REDUCE_DIGESTS`, varsayılan 500) aşılırsa
+       en son güncellenen kaynaklar alınır (`truncated:true`) — digest'ler
+       küçük olduğu için eski (ham metni tek çağrıya sığdırmaya çalışan)
+       yaklaşımdaki 80 kaynak tavanından çok daha yüksek, pratikte nadiren
+       tetiklenir.
+     - JSON şeması (`inconsistencies`/`thin`/`missing`, `sourceIndexes` —
+       `classifyAudience()`'daki "numaralı chunk → index" deseniyle aynı,
+       LLM gerçek ObjectId bilemez) DEĞİŞMEDİ, sadece girdi artık ham
+       excerpt yerine digest; index'ler sunucu tarafında gerçek
+       `sourceId`'lere map'leniyor. Rapor dili sabit Türkçe (Console'un
+       kendi dili — ürünün ziyaretçi-yüzü diline bağlı değil,
+       `resolveKnowledgeLanguage()` KULLANILMIYOR). `worker-general/src/main.js`'e
+       `case 'analyze-knowledge-gaps':` eklendi.
+     - **Motivasyon** (kullanıcıyla birlikte kararlaştırıldı): tek dev
+       çağrıya tüm ham metni sığdırmak (ilk versiyon) 80+ kaynaklı bir
+       üründe bazı kaynakları analiz dışı bırakıyordu (`truncated:true`);
+       her kaynağı TEK TEK/bağımsız analiz etmek ise çapraz-karşılaştırma
+       (tutarsızlık tespiti) yeteneğini tamamen kaybederdi — map-reduce
+       ikisinin de sorununu çözüyor.
+   - [x] **Bug (gerçek ortamda bulundu ve düzeltildi)**: ilk canlı testte
+     `"All providers failed for capability llm: openai, anthropic"` hatası
+     alındı — `packages/ai`'nin `getLLM()`'i tüm çağıranlar için sabit
+     10sn'lik bir `timeoutMs` kullanıyordu (`@repo/resilience`'ın
+     `withFallback()` varsayılanı), bu diğer LLM çağrıları
+     (`classifyAudience()`, `analyze-session.js`, `synthesizePage()`) için
+     yeterliyken GAP analizinin çok daha büyük promptu (80 kaynağa kadar)
+     için yetmiyordu — OpenAI denemesi tam 20sn'de (10sn × 2 deneme)
+     zaman aşımına uğrayıp Anthropic'e düşüyor, o da başarısız oluyordu.
+     `getLLM(name, {timeoutMs})` artık opsiyonel bir 2. parametre alıyor
+     (belirtilmezse davranış AYNI, mevcut hiçbir çağıran etkilenmedi) —
+     `analyze-knowledge-gaps.js` `GAP_ANALYSIS_LLM_TIMEOUT_MS` (varsayılan
+     60000ms) ile çağırıyor.
+   - [x] Yeni `RT_EVENTS.GAP_REPORT_READY` (`'gap-report:ready'`,
+     `packages/realtime/src/index.js`) — analiz bitince Console'a Socket.IO
+     ile bildirim.
+   - [x] Console: `/knowledge/gaps` sayfasına (`KnowledgeGaps.jsx`) ikinci bir
+     sekme ("İçerik Analizi") eklendi — mevcut "Cevapsız Sorular" sekmesi
+     dokunulmadan yanına; ayrı bir route AÇILMADI (kullanıcı tercihi, iki
+     "gap" kavramının karışmaması aynı sayfada iki sekmeyle sağlandı).
+     "Analiz Et" butonu, accordion rapor listesi (hem güncel hem geçmiş
+     raporlar genişletilip daraltılabiliyor), `?source=<id>` deep-link ile
+     `Knowledge.jsx`'teki kaynağa gitme, ve token harcamadan istemci
+     tarafında PDF indirme — tüm Console UX detayları için
+     `md/web/phase1_console.md`'ye bakın (burada tekrar edilmiyor,
+     tek kaynak orası).
+   - [ ] **Kapsam dışı (bilinçli olarak ertelendi)**: knowledge yüklendiğinde
+     OTOMATİK tetiklenme / cron ile periyodik analiz — bu SADECE manuel,
+     Console'dan buton ile tetiklenen bir akış. Otomasyon ayrı bir görev
+     olarak planlanıyor.
+   - [ ] **Test altyapısı notu**: `apps/worker-general`'ın hiç vitest
+     kurulumu yok (`analyze-session.js`'in de testi yok) — yeni bir test
+     framework'ü kurmak bu round'un kapsamı dışında bırakıldı, sadece kod
+     incelemesi + gerçek ortamda manuel doğrulama yapıldı.
+
+8. **Console CRUD Management** *(Walkthrough Bölüm 8 - Postman ve Otomatik Testlerle doğrulandı)*
    - [x] `PATCH /agents/:id` — Persona/tone/avatar gibi alanların partial update edilmesi. *(Postman testleri ile partial veri güncellemesinin veritabanına sorunsuz yansıdığı onaylandı).*
    - [x] `DELETE /agents/:id` — Agent silme, bağlı share-link'lerin cascade silinmesi (live guard dahil). *(Live session esnasında 409 Conflict hatasının başarıyla fırlatıldığı ve normal silmede ShareLink kayıtlarının temizlendiği doğrulandı).*
    - [x] `PATCH /products/:id` — Product adı/açıklaması partial update (Workspace üyelik guard). *(Tenant ve workspace scope kontrolünün başarıyla çalıştığı teyit edildi).*
@@ -96,6 +203,7 @@
 | `SessionEvent` | `sessionId`, `type`, `at`, `meta` |
 | `AnalyticsRollup` | `scope` (agent/product), `scopeId`, `bucket` (hour/day), `bucketAt`, `metrics{}` — compound unique index |
 | `Lead` | `sessionId`, `workspaceId`, `agentId`, `contact { email, company, name, phone }`, `score`, `status`, `signals[]` |
+| `KnowledgeGapReport` | `productId`, `requestedBy`, `status` (processing/ready/failed), `error`, `sourceCount`, `truncated`, `findings[] { type (inconsistency/thin/missing), title, description, sourceIds[] }` |
 
 ---
 
@@ -107,6 +215,11 @@
 - [x] A conversation that asks to book a demo creates a scored `Lead` (demo_intent +30).
 - [x] Transcript search returns matching turns scoped to the caller's workspace.
 - [x] The knowledge-gaps report lists real unanswered questions.
+- [ ] `POST /knowledge/:productId/gap-analysis` gerçekten çelişen bilgi içeren
+  kaynaklar üzerinde tetiklenip `KnowledgeGapReport.findings`'te doğru bir
+  `inconsistency` bulgusu ürettiği — kod incelemesi + local doğrulama
+  yapıldı, uçtan uca otomatik test/Postman koleksiyonu HENÜZ eklenmedi
+  (bkz. madde 7'nin "Test altyapısı notu").
 - [x] Missing Console CRUD endpoints (PATCH/DELETE for Agent/Product, DELETE for Session) handle cascade deletes properly. *(Tüm DELETE rotalarının ShareLink, Message ve Agent bağlı verilerini temizlediği doğrulandı).*
 - [x] Resources cannot be deleted while an active live session exists (409 Guard). *(Agent, Product ve Session bazında status='live' kalkanı başarıyla devrede).*
 

@@ -6,7 +6,7 @@ import { requireAuth } from '@repo/auth';
 import { requirePermission } from '@repo/access';
 import { resolveTenant, resolveMember } from '../middleware/tenant.js';
 import { encryptField, decryptField } from '@repo/utils';
-import { enqueue, QUEUES } from '@repo/queue';
+import { enqueueIngestion } from '../lib/ingestion.js';
 
 export const productsRouter = Router();
 
@@ -59,10 +59,7 @@ async function syncWebsiteUrlSource(productId, websiteUrl, prevUrl) {
             status: 'pending',
             meta: { autoCreated: true }
         });
-        await enqueue(QUEUES.INGESTION, 'ingest-source', {
-            sourceId: String(source._id),
-            productId: String(productId)
-        });
+        await enqueueIngestion(source._id, productId);
     } else {
         // Kaynak var ama URL değişti → güncelle + re-ingest
         await KnowledgeSource.findByIdAndUpdate(existing._id, {
@@ -73,10 +70,7 @@ async function syncWebsiteUrlSource(productId, websiteUrl, prevUrl) {
                 error: null
             }
         });
-        await enqueue(QUEUES.INGESTION, 'ingest-source', {
-            sourceId: String(existing._id),
-            productId: String(productId)
-        });
+        await enqueueIngestion(existing._id, productId);
     }
 }
 
@@ -87,9 +81,17 @@ async function syncWebsiteUrlSource(productId, websiteUrl, prevUrl) {
  * was configured (or with stale credentials) stays anonymous/partial
  * forever, since nothing else re-triggers a crawl.
  *
+ * Also used by `apps/api/src/routes/agents.js` when the product's
+ * earliest agent's `persona.language` is set/changed for the first time —
+ * the initial crawl at product-creation time (before any Agent exists) has
+ * no language signal and always synthesizes in the `'en'` fallback (see
+ * `resolveKnowledgeLanguage()` in `apps/worker-ingestion/src/handlers/ingest-source.js`),
+ * so this is what makes that synthesis catch up once a real language is
+ * known.
+ *
  * @param {string|mongoose.ObjectId} productId
  */
-async function reingestAutoUrlSource(productId) {
+export async function reingestAutoUrlSource(productId) {
     const existing = await KnowledgeSource.findOne({
         productId,
         type: 'url',
@@ -100,10 +102,7 @@ async function reingestAutoUrlSource(productId) {
     await KnowledgeSource.findByIdAndUpdate(existing._id, {
         $set: { status: 'pending', error: null }
     });
-    await enqueue(QUEUES.INGESTION, 'ingest-source', {
-        sourceId: String(existing._id),
-        productId: String(productId)
-    });
+    await enqueueIngestion(existing._id, productId);
 }
 
 /**

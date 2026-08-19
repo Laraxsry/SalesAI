@@ -20,9 +20,18 @@ const PROVIDER_FACTORIES = {
  * callers that need one specific provider (e.g. golden-set eval scripts
  * comparing providers) keep working unchanged.
  *
+ * `timeoutMs` overrides `withFallback()`'s 10s default (per attempt, per
+ * provider) — needed by callers whose prompt is much larger than a typical
+ * chat/classification call (e.g. `analyze-knowledge-gaps.js` batches many
+ * knowledge sources into one call); a 10s ceiling was tuned for small
+ * prompts and cuts off a large one before it can finish, which surfaces as
+ * "All providers failed" even though nothing is actually broken. Omitted
+ * by every other existing caller, so their behavior is unchanged.
+ *
  * @param {string} [name]
+ * @param {{ timeoutMs?: number }} [opts]
  */
-export function getLLM(name) {
+export function getLLM(name, { timeoutMs } = {}) {
     if (name) return PROVIDER_FACTORIES[name]();
 
     const chain = (process.env.LLM_FALLBACK_CHAIN || 'openai,anthropic').split(',');
@@ -31,7 +40,8 @@ export function getLLM(name) {
             withFallback({
                 capability: 'llm',
                 providers: chain,
-                invoke: (providerName) => PROVIDER_FACTORIES[providerName]().complete(input)
+                invoke: (providerName) => PROVIDER_FACTORIES[providerName]().complete(input),
+                ...(timeoutMs !== undefined && { timeoutMs })
             })
     };
 }

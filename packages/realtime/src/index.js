@@ -53,7 +53,8 @@ export const RT_EVENTS = Object.freeze({
     SESSION_TRANSCRIPT: 'session:transcript',
     // Phase 4: Analytics & Insights
     SESSION_SUMMARY: 'session:summary',    // post-call özet hazır (03_data_model_and_api.md)
-    LEAD_CAPTURED: 'lead:captured'         // yeni lead yakalandı
+    LEAD_CAPTURED: 'lead:captured',        // yeni lead yakalandı
+    GAP_REPORT_READY: 'gap-report:ready'   // proaktif knowledge GAP analizi tamamlandı
 });
 
 /**

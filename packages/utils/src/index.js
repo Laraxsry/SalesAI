@@ -18,6 +18,26 @@ export function sleep(ms) {
     return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
+/**
+ * Runs `fn` over `items` with at most `limit` calls in flight at once.
+ * Originally written for the URL crawl's per-page synthesis calls
+ * (`apps/worker-ingestion/src/handlers/ingest-source.js`); promoted here
+ * once `apps/worker-general`'s knowledge-gap-analysis map phase needed the
+ * same bounded-concurrency batching for its per-batch LLM calls.
+ */
+export async function mapWithConcurrency(items, limit, fn) {
+    const results = new Array(items.length);
+    let next = 0;
+    async function worker() {
+        while (next < items.length) {
+            const i = next++;
+            results[i] = await fn(items[i], i);
+        }
+    }
+    await Promise.all(Array.from({ length: Math.min(limit, items.length) }, worker));
+    return results;
+}
+
 /** Splits an array into chunks of `size`. */
 export function chunk(arr, size) {
     const out = [];

@@ -3,6 +3,7 @@ import { connectDB, ShareLink, Session, Agent } from '@repo/database';
 import { createWorker, getQueue, QUEUES } from '@repo/queue';
 import { Logger } from '@repo/logger';
 import { analyzeSession } from './handlers/analyze-session.js';
+import { analyzeKnowledgeGaps } from './handlers/analyze-knowledge-gaps.js';
 import { rollupAnalytics } from './handlers/rollup-analytics.js';
 import { purgeExpiredData } from './handlers/purge-expired-data.js';
 import { dispatchWebhooks } from './handlers/dispatch-webhooks.js';
@@ -69,6 +70,13 @@ async function main() {
             // Mimari: 01_architecture.md — API → enqueue → BullMQ → worker-general
             case 'analyze-session':
                 await analyzeSession(job.data);
+                return;
+
+            // Proaktif knowledge GAP analizi — manuel tetiklenir:
+            //   POST /knowledge/:productId/gap-analysis (apps/api/src/routes/knowledge.js)
+            //   → enqueue(QUEUES.GENERAL, 'analyze-knowledge-gaps', { reportId, productId })
+            case 'analyze-knowledge-gaps':
+                await analyzeKnowledgeGaps(job.data);
                 return;
 
             // Phase 4: Saatlik rollup — tüm aktif agent'lar için

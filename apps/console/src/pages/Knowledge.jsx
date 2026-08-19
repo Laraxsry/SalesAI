@@ -370,14 +370,22 @@ function KnowledgeDetailModal({ source: s, onClose, onSaved }) {
         enabled: isUrlType
     });
 
+    // The cross-page overview chunk (scope:'overview') has no pageUrl of its
+    // own — pulled out first so it doesn't fall into the same "Sayfa bilgisi
+    // yok (eski kayıt)" bucket as genuinely un-tagged legacy chunks.
+    const overviewChunk = useMemo(() => chunks?.find((c) => c.scope === 'overview') || null, [chunks]);
+
     // Preserves crawl order (chunks arrive in that order already — see
     // ingestSource()'s per-segment loop) so pages don't jump around between
-    // renders/refetches.
+    // renders/refetches. Within each page, the synthesized (interpretive)
+    // chunk is surfaced before the raw ones so a seller sees the readable
+    // explanation first and the literal scraped text underneath.
     const chunksByPage = useMemo(() => {
         if (!chunks) return [];
         const order = [];
         const map = new Map();
         for (const c of chunks) {
+            if (c.scope === 'overview') continue;
             const key = c.pageUrl || '';
             if (!map.has(key)) {
                 map.set(key, []);
@@ -385,7 +393,12 @@ function KnowledgeDetailModal({ source: s, onClose, onSaved }) {
             }
             map.get(key).push(c);
         }
-        return order.map((key) => [key, map.get(key)]);
+        return order.map((key) => {
+            const pageChunks = map.get(key);
+            const synthesized = pageChunks.filter((c) => c.synthesized);
+            const raw = pageChunks.filter((c) => !c.synthesized);
+            return [key, [...synthesized, ...raw]];
+        });
     }, [chunks]);
 
     useEffect(() => {
@@ -537,8 +550,16 @@ function KnowledgeDetailModal({ source: s, onClose, onSaved }) {
                                 )}
                             </div>
                             {chunksLoading && <p className="text-sm text-text-muted">Yükleniyor…</p>}
-                            {!chunksLoading && chunksByPage.length === 0 && (
+                            {!chunksLoading && chunksByPage.length === 0 && !overviewChunk && (
                                 <p className="text-sm text-text-muted">Henüz chunk yok.</p>
+                            )}
+                            {overviewChunk && (
+                                <div className="mb-3 rounded-[var(--radius-input)] border border-brand/30 bg-brand/5 p-3">
+                                    <span className="mb-1.5 inline-block rounded bg-brand/15 px-1.5 py-0.5 text-[10px] font-medium text-brand-light">
+                                        genel özet
+                                    </span>
+                                    <p className="whitespace-pre-wrap text-xs text-text">{overviewChunk.text}</p>
+                                </div>
                             )}
                             <div className="flex max-h-96 flex-col gap-3 overflow-y-auto">
                                 {chunksByPage.map(([pageUrl, pageChunks]) => (
@@ -556,10 +577,14 @@ function KnowledgeDetailModal({ source: s, onClose, onSaved }) {
                                             {pageChunks.map((c) => (
                                                 <div
                                                     key={c.id}
-                                                    className="rounded border border-border/60 bg-surface-raised p-2 text-xs"
+                                                    className={`rounded border p-2 text-xs ${
+                                                        c.synthesized
+                                                            ? 'border-brand/30 bg-brand/5'
+                                                            : 'border-border/60 bg-surface-raised'
+                                                    }`}
                                                 >
                                                     <span
-                                                        className={`mb-1 inline-block rounded px-1.5 py-0.5 text-[10px] font-medium ${
+                                                        className={`mb-1 mr-1 inline-block rounded px-1.5 py-0.5 text-[10px] font-medium ${
                                                             c.audience === 'technical'
                                                                 ? 'bg-brand/15 text-brand-light'
                                                                 : 'bg-surface text-text-muted'
@@ -567,7 +592,14 @@ function KnowledgeDetailModal({ source: s, onClose, onSaved }) {
                                                     >
                                                         {c.audience === 'technical' ? 'teknik' : 'genel'}
                                                     </span>
-                                                    <p className="whitespace-pre-wrap text-text-muted">{c.text}</p>
+                                                    {c.synthesized && (
+                                                        <span className="mb-1 inline-block rounded bg-brand/15 px-1.5 py-0.5 text-[10px] font-medium text-brand-light">
+                                                            yorumlanmış özet
+                                                        </span>
+                                                    )}
+                                                    <p className={`whitespace-pre-wrap ${c.synthesized ? 'text-text' : 'text-text-muted'}`}>
+                                                        {c.text}
+                                                    </p>
                                                 </div>
                                             ))}
                                         </div>
@@ -680,6 +712,22 @@ export function Knowledge() {
         queryFn: () => knowledgeApi.list(productId),
         enabled: !!productId
     });
+
+    // Deep-link from the GAP analizi raporu ("İçerik Analizi" sekmesi,
+    // KnowledgeGaps.jsx) — bir bulgunun ilgili kaynağına tıklanınca
+    // ?source=<id> ile buraya gelinir, ilgili kaynağın detay modalı
+    // otomatik açılır. Sadece bir kez tüketilir (URL'den temizlenir) —
+    // kapatılıp geri gelindiğinde tekrar açılmasın diye.
+    const deepLinkSourceId = searchParams.get('source');
+    useEffect(() => {
+        if (!deepLinkSourceId || !sources?.length) return;
+        if (sources.some((s) => s._id === deepLinkSourceId)) {
+            setDetailId(deepLinkSourceId);
+        }
+        const next = new URLSearchParams(searchParams);
+        next.delete('source');
+        setSearchParams(next, { replace: true });
+    }, [deepLinkSourceId, sources]);
 
     useEffect(() => {
         if (!productId) return;

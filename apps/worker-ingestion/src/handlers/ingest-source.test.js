@@ -38,7 +38,9 @@ function makeZip(files) {
 
 vi.mock('@repo/database', () => ({
     KnowledgeSource: { create: vi.fn(), findById: vi.fn(), findByIdAndUpdate: vi.fn() },
-    Product: { findById: vi.fn() }
+    Product: { findById: vi.fn() },
+    Agent: { findOne: vi.fn() },
+    KnowledgeChunk: { find: vi.fn() }
 }));
 // extractDocumentText lives in @repo/rag too (packages/rag/src/document-text.js)
 // — only ingestSource is mocked here, extractDocumentText (and its real
@@ -48,21 +50,43 @@ vi.mock('@repo/rag', async (importOriginal) => {
     const actual = await importOriginal();
     return { ...actual, ingestSource: vi.fn() };
 });
-vi.mock('@repo/ai', () => ({ describeImage: vi.fn(), transcribeAudio: vi.fn() }));
+vi.mock('@repo/ai', () => ({
+    describeImage: vi.fn(),
+    transcribeAudio: vi.fn(),
+    synthesizePage: vi.fn().mockResolvedValue(''),
+    synthesizeOverview: vi.fn().mockResolvedValue('')
+}));
 vi.mock('@repo/storage', () => ({ presignDownload: vi.fn() }));
 vi.mock('@repo/realtime', () => ({
     publishEvent: vi.fn().mockResolvedValue(undefined),
     RT_EVENTS: { INGESTION_PROGRESS: 'ingestion:progress', INGESTION_READY: 'ingestion:ready' }
 }));
-vi.mock('@repo/utils', () => ({ decryptField: vi.fn() }));
+vi.mock('@repo/utils', () => ({
+    decryptField: vi.fn(),
+    languageName: vi.fn((code) => code || 'English'),
+    mapWithConcurrency: async (items, limit, fn) => {
+        const results = new Array(items.length);
+        let next = 0;
+        async function worker() {
+            while (next < items.length) {
+                const i = next++;
+                results[i] = await fn(items[i], i);
+            }
+        }
+        await Promise.all(Array.from({ length: Math.min(limit, items.length) }, worker));
+        return results;
+    }
+}));
 vi.mock('../extractors/url.js', () => ({ extractFromUrl: vi.fn() }));
 vi.mock('fluent-ffmpeg', () => ({ default: Object.assign(vi.fn(), { setFfmpegPath: vi.fn(), setFfprobePath: vi.fn() }) }));
 vi.mock('mammoth', () => ({ default: { extractRawText: vi.fn() } }));
 
-const { KnowledgeSource } = await import('@repo/database');
+const { KnowledgeSource, Product, Agent, KnowledgeChunk } = await import('@repo/database');
 const { ingestSource } = await import('@repo/rag');
+const { synthesizePage, synthesizeOverview } = await import('@repo/ai');
+const { extractFromUrl } = await import('../extractors/url.js');
 const mammoth = (await import('mammoth')).default;
-const { extractDocumentText, ingestZipEntries } = await import('./ingest-source.js');
+const { extractDocumentText, ingestZipEntries, handleIngestSource } = await import('./ingest-source.js');
 
 beforeEach(() => {
     vi.clearAllMocks();
@@ -74,6 +98,9 @@ beforeEach(() => {
     // too, or that chain throws synchronously on the plain vi.fn() default.
     KnowledgeSource.findByIdAndUpdate.mockResolvedValue({});
     ingestSource.mockResolvedValue({ chunks: 1 });
+    Product.findById.mockReturnValue({ select: () => Promise.resolve(null) });
+    Agent.findOne.mockReturnValue({ sort: () => ({ select: () => Promise.resolve(null) }) });
+    KnowledgeChunk.find.mockReturnValue({ select: () => Promise.resolve([]) });
 });
 
 describe('extractDocumentText', () => {
@@ -252,5 +279,129 @@ describe('ingestZipEntries — configurable zip limits', () => {
         await expect(
             freshIngestZipEntries({ buffer, parentSourceId: 'p', productId: 'prod' })
         ).rejects.toThrow(/toplamda çok büyük/);
+    });
+});
+
+describe('handleIngestSource — url/api synthesis segments', () => {
+    beforeEach(() => {
+        KnowledgeSource.findById.mockResolvedValue({ _id: 'src-1', type: 'url', url: 'https://example.com' });
+        extractFromUrl.mockResolvedValue({
+            text: '[Page: https://example.com/a]\npage a\n\n[Page: https://example.com/b]\npage b',
+            pages: [
+                { url: 'https://example.com/a', text: 'page a' },
+                { url: 'https://example.com/b', text: 'page b' }
+            ]
+        });
+    });
+
+    it('adds a synthesized segment per page plus one overview segment alongside the raw per-page segments', async () => {
+        synthesizePage.mockImplementation(async ({ pageUrl }) => `summary of ${pageUrl}`);
+        synthesizeOverview.mockResolvedValue('overview of the whole crawl');
+
+        await handleIngestSource({ sourceId: 'src-1', productId: 'prod-1' });
+
+        expect(ingestSource).toHaveBeenCalledTimes(1);
+        const { text: segments } = ingestSource.mock.calls[0][0];
+        expect(segments).toEqual([
+            { text: 'page a', metadata: { pageUrl: 'https://example.com/a' } },
+            { text: 'page b', metadata: { pageUrl: 'https://example.com/b' } },
+            {
+                text: 'summary of https://example.com/a',
+                metadata: { pageUrl: 'https://example.com/a', synthesized: true, language: 'en' }
+            },
+            {
+                text: 'summary of https://example.com/b',
+                metadata: { pageUrl: 'https://example.com/b', synthesized: true, language: 'en' }
+            },
+            { text: 'overview of the whole crawl', metadata: { synthesized: true, scope: 'overview', language: 'en' } }
+        ]);
+    });
+
+    it('falls back to raw-only segments when synthesis fails (returns empty strings)', async () => {
+        synthesizePage.mockResolvedValue('');
+        synthesizeOverview.mockResolvedValue('');
+
+        await handleIngestSource({ sourceId: 'src-1', productId: 'prod-1' });
+
+        const { text: segments } = ingestSource.mock.calls[0][0];
+        expect(segments).toEqual([
+            { text: 'page a', metadata: { pageUrl: 'https://example.com/a' } },
+            { text: 'page b', metadata: { pageUrl: 'https://example.com/b' } }
+        ]);
+    });
+
+    it('passes the source\'s meta.crawlIndex.pages to extractFromUrl as previousPages, and reuses cached synthesis for unchanged pages in the same language', async () => {
+        KnowledgeSource.findById.mockResolvedValue({
+            _id: 'src-1',
+            type: 'url',
+            url: 'https://example.com',
+            meta: {
+                crawlIndex: {
+                    pages: {
+                        'https://example.com/a': { rawText: 'raw a', links: ['https://example.com/b'] }
+                    }
+                }
+            }
+        });
+        KnowledgeChunk.find.mockReturnValue({
+            select: () =>
+                Promise.resolve([
+                    { text: 'old summary of a', metadata: { pageUrl: 'https://example.com/a', synthesized: true, language: 'en' } }
+                ])
+        });
+        synthesizePage.mockImplementation(async ({ pageUrl }) => `fresh summary of ${pageUrl}`);
+        synthesizeOverview.mockResolvedValue('fresh overview');
+
+        await handleIngestSource({ sourceId: 'src-1', productId: 'prod-1' });
+
+        // previousPages (4th arg) reflects meta.crawlIndex.pages verbatim.
+        const previousPages = extractFromUrl.mock.calls[0][3];
+        expect(previousPages.get('https://example.com/a')).toEqual({ rawText: 'raw a', links: ['https://example.com/b'] });
+
+        const { text: segments } = ingestSource.mock.calls[0][0];
+        // Page 'a' was in previousPages and its old synthesis matches the
+        // resolved language ('en') — synthesizePage() must NOT have been
+        // called for it, and the old text is reused verbatim.
+        expect(synthesizePage).toHaveBeenCalledTimes(1);
+        expect(synthesizePage).toHaveBeenCalledWith(expect.objectContaining({ pageUrl: 'https://example.com/b' }));
+        expect(segments).toContainEqual({
+            text: 'old summary of a',
+            metadata: { pageUrl: 'https://example.com/a', synthesized: true, language: 'en' }
+        });
+        expect(segments).toContainEqual({
+            text: 'fresh summary of https://example.com/b',
+            metadata: { pageUrl: 'https://example.com/b', synthesized: true, language: 'en' }
+        });
+    });
+
+    it('re-synthesizes a cached-and-unchanged page when the resolved language differs from the old synthesis', async () => {
+        KnowledgeSource.findById.mockResolvedValue({
+            _id: 'src-1',
+            type: 'url',
+            url: 'https://example.com',
+            meta: { crawlIndex: { pages: { 'https://example.com/a': { rawText: 'raw a', links: [] } } } }
+        });
+        // Old synthesis was in Turkish; resolveKnowledgeLanguage now resolves 'en' (default mock) — a mismatch.
+        KnowledgeChunk.find.mockReturnValue({
+            select: () =>
+                Promise.resolve([
+                    { text: 'eski türkçe özet', metadata: { pageUrl: 'https://example.com/a', synthesized: true, language: 'tr' } }
+                ])
+        });
+        extractFromUrl.mockResolvedValue({
+            text: '[Page: https://example.com/a]\npage a',
+            pages: [{ url: 'https://example.com/a', text: 'page a' }]
+        });
+        synthesizePage.mockResolvedValue('new english summary');
+        synthesizeOverview.mockResolvedValue('');
+
+        await handleIngestSource({ sourceId: 'src-1', productId: 'prod-1' });
+
+        expect(synthesizePage).toHaveBeenCalledTimes(1);
+        const { text: segments } = ingestSource.mock.calls[0][0];
+        expect(segments).toContainEqual({
+            text: 'new english summary',
+            metadata: { pageUrl: 'https://example.com/a', synthesized: true, language: 'en' }
+        });
     });
 });

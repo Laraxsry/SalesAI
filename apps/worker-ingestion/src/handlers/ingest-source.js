@@ -1,10 +1,10 @@
-import { KnowledgeSource, Product, Agent } from '@repo/database';
+import { KnowledgeSource, Product, Agent, KnowledgeChunk } from '@repo/database';
 import { ingestSource, extractDocumentText } from '@repo/rag';
-import { describeImage, transcribeAudio } from '@repo/ai';
+import { describeImage, transcribeAudio, synthesizePage, synthesizeOverview } from '@repo/ai';
 import { presignDownload } from '@repo/storage';
 import { publishEvent, RT_EVENTS } from '@repo/realtime';
 import { extractFromUrl } from '../extractors/url.js';
-import { decryptField, languageName } from '@repo/utils';
+import { decryptField, languageName, mapWithConcurrency } from '@repo/utils';
 import AdmZip from 'adm-zip';
 import ffmpeg from 'fluent-ffmpeg';
 import fs from 'node:fs/promises';
@@ -64,6 +64,12 @@ async function resolveKnowledgeLanguage(productId) {
     const agent = await Agent.findOne({ productId }).sort({ createdAt: 1 }).select('persona.language');
     return agent?.persona?.language || 'en';
 }
+
+// Bound on concurrent synthesizePage() calls during a URL crawl's synthesis
+// pass — a 40-page crawl (see MAX_CRAWL_PAGES in extractors/url.js) calling
+// an LLM once per page serially would be slow, and firing all of them at
+// once risks tripping provider rate limits.
+const URL_SYNTHESIS_CONCURRENCY = Number(process.env.URL_SYNTHESIS_CONCURRENCY || 5);
 
 // extractDocumentText() now lives in @repo/rag (packages/rag/src/document-text.js)
 // — apps/api's Knowledge detail-content backfill needs the exact same
@@ -184,9 +190,23 @@ export async function ingestZipEntries({ buffer, parentSourceId, productId }) {
  *
  * @param {{ sourceId:string, productId:string, type:string }} data
  */
-export async function handleIngestSource({ sourceId, productId }) {
+export async function handleIngestSource({ sourceId, productId, generation }) {
     const source = await KnowledgeSource.findById(sourceId);
     if (!source) return;
+
+    // A newer ingestion request for this same source (see
+    // apps/api/src/lib/ingestion.js's enqueueIngestion()) has already been
+    // enqueued and already landed — this job is stale, let the newer one
+    // run/win instead of doing redundant (and possibly outdated, e.g.
+    // wrong-language) work.
+    if (generation !== undefined && (source.meta?.ingestGeneration || 0) > generation) {
+        console.log('[ingest-source] eski (superseded) job atlandı:', {
+            sourceId,
+            jobGeneration: generation,
+            currentGeneration: source.meta?.ingestGeneration
+        });
+        return { chunks: 0, superseded: true };
+    }
 
     let text = '';
     let modality = 'text';
@@ -195,6 +215,11 @@ export async function handleIngestSource({ sourceId, productId }) {
     // every crawled page being chunked as one undifferentiated blob — lets
     // the Console detail modal group retrieved chunks by page.
     let ingestSegments = null;
+    // url/api only: this run's per-page {rawText, links} index, persisted to
+    // meta.crawlIndex.pages so the NEXT ingestion of this source can skip
+    // re-crawling pages it already knows (see extractFromUrl's
+    // `previousPages` param).
+    let crawlPagesIndex = null;
 
     // Used to clean up temporary files
     const tempFiles = [];
@@ -228,14 +253,112 @@ export async function handleIngestSource({ sourceId, productId }) {
                         console.warn('[ingest-source] demoSession decrypt failed, crawling anonymously:', err.message);
                     }
                 }
-                const crawl = await extractFromUrl(source.url, urlAuth, (current, max) => {
-                    const pct = 15 + Math.round((current / max) * 35); // 15%..50%
-                    emitProgress(sourceId, `Sayfa ${current}/${max} taranıyor…`, pct).catch(() => {});
-                });
+
+                // Pages already crawled/chunked in a prior ingestion of this
+                // exact source (see extractFromUrl's `previousPages` doc) —
+                // e.g. an anonymous crawl at product-creation time, later
+                // re-ingested once a demo-session login was configured. This
+                // is what lets that re-crawl skip pages it already knows
+                // instead of re-fetching the whole site from the root again.
+                const previousPages = new Map(Object.entries(source.meta?.crawlIndex?.pages || {}));
+
+                const crawl = await extractFromUrl(
+                    source.url,
+                    urlAuth,
+                    (current, max) => {
+                        const pct = 15 + Math.round((current / max) * 35); // 15%..50%
+                        emitProgress(sourceId, `Sayfa ${current}/${max} taranıyor…`, pct).catch(() => {});
+                    },
+                    previousPages
+                );
                 text = crawl.text;
+                crawlPagesIndex = crawl.pagesIndex;
+                const crawlLanguage = languageName(await resolveKnowledgeLanguage(productId));
+
+                // Raw per-page segments (unchanged): needed for on-site
+                // navigation/citation and as the ground truth for the
+                // Console's "Ham içerik" view. Kept even though a
+                // synthesized segment is added alongside — the sales
+                // assistant still needs the literal data, e.g. exact figures
+                // or the page to link a visitor to.
                 ingestSegments = crawl.pages.map((p) => ({ text: p.text, metadata: { pageUrl: p.url } }));
+
+                // Previously-synthesized chunks for this source, keyed by
+                // page — lets a page whose raw content didn't change (cache
+                // hit above) AND whose synthesis language didn't change skip
+                // an expensive LLM call and just reuse the old interpretive
+                // text, instead of every re-ingestion re-synthesizing every
+                // page from scratch.
+                const oldSynthChunks = await KnowledgeChunk.find({
+                    sourceId,
+                    'metadata.synthesized': true
+                }).select('text metadata');
+                const oldPageSynth = new Map();
+                let oldOverview = null;
+                for (const c of oldSynthChunks) {
+                    if (c.metadata?.scope === 'overview') {
+                        oldOverview = { text: c.text, language: c.metadata?.language };
+                    } else if (c.metadata?.pageUrl) {
+                        oldPageSynth.set(c.metadata.pageUrl, { text: c.text, language: c.metadata?.language });
+                    }
+                }
+
+                // Synthesized layer: an interpretive paragraph per page (what
+                // it's for, what its numbers mean) plus one cross-page
+                // overview, so retrieval can also surface an explanation
+                // instead of only ever a wall of raw scraped text. Failures
+                // are non-fatal (synthesizePage/synthesizeOverview return ''
+                // on error) — a synthesis outage shouldn't block ingestion,
+                // it just means that page falls back to raw-only.
+                await emitProgress(sourceId, 'İçerik yorumlanıyor…', 55);
+                const synthesized = await mapWithConcurrency(crawl.pages, URL_SYNTHESIS_CONCURRENCY, async (p) => {
+                    const old = oldPageSynth.get(p.url);
+                    if (previousPages.has(p.url) && old && old.language === crawlLanguage) {
+                        return { url: p.url, summary: old.text, reused: true };
+                    }
+                    return {
+                        url: p.url,
+                        summary: await synthesizePage({ pageUrl: p.url, pageText: p.text, language: crawlLanguage }),
+                        reused: false
+                    };
+                });
+                for (const { url, summary } of synthesized) {
+                    if (summary) {
+                        ingestSegments.push({
+                            text: summary,
+                            metadata: { pageUrl: url, synthesized: true, language: crawlLanguage }
+                        });
+                    }
+                }
+
+                const overviewReusable =
+                    crawl.pages.length > 0 &&
+                    crawl.pages.every((p) => previousPages.has(p.url)) &&
+                    oldOverview &&
+                    oldOverview.language === crawlLanguage;
+                const overview = overviewReusable
+                    ? oldOverview.text
+                    : await synthesizeOverview({ pages: crawl.pages, language: crawlLanguage });
+                if (overview) {
+                    ingestSegments.push({
+                        text: overview,
+                        metadata: { synthesized: true, scope: 'overview', language: crawlLanguage }
+                    });
+                }
+
+                const cachedPageCount = crawl.pages.filter((p) => previousPages.has(p.url)).length;
+                const reusedSynthCount = synthesized.filter((s) => s.reused).length;
+                console.log('[ingest-source] URL crawl özeti:', {
+                    toplamSayfa: crawl.pages.length,
+                    cacheTenReuseEdilenSayfa: cachedPageCount,
+                    yeniTaranan: crawl.pages.length - cachedPageCount,
+                    sentezYenidenKullanilan: reusedSynthCount,
+                    sentezYenidenYapilan: synthesized.length - reusedSynthCount,
+                    overviewReuseEdildi: overviewReusable
+                });
+
                 modality = 'web';
-                await emitProgress(sourceId, 'URL içeriği alındı', 50);
+                await emitProgress(sourceId, 'URL içeriği alındı', 60);
                 break;
             }
 
@@ -397,11 +520,36 @@ export async function handleIngestSource({ sourceId, productId }) {
                 text = source.content || '';
         }
 
+        // Re-check right before persisting (not just at the top): the
+        // expensive work above (crawl, LLM synthesis) can take long enough
+        // for a newer request to have been enqueued AND already finished
+        // meanwhile — writing this job's (now stale) result after that would
+        // silently clobber the newer one, e.g. reverting a just-corrected
+        // synthesis language back to whatever this older job resolved.
+        if (generation !== undefined) {
+            const latest = await KnowledgeSource.findById(sourceId).select('meta.ingestGeneration');
+            if ((latest?.meta?.ingestGeneration || 0) > generation) {
+                console.log('[ingest-source] sonuç yazılmadı — daha yeni bir istek bu kaynağı süpürdü:', {
+                    sourceId,
+                    jobGeneration: generation,
+                    currentGeneration: latest?.meta?.ingestGeneration
+                });
+                await cleanup();
+                return { chunks: 0, superseded: true };
+            }
+        }
+
         // Persisted so the Console detail modal can show/edit "what the AI
         // actually knows" without re-downloading and re-extracting the file
         // (transcript/OCR/vision output is otherwise only ever chunked into
-        // KnowledgeChunk, never kept on the source itself).
-        await KnowledgeSource.findByIdAndUpdate(sourceId, { 'meta.extractedText': text }).catch(() => {});
+        // KnowledgeChunk, never kept on the source itself). url/api sources
+        // also persist this crawl's per-page {rawText, links} index so the
+        // next ingestion can skip pages it already knows (see
+        // extractFromUrl's `previousPages` param).
+        await KnowledgeSource.findByIdAndUpdate(sourceId, {
+            'meta.extractedText': text,
+            ...(crawlPagesIndex && { 'meta.crawlIndex': { pages: crawlPagesIndex } })
+        }).catch(() => {});
 
         await emitProgress(sourceId, 'Vektörleştiriliyor ve kaydediliyor…', 75);
         const result = await ingestSource({ sourceId, productId, text: ingestSegments || text, modality });

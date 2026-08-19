@@ -9,8 +9,23 @@ import { getLLM } from '@repo/ai';
 import { getSdkVersion } from '../services/sdk-bundle.js';
 import { requestTimeout } from '../middleware/request-timeout.js';
 import { chatRateLimit } from '../middleware/public-rate-limits.js';
+import { reingestAutoUrlSource } from './products.js';
 
 export const agentsRouter = Router();
+
+/**
+ * Whether `agentId` is the earliest-created Agent for `productId` — i.e.
+ * the one `resolveKnowledgeLanguage()`
+ * (`apps/worker-ingestion/src/handlers/ingest-source.js`) actually reads
+ * `persona.language` from when synthesizing URL-crawl content. Creating or
+ * relabeling a later agent doesn't change what the knowledge base
+ * synthesizes in, so callers only need to trigger a re-ingest when this is
+ * true.
+ */
+async function isEarliestAgentForProduct(agentId, productId) {
+    const earliest = await Agent.findOne({ productId }).sort({ createdAt: 1 }).select('_id');
+    return String(earliest?._id) === String(agentId);
+}
 
 /**
  * Infers whether the visitor wants surface-level or technical-depth answers,
@@ -65,7 +80,24 @@ agentsRouter.post('/', requireAuth, validate({ body: AgentConfigInput }), async 
     try {
         const product = await Product.findById(req.body.productId);
         if (!product) return res.status(404).json({ error: 'Product not found' });
+
+        // A brand-new product's URL crawl (triggered synchronously at
+        // product creation, before any Agent exists) always synthesized in
+        // the 'en' fallback — this is the first point a real language
+        // becomes known, so the first agent for a product re-triggers that
+        // synthesis in the right language. Later agents don't change what
+        // resolveKnowledgeLanguage() resolves (it always reads the
+        // earliest-created agent), so this only fires once per product.
+        const isFirstAgent = (await Agent.countDocuments({ productId: req.body.productId })) === 0;
+
         const agent = await Agent.create(req.body);
+
+        if (isFirstAgent) {
+            reingestAutoUrlSource(req.body.productId).catch((err) =>
+                console.warn('[agents] reingestAutoUrlSource (first agent) failed:', err.message)
+            );
+        }
+
         res.status(201).json(agent);
     } catch (err) {
         next(err);
@@ -174,7 +206,20 @@ agentsRouter.patch('/:id', requireAuth, validate({ body: AgentUpdateInput }), as
             if (ta.mcpUrl !== undefined) update['toolAccess.mcpUrl'] = ta.mcpUrl;
         }
 
+        const languageChanged =
+            req.body.persona?.language !== undefined && req.body.persona.language !== agent.persona?.language;
+
         const updated = await Agent.findByIdAndUpdate(req.params.id, { $set: update }, { new: true, runValidators: true });
+
+        // Only the earliest-created agent's language feeds
+        // resolveKnowledgeLanguage() — relabeling any other agent's
+        // language doesn't change what the URL crawl synthesizes in.
+        if (languageChanged && (await isEarliestAgentForProduct(agent._id, agent.productId))) {
+            reingestAutoUrlSource(agent.productId).catch((err) =>
+                console.warn('[agents] reingestAutoUrlSource (language change) failed:', err.message)
+            );
+        }
+
         res.json(updated);
     } catch (err) {
         next(err);

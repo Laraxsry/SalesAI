@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { buildEmbedSnippet, chunk, compact } from './index.js';
+import { buildEmbedSnippet, chunk, compact, mapWithConcurrency } from './index.js';
 
 describe('buildEmbedSnippet', () => {
     it('renders the exact two-line snippet sellers paste onto their site', () => {
@@ -39,5 +39,35 @@ describe('compact', () => {
             e: '',
             f: false
         });
+    });
+});
+
+describe('mapWithConcurrency', () => {
+    it('produces results in input order regardless of completion order', async () => {
+        const delays = [30, 10, 20, 0, 15];
+        const results = await mapWithConcurrency(delays, 2, async (ms, i) => {
+            await new Promise((resolve) => setTimeout(resolve, ms));
+            return i;
+        });
+        expect(results).toEqual([0, 1, 2, 3, 4]);
+    });
+
+    it('never runs more than `limit` calls at once', async () => {
+        let inFlight = 0;
+        let maxInFlight = 0;
+        await mapWithConcurrency([1, 2, 3, 4, 5, 6], 2, async () => {
+            inFlight++;
+            maxInFlight = Math.max(maxInFlight, inFlight);
+            await new Promise((resolve) => setTimeout(resolve, 5));
+            inFlight--;
+        });
+        expect(maxInFlight).toBeLessThanOrEqual(2);
+    });
+
+    it('resolves immediately for an empty array', async () => {
+        const results = await mapWithConcurrency([], 3, async () => {
+            throw new Error('should never be called');
+        });
+        expect(results).toEqual([]);
     });
 });

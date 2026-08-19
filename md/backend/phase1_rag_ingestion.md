@@ -165,6 +165,75 @@
      indirip yeniden açıyor, ilgili üyeyi adm-zip ile çıkarıp `extractDocumentText()`'e veriyor —
      zip çocuklarının kendi `fileKey`'i olmasa da (bkz. `ingestZipEntries`), paragraf yapısını
      koruyan tam yeniden-çıkarma standalone dosyalarla aynı şekilde çalışıyor.
+   - [x] **URL/API — yorumlanmış sentez katmanı** — crawl edilen ham sayfa metni artık
+     olduğu gibi chunk'lanmıyor, üstüne bir yorumlama katmanı ekleniyor: `packages/ai/src/synthesize.js`'deki
+     `synthesizePage()` her sayfa için (sayılar/veriler ne anlama geliyor, sayfa ne işe yarıyor
+     diye yorumlayan) kısa bir paragraf, `synthesizeOverview()` ise sayfalar arası ilişkilendiren
+     tek bir kaynak-geneli özet üretiyor (`gpt-4o-mini`, `classifyAudience()`'la aynı desen,
+     non-fatal — hata olursa o sayfa/overview sentezi atlanır). Bunlar ham per-page segment'lerin
+     YANINA (`metadata.synthesized:true`) ekleniyor — ham metin site-içi yönlendirme ve tam veri
+     erişimi için hâlâ chunk'lanıyor, sentez sadece ek bir katman. `GET /knowledge/:id/chunks`
+     artık `synthesized`/`scope` alanlarını da döndürüyor; Console modalı sentez chunk'larını
+     ayrı bir rozetle üstte, genel özeti ayrı bir kutuda gösteriyor (bkz. `md/web/phase1_console.md`).
+   - [x] **URL/API — tekrar-tarama önleme (link-graph cache)** — bir kaynağın önceki
+     ingestion'ında crawl edilmiş sayfalar `KnowledgeSource.meta.crawlIndex.pages`
+     (`{[url]: {rawText, links}}`) olarak persist ediliyor; bir sonraki ingestion
+     (`extractFromUrl()`'e `previousPages` parametresi) bu URL'leri BİR DAHA ZİYARET ETMİYOR
+     — cache'lenen linkleri kuyruğa ekleyip devam ediyor, `MAX_CRAWL_PAGES` kotası sadece
+     GERÇEKTEN yeni sayfalara harcanıyor. Motivasyon: login olmadan da büyük ölçüde
+     erişilebilen bir site için, demo-oturumu eklenince yapılan re-crawl aynı sayfaları
+     sıfırdan taramak yerine kotayı login-sonrası YENİ URL'lere ayırmalı. Sentez de aynı
+     mekanizmadan faydalanıyor: bir sayfa cache'ten geldiyse VE dili değişmediyse
+     `synthesizePage()` tekrar çağrılmıyor, eski sentez metni (artık `metadata.language`
+     ile etiketli) aynen kullanılıyor. **Bilinçli sınır**: cache'ten reuse edilen bir sayfa
+     `websiteUrl` değişene kadar bir daha asla yeniden taranmıyor — sitede değişiklik olsa
+     bile.
+   - [x] **URL/API — sentez artık ürünün diline uyuyor** — `resolveKnowledgeLanguage()`
+     ürün oluşturma anında (`POST /products` → `syncWebsiteUrlSource()`) henüz hiç Agent
+     olmadığı için ilk crawl hep `'en'` fallback'iyle sentezleniyordu, Agent'ın dili
+     sonradan ayarlansa bile bu asla tekrarlanmıyordu. `reingestAutoUrlSource()`
+     (`products.js`, önceden sadece `demoSession` değişikliğinde kullanılıyordu) artık
+     export ediliyor ve `apps/api/src/routes/agents.js`'den de çağrılıyor: ürünün İLK
+     agent'ı oluşturulunca, veya en-erken-oluşturulan agent'ın `persona.language`'i
+     değişince, URL kaynağı doğru dille yeniden sentezlenmek üzere kuyruğa alınıyor.
+     **Bilinen açık nokta**: gerçek testte dil sorunu tamamen çözülmedi (aşağıdaki
+     fencing-token fix'i muhtemel bir yarış durumunu kapatıyor ama kesin doğrulanmadı) —
+     ancak agent yanıt dilini DEĞİŞTİRMEDİĞİ için (agent kendi `persona.language`'inde
+     konuşuyor, knowledge chunk'ının dili sadece retrieval'da eşleşme kalitesini etkiliyor)
+     kullanıcı bunu blocker olarak görmüyor, düşük öncelikli bilinen sınırlama.
+   - [x] **URL/API — boş/anlamsız içerik (adaptif bekleme)** — `extractPage()`'in eski
+     sabit `waitForTimeout(3000)`'ü, birkaç saniye süren boot/splash-animasyonlu SPA'larda
+     (gerçek örnek: bir müşteri sitesinde ~5sn'lik sahte-terminal intro ekranı) gerçek
+     içerik render olmadan sayfayı yakalıyordu. Yeni `waitForStableContent()`
+     (`apps/worker-ingestion/src/extractors/url.js`) `document.body.innerText` uzunluğunu
+     500ms aralıklarla ölçüp art arda 2 ölçüm aynıysa erken çıkıyor, toplamda
+     `URL_CRAWL_MAX_WAIT_MS` (varsayılan 8000ms) sınırıyla bekliyor — basit sitelerde eski
+     sabit beklemeden bile hızlı, animasyonlu sitelerde gerçek içeriği yakalıyor.
+     `MIN_CONTENT_CHARS` altındaki sayfalar için uyarı logu da eklendi.
+   - [x] **URL/API — client-side routed navigasyon keşfi** — bazı siteler navigasyonu
+     hiç gerçek `<a href>` kullanmadan, `<button>` tıklamalarıyla `history.pushState`
+     client-router'ı üzerinden yapıyor (gerçek bir müşteri sitesinde doğrulandı: nav'da
+     SIFIR anchor elementi vardı, crawler kök sayfadan öteye hiç geçemiyordu). Yeni
+     `discoverClientRoutedLinks()` (`apps/worker-ingestion/src/extractors/url.js`)
+     `<nav>`/`<header>` içindeki, metni kısa (`NAV_DISCOVERY_MAX_TEXT_CHARS`) VE eylem
+     kelimesi içermeyen (`NAV_DISCOVERY_ACTION_WORDS` — "Demo Talep Et", "Gönder", "Satın
+     Al" vb. hariç, yan-etki riski) butonlara tek tek tıklayıp URL değişimini gözlemliyor,
+     değişen her URL'i keşfedilmiş link olarak kaydedip orijinal sayfaya geri dönüyor
+     (`page.goBack()`). `<a href>` linkleriyle birleştirilip normal BFS'e katılıyor.
+     `MAX_NAV_DISCOVERY_CLICKS` (varsayılan 20) ile sınırlı — gerçek bir müşteri sitesinde
+     doğrulandı: 1 sayfadan 8 sayfaya çıktı, hiçbir eylem butonuna yanlışlıkla tıklanmadı.
+   - [x] **Çakışan ingestion job'ları arasında "en son kazanır" garantisi** — ingestion
+     kuyruğunun concurrency'si (3, `apps/worker-ingestion/src/main.js`) yüzünden aynı
+     kaynak için art arda tetiklenen iki ingestion job'ı (ör. ürün oluşturma + hemen
+     ardından ilk Agent oluşturma) paralel çalışıp HANGİSİ SONRA YAZARSA O KAZANMA riski
+     taşıyordu — yeni (doğru dilde) sonuç, eski (İngilizce) job daha geç bitirirse
+     sessizce ezilebiliyordu. Yeni `KnowledgeSource.meta.ingestGeneration` sayacı +
+     `apps/api/src/lib/ingestion.js`'deki `enqueueIngestion()` (her enqueue çağrısı
+     atomik `$inc` ile sayacı artırıp job payload'ına `generation` olarak koyuyor, TÜM
+     ingest-source enqueue call site'ları buraya taşındı) + `handleIngestSource()`'un
+     sonucu yazmadan hemen önce bu sayacı tekrar kontrol etmesi (daha yeni bir job bu
+     arada bitmişse sonucu yazmıyor) — standart fencing-token deseni, hangi job'ın önce
+     bittiğinden bağımsız olarak en son İSTENEN ingestion her zaman kazanıyor.
 
 2. **Ingestion worker** ([`worker-ingestion`](../../apps/worker-ingestion))
    - Extraction by modality (see `handlers/ingest-source.js`):

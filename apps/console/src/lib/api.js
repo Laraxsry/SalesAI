@@ -114,6 +114,10 @@ export const knowledgeApi = {
     downloadUrl: (id) => apiFetch(`/knowledge/${id}/download-url`),
     content: (id) => apiFetch(`/knowledge/${id}/content`),
     chunks: (id) => apiFetch(`/knowledge/${id}/chunks`),
+    gapAnalysis: {
+        trigger: (productId) => apiFetch(`/knowledge/${productId}/gap-analysis`, { method: 'POST' }),
+        list: (productId) => apiFetch(`/knowledge/${productId}/gap-analysis`)
+    },
     uploadUrl: (filename, contentType) =>
         apiFetch('/knowledge/upload-url', { method: 'POST', body: { filename, contentType } }),
     /** Uploads a file straight to storage via a presigned URL (bypasses our API/JSON pipeline). */

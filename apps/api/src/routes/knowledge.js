@@ -1,11 +1,35 @@
 import { Router } from 'express';
 import { validate } from '@repo/validation';
 import { KnowledgeSourceInput, KnowledgeSourceUpdateInput } from '@repo/contracts';
-import { KnowledgeSource, KnowledgeChunk, Product, Membership } from '@repo/database';
-import { enqueue, QUEUES } from '@repo/queue';
+import { KnowledgeSource, KnowledgeChunk, KnowledgeGapReport, Product, Membership } from '@repo/database';
+import { enqueueIngestion } from '../lib/ingestion.js';
 import { requireAuth } from '@repo/auth';
+import { can } from '@repo/access';
+import { enqueue, QUEUES } from '@repo/queue';
 import { presignUpload, presignDownload } from '@repo/storage';
 import { shortId } from '@repo/utils';
+
+// Kaynak (source) değil, ÜRÜN (product) bazlı — istekte bulunan kullanıcının
+// bu ürünün workspace'ine üye olup olmadığını (ve rolünü) çözer. GAP analizi
+// gerçek para maliyeti olan (LLM) ve kota'ya tabi bir işlem tetiklediği için
+// bu dosyanın diğer birçok endpoint'inde olmayan (bkz. `GET /:productId`)
+// bir üyelik+rol kontrolü burada bilinçli olarak var.
+async function loadOwnedProduct(productId, userId) {
+    const product = await Product.findById(productId).select('workspaceId');
+    if (!product) return { product: null, membership: null };
+    const membership = await Membership.findOne({ workspaceId: product.workspaceId, userId });
+    return { product, membership };
+}
+
+// TODO(gap-analysis quota): geliştirme aşamasında kullanıcı isteğiyle
+// KALDIRILDI (2026-08-19) — bir önceki halinde başarısız (status:'failed')
+// bir rapor bile kotadan düşüyordu (sayım sadece createdAt'e bakıyordu,
+// status'a bakmıyordu), bu da bir LLM hatasından sonra kullanıcının o gün
+// bir daha hiç deneyemediği bir durağa sokuyordu. Ürün olgunlaştığında
+// kota GERİ EKLENECEK — o zaman sadece status:'ready' (gerçekten
+// tamamlanmış) raporları saymalı, `failed` denemeler kullanıcının hakkını
+// yemesin.
+const GAP_ANALYSIS_DAILY_LIMIT = Infinity;
 
 export const knowledgeRouter = Router();
 
@@ -66,11 +90,7 @@ knowledgeRouter.post(
     async (req, res, next) => {
         try {
             const source = await KnowledgeSource.create({ ...req.body, status: 'pending' });
-            await enqueue(QUEUES.INGESTION, 'ingest-source', {
-                sourceId: String(source._id),
-                productId: req.body.productId,
-                type: req.body.type
-            });
+            await enqueueIngestion(source._id, req.body.productId, { type: req.body.type });
             res.status(201).json({ id: String(source._id), status: source.status });
         } catch (err) {
             next(err);
@@ -87,6 +107,87 @@ knowledgeRouter.get('/:productId', requireAuth, async (req, res, next) => {
             status: { $ne: 'disabled' }
         }).sort({ createdAt: -1 });
         res.json(sources);
+    } catch (err) {
+        next(err);
+    }
+});
+
+/**
+ * POST /knowledge/:productId/gap-analysis
+ *
+ * Proaktif knowledge GAP analizini tetikler — ürünün TÜM 'ready' knowledge
+ * kaynaklarını (bkz. `analyzeKnowledgeGaps()`,
+ * `apps/worker-general/src/handlers/analyze-knowledge-gaps.js`) tek bir LLM
+ * çağrısıyla karşılaştırıp tutarsızlık/yetersiz-detay/eksik-konu bulguları
+ * üretir. `GET /analytics/knowledge-gaps` (ziyaretçinin cevaplanamayan
+ * sorularının aggregation'ı, reaktif) ile KARIŞTIRILMAMALI — bu tamamen
+ * ayrı, proaktif bir özellik.
+ *
+ * Kota: şu an DEVRE DIŞI (`GAP_ANALYSIS_DAILY_LIMIT`, bkz. yukarısı) —
+ * geliştirme aşamasında kullanıcı isteğiyle kaldırıldı, ileride geri
+ * eklenecek. Alt yapı (son 24 saatteki `KnowledgeGapReport` sayısına
+ * bakma) hâlâ burada, sadece limit `Infinity`.
+ */
+knowledgeRouter.post('/:productId/gap-analysis', requireAuth, async (req, res, next) => {
+    try {
+        const { product, membership } = await loadOwnedProduct(req.params.productId, req.user.sub);
+        if (!product) return res.status(404).json({ error: 'Product not found' });
+        if (!membership) return res.status(403).json({ error: 'Not a member of this workspace' });
+        if (!can(membership.role, 'knowledge:analyze')) {
+            return res.status(403).json({ error: 'Forbidden', required: 'knowledge:analyze' });
+        }
+
+        const since = new Date(Date.now() - 24 * 60 * 60 * 1000);
+        const recentCount = await KnowledgeGapReport.countDocuments({
+            productId: product._id,
+            createdAt: { $gte: since }
+        });
+        if (recentCount >= GAP_ANALYSIS_DAILY_LIMIT) {
+            return res.status(429).json({
+                error: `Günlük analiz hakkınız doldu (limit: ${GAP_ANALYSIS_DAILY_LIMIT}/gün)`,
+                retryAfter: since.toISOString()
+            });
+        }
+
+        const report = await KnowledgeGapReport.create({
+            productId: product._id,
+            requestedBy: req.user.sub,
+            status: 'processing'
+        });
+        await enqueue(QUEUES.GENERAL, 'analyze-knowledge-gaps', {
+            reportId: String(report._id),
+            productId: String(product._id)
+        });
+
+        res.status(201).json({ id: String(report._id), status: report.status });
+    } catch (err) {
+        next(err);
+    }
+});
+
+/**
+ * GET /knowledge/:productId/gap-analysis
+ *
+ * Son GAP raporlarını (en yeni önce) + `canRequestNow` (günlük kota dolu
+ * mu) döndürür — Console'daki "Analiz Et" butonunun disabled durumu
+ * buradan okunuyor.
+ */
+knowledgeRouter.get('/:productId/gap-analysis', requireAuth, async (req, res, next) => {
+    try {
+        const { product, membership } = await loadOwnedProduct(req.params.productId, req.user.sub);
+        if (!product) return res.status(404).json({ error: 'Product not found' });
+        if (!membership) return res.status(403).json({ error: 'Not a member of this workspace' });
+
+        const since = new Date(Date.now() - 24 * 60 * 60 * 1000);
+        const [reports, recentCount] = await Promise.all([
+            KnowledgeGapReport.find({ productId: product._id }).sort({ createdAt: -1 }).limit(10),
+            KnowledgeGapReport.countDocuments({ productId: product._id, createdAt: { $gte: since } })
+        ]);
+
+        res.json({
+            reports,
+            canRequestNow: recentCount < GAP_ANALYSIS_DAILY_LIMIT && can(membership.role, 'knowledge:analyze')
+        });
     } catch (err) {
         next(err);
     }
@@ -214,7 +315,9 @@ knowledgeRouter.get('/:id/content', requireAuth, async (req, res, next) => {
  * (`metadata.pageUrl`, set per-segment by `handleIngestSource()`/
  * `extractFromUrl()`) instead of showing one undifferentiated crawl blob,
  * and to let a seller see exactly what the agent will retrieve (and how
- * it was classified: general vs. technical).
+ * it was classified: general vs. technical). `synthesized`/`scope` flag the
+ * interpretive per-page and cross-page overview chunks added alongside the
+ * raw ones (see `synthesizePage()`/`synthesizeOverview()` in `@repo/ai`).
  */
 knowledgeRouter.get('/:id/chunks', requireAuth, async (req, res, next) => {
     try {
@@ -230,7 +333,9 @@ knowledgeRouter.get('/:id/chunks', requireAuth, async (req, res, next) => {
                 id: String(c._id),
                 text: c.text,
                 audience: c.audience,
-                pageUrl: c.metadata?.pageUrl
+                pageUrl: c.metadata?.pageUrl,
+                synthesized: !!c.metadata?.synthesized,
+                scope: c.metadata?.scope
             }))
         );
     } catch (err) {
@@ -276,11 +381,7 @@ knowledgeRouter.patch(
                         'meta.frameCaptionCount': ''
                     }
                 });
-                await enqueue(QUEUES.INGESTION, 'ingest-source', {
-                    sourceId: String(source._id),
-                    productId: String(source.productId),
-                    type: source.type
-                });
+                await enqueueIngestion(source._id, source.productId, { type: source.type });
                 return res.json({ ok: true, status: 'pending' });
             }
 

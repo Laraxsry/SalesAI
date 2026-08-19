@@ -20,6 +20,15 @@ const PROVIDER_FACTORIES = {
  * callers that need one specific provider (e.g. golden-set eval scripts
  * comparing providers) keep working unchanged.
  *
+ * `complete()` accepts an optional `timeoutMs` that overrides the per-attempt
+ * timeout. The 10s default suits a short conversational turn, but bulk
+ * reviewers (the knowledge audit) send several thousand characters and ask for
+ * a structured answer about each one — measured at 20s for an eight-chunk
+ * group. Under the default those calls are cancelled mid-flight, both
+ * providers "fail", and the caller sees a generic
+ * "All providers failed for capability llm" with no hint that nothing was
+ * actually wrong except the clock.
+ *
  * @param {string} [name]
  */
 export function getLLM(name) {
@@ -27,10 +36,11 @@ export function getLLM(name) {
 
     const chain = (process.env.LLM_FALLBACK_CHAIN || 'openai,anthropic').split(',');
     return {
-        complete: (input) =>
+        complete: ({ timeoutMs, ...input }) =>
             withFallback({
                 capability: 'llm',
                 providers: chain,
+                timeoutMs,
                 invoke: (providerName) => PROVIDER_FACTORIES[providerName]().complete(input)
             })
     };

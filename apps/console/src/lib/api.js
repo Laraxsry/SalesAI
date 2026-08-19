@@ -118,7 +118,15 @@ export const knowledgeApi = {
         const res = await fetch(url, { method: 'PUT', body: file, headers: { 'Content-Type': file.type } });
         if (!res.ok) throw new Error('Dosya yüklenemedi');
         return { fileKey, mimeType: file.type };
-    }
+    },
+    startAudit: (productId) => apiFetch(`/knowledge/${productId}/audit`, { method: 'POST' }),
+    audits: (productId) => apiFetch(`/knowledge/${productId}/audits`),
+    audit: (auditId) => apiFetch(`/knowledge/audit/${auditId}`),
+    applyAudit: (auditId, { approvedKeys, rejectedKeys }) =>
+        apiFetch(`/knowledge/audit/${auditId}/apply`, {
+            method: 'POST',
+            body: { approvedKeys, rejectedKeys }
+        })
 };
 
 export const agentsApi = {

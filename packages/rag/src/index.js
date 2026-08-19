@@ -1,6 +1,7 @@
 export { chunkText } from './chunk.js';
 export { ingestSource } from './ingest.js';
-export { retrieve } from './retrieve.js';
+export { retrieve, invalidateProductCache } from './retrieve.js';
+export { runKnowledgeAudit, applyAuditFindings } from './audit/index.js';
 export { getVectorStore } from './stores/index.js';
 // Phase 7 — chaos testing (scripts/chaos-test.js) needs to seed/clean up a
 // throwaway chunk in one specific store directly, bypassing getVectorStore()'s

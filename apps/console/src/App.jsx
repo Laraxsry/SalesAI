@@ -13,6 +13,7 @@ const Overview = lazy(() => import('./pages/Overview.jsx').then((m) => ({ defaul
 const ProductDetail = lazy(() => import('./pages/ProductDetail.jsx').then((m) => ({ default: m.ProductDetail })));
 const Knowledge = lazy(() => import('./pages/Knowledge.jsx').then((m) => ({ default: m.Knowledge })));
 const KnowledgeGaps = lazy(() => import('./pages/KnowledgeGaps.jsx').then((m) => ({ default: m.KnowledgeGaps })));
+const KnowledgeAudit = lazy(() => import('./pages/KnowledgeAudit.jsx').then((m) => ({ default: m.KnowledgeAudit })));
 const Agents = lazy(() => import('./pages/Agents.jsx').then((m) => ({ default: m.Agents })));
 const AgentDetail = lazy(() => import('./pages/AgentDetail.jsx').then((m) => ({ default: m.AgentDetail })));
 const AgentSessions = lazy(() => import('./pages/AgentSessions.jsx').then((m) => ({ default: m.AgentSessions })));
@@ -171,6 +172,7 @@ export function App() {
                                 <Route path="/products/:id" element={<ProductDetail />} />
                                 <Route path="/knowledge" element={<Knowledge />} />
                                 <Route path="/knowledge/gaps" element={<KnowledgeGaps />} />
+                                <Route path="/knowledge/audit" element={<KnowledgeAudit />} />
                                 <Route path="/agents" element={<Agents />} />
                                 <Route path="/agents/:id" element={<AgentDetail />} />
                                 <Route path="/agents/:id/sessions" element={<AgentSessions />} />

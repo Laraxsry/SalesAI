@@ -8,6 +8,7 @@
   },
   "scripts": {
     "lint": "eslint .",
+    "test": "vitest run",
     "eval": "node scripts/eval.js"
   },
   "dependencies": {
@@ -21,6 +22,8 @@
   },
   "devDependencies": {
     "@repo/eslint-config": "*",
-    "eslint": "^9.17.0"
+    "@repo/testing": "*",
+    "eslint": "^9.17.0",
+    "vitest": "^4.1.10"
   }
 }

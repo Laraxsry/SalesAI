@@ -6,6 +6,7 @@ import { analyzeSession } from './handlers/analyze-session.js';
 import { rollupAnalytics } from './handlers/rollup-analytics.js';
 import { purgeExpiredData } from './handlers/purge-expired-data.js';
 import { dispatchWebhooks } from './handlers/dispatch-webhooks.js';
+import { runKnowledgeAudit } from '@repo/rag';
 
 async function main() {
     await connectDB();
@@ -99,6 +100,14 @@ async function main() {
             // Phase 4: Webhook/CRM push — her lead.captured olayında tetiklenir
             case 'dispatch-webhooks':
                 await dispatchWebhooks(job.data);
+                return;
+
+            // Knowledge audit — console'dan elle tetiklenir (POST /knowledge/:productId/audit).
+            // Ürünün tüm chunk'larını tarayıp fazlalık/çelişki/çöp bulgularını
+            // *öneri* olarak yazar; hiçbir şey operatör onaylamadan vector
+            // store'a dokunmaz (bkz. @repo/rag audit/index.js).
+            case 'audit-knowledge':
+                await runKnowledgeAudit(job.data);
                 return;
 
             default:

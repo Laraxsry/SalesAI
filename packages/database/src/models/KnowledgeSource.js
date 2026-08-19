@@ -5,7 +5,9 @@ const KnowledgeSourceSchema = new Schema(
         productId: { type: Schema.Types.ObjectId, ref: 'Product', required: true, index: true },
         type: {
             type: String,
-            enum: ['text', 'document', 'image', 'video', 'url', 'api'],
+            // 'curated' is not uploaded by anyone — it is the synthetic source
+            // that owns the chunks a knowledge audit wrote (see @repo/rag audit).
+            enum: ['text', 'document', 'image', 'video', 'url', 'api', 'curated'],
             required: true
         },
         title: { type: String },

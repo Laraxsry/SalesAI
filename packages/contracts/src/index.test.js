@@ -4,7 +4,11 @@ import {
     EmbedConfigInput,
     EmbedSessionInput,
     isValidEmbedDomainPattern,
-    matchesEmbedDomain
+    matchesEmbedDomain,
+    PlaybookNodeInput,
+    PlaybookInput,
+    normalizePlaybook,
+    isTourNavigableUrl
 } from './index.js';
 
 /**
@@ -186,5 +190,150 @@ describe('EmbedSessionInput', () => {
     it('rejects a non-URL pageUrl', () => {
         const result = EmbedSessionInput.safeParse({ pageUrl: 'not-a-url' });
         expect(result.success).toBe(false);
+    });
+});
+
+/**
+ * PlaybookNodeInput / PlaybookInput are the API boundary for POST
+ * /agents/:id/playbook — see md/backend/agent_flow.md. The `url` field feeds
+ * the same guided-tour trust root as ProductInput.websiteUrl, so it carries
+ * the identical SSRF-safety refinement.
+ */
+describe('PlaybookNodeInput', () => {
+    const base = { id: 'n1', order: 1, directive: 'Şirketi kısaca tanıt' };
+
+    it('accepts a minimal node and defaults url/attach to null, mode to situational', () => {
+        const result = PlaybookNodeInput.safeParse(base);
+        expect(result.success).toBe(true);
+        expect(result.data.url).toBeNull();
+        expect(result.data.attach).toBeNull();
+        expect(result.data.mode).toBe('situational');
+    });
+
+    it('accepts a full node with url, attach, and an explicit mode', () => {
+        const result = PlaybookNodeInput.safeParse({
+            ...base,
+            url: 'https://demo.salesai.example/reports',
+            attach: 'Rapor Ekle butonu',
+            mode: 'important'
+        });
+        expect(result.success).toBe(true);
+        expect(result.data.mode).toBe('important');
+    });
+
+    it('rejects an empty directive', () => {
+        const result = PlaybookNodeInput.safeParse({ ...base, directive: '' });
+        expect(result.success).toBe(false);
+    });
+
+    it('rejects a directive that is only whitespace', () => {
+        const result = PlaybookNodeInput.safeParse({ ...base, directive: '   ' });
+        expect(result.success).toBe(false);
+    });
+
+    it('rejects an unsafe url (private IP), same guard as ProductInput.websiteUrl', () => {
+        const result = PlaybookNodeInput.safeParse({ ...base, url: 'http://169.254.169.254/latest/meta-data/' });
+        expect(result.success).toBe(false);
+    });
+
+    it('rejects an unknown mode', () => {
+        const result = PlaybookNodeInput.safeParse({ ...base, mode: 'always' });
+        expect(result.success).toBe(false);
+    });
+});
+
+describe('PlaybookInput', () => {
+    it('defaults to an empty, enabled playbook', () => {
+        const result = PlaybookInput.safeParse({});
+        expect(result.success).toBe(true);
+        expect(result.data.nodes).toEqual([]);
+        expect(result.data.enabled).toBe(true);
+    });
+
+    it('caps nodes at 40', () => {
+        const nodes = Array.from({ length: 41 }, (_, i) => ({
+            id: `n${i}`,
+            order: i + 1,
+            directive: `Adım ${i}`
+        }));
+        const result = PlaybookInput.safeParse({ nodes });
+        expect(result.success).toBe(false);
+    });
+});
+
+describe('normalizePlaybook', () => {
+    it('sorts by order and renumbers densely from 1', () => {
+        const result = normalizePlaybook([
+            { id: 'c', order: 30, directive: 'Üçüncü' },
+            { id: 'a', order: 1, directive: 'Birinci' },
+            { id: 'b', order: 10, directive: 'İkinci' }
+        ]);
+        expect(result.map((n) => n.id)).toEqual(['a', 'b', 'c']);
+        expect(result.map((n) => n.order)).toEqual([1, 2, 3]);
+    });
+
+    it('drops nodes with a blank or missing directive', () => {
+        const result = normalizePlaybook([
+            { id: 'a', order: 1, directive: 'Kalır' },
+            { id: 'b', order: 2, directive: '   ' },
+            { id: 'c', order: 3 }
+        ]);
+        expect(result.map((n) => n.id)).toEqual(['a']);
+    });
+
+    it('trims the directive and normalizes empty attach/url to null', () => {
+        const result = normalizePlaybook([
+            { id: 'a', order: 1, directive: '  Boşluklu  ', url: '', attach: '  ' }
+        ]);
+        expect(result[0].directive).toBe('Boşluklu');
+        expect(result[0].url).toBeNull();
+        expect(result[0].attach).toBeNull();
+    });
+
+    it('defaults a missing mode to situational', () => {
+        const result = normalizePlaybook([{ id: 'a', order: 1, directive: 'x' }]);
+        expect(result[0].mode).toBe('situational');
+    });
+
+    it('returns an empty array for an empty or undefined input', () => {
+        expect(normalizePlaybook([])).toEqual([]);
+        expect(normalizePlaybook()).toEqual([]);
+    });
+});
+
+/**
+ * isTourNavigableUrl must agree with @repo/screen's trustKey (registrable
+ * domain via tldts), not raw hostname comparison — see
+ * packages/screen/src/cobrowse.test.js for the cross-package agreement test.
+ * demo.salesai.example and www.salesai.example intentionally share one
+ * registrable domain here, mirroring the real Cyberverse reference scenario
+ * (demo.cyberverse.com.tr / www.cyberverse.com.tr).
+ */
+describe('isTourNavigableUrl', () => {
+    const product = { websiteUrl: 'https://www.salesai.example', tourAllowedDomains: [] };
+
+    it('allows a URL on the product website itself', () => {
+        expect(isTourNavigableUrl('https://www.salesai.example/pricing', product)).toBe(true);
+    });
+
+    it('allows a subdomain that shares the same registrable domain — no allowlist entry needed', () => {
+        expect(isTourNavigableUrl('https://demo.salesai.example/reports', product)).toBe(true);
+    });
+
+    it('rejects an unrelated domain', () => {
+        expect(isTourNavigableUrl('https://untrusted.example/', product)).toBe(false);
+    });
+
+    it('allows a domain only present in tourAllowedDomains', () => {
+        const withAllowlist = { ...product, tourAllowedDomains: ['partner.example'] };
+        expect(isTourNavigableUrl('https://partner.example/demo', withAllowlist)).toBe(true);
+    });
+
+    it('rejects an unsafe URL (private IP) even if it would otherwise match', () => {
+        expect(isTourNavigableUrl('http://127.0.0.1/', { websiteUrl: 'http://127.0.0.1' })).toBe(false);
+    });
+
+    it('rejects when no websiteUrl or allowlist is configured', () => {
+        expect(isTourNavigableUrl('https://www.salesai.example/pricing', {})).toBe(false);
     });
 });

@@ -138,7 +138,9 @@ export const agentsApi = {
     remove: (id) => apiFetch(`/agents/${id}`, { method: 'DELETE' }),
     sessions: (id) => apiFetch(`/agents/${id}/sessions`),
     getEmbed: (id) => apiFetch(`/agents/${id}/embed`),
-    saveEmbed: (id, payload) => apiFetch(`/agents/${id}/embed`, { method: 'POST', body: payload })
+    saveEmbed: (id, payload) => apiFetch(`/agents/${id}/embed`, { method: 'POST', body: payload }),
+    getPlaybook: (id) => apiFetch(`/agents/${id}/playbook`),
+    savePlaybook: (id, payload) => apiFetch(`/agents/${id}/playbook`, { method: 'POST', body: payload })
 };
 
 export const leadsApi = {

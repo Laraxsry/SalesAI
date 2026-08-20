@@ -1,4 +1,5 @@
 import { z } from 'zod';
+import { getDomain } from 'tldts';
 
 /**
  * Returns 4, 6, or 0 (not an IP literal) — a browser-safe stand-in for
@@ -355,6 +356,111 @@ export const EmbedConfigInput = z.object({
         .default({}),
     domains: z.array(EmbedDomainPattern).max(20).default([])
 });
+
+// ─── Playbook (guided presentation flow) ──────────────────────
+// One agent, one ordered list of steps the agent walks a visitor through.
+// See md/backend/agent_flow.md for why this is a flat list and not a graph.
+
+export const PlaybookNodeMode = z.enum(['important', 'situational', 'skip-if-no-answer']);
+
+export const PlaybookNodeInput = z.object({
+    id: z.string().min(1).max(64),
+    order: z.number().int().min(1),
+    /** Page to put on screen for this step. Null means "stay on whatever is
+     *  showing" — and if nothing is showing, the agent simply talks. */
+    url: z
+        .string()
+        .refine(isSafeProductUrl, { message: 'must be a public http(s) URL' })
+        .nullable()
+        .default(null),
+    /** The marketer's private note about what to cover. Never spoken verbatim —
+     *  the worker wraps it before the model ever sees it (see wrapDirective). */
+    directive: z.string().trim().min(1).max(600),
+    /** Natural-language description of an element to click, e.g. "Rapor Ekle
+     *  butonu". Resolved at runtime by the model, not by a stored selector. */
+    attach: z.string().trim().max(200).nullable().default(null),
+    mode: PlaybookNodeMode.default('situational')
+});
+
+export const PlaybookInput = z.object({
+    nodes: z.array(PlaybookNodeInput).max(40).default([]),
+    enabled: z.boolean().default(true)
+});
+
+/**
+ * Turns the authored form into the executable form: drop steps with no
+ * directive, sort by the order given, then renumber 1..N so the stored order
+ * is always dense and canonical regardless of what the editor sent.
+ *
+ * This is the single place that translation happens, and it is deliberately a
+ * named function rather than an extra stored field: today the authored and
+ * executable forms are identical, so a second copy would only be a second
+ * source of truth to fall out of sync. When a visual canvas arrives, its
+ * compiler replaces this body — callers and the worker stay unchanged.
+ *
+ * @param {Array<object>} nodes
+ * @returns {Array<object>}
+ */
+export function normalizePlaybook(nodes = []) {
+    return nodes
+        .filter((n) => n && typeof n.directive === 'string' && n.directive.trim().length > 0)
+        .slice()
+        .sort((a, b) => (a.order ?? 0) - (b.order ?? 0))
+        .map((n, i) => ({
+            ...n,
+            order: i + 1,
+            directive: n.directive.trim(),
+            url: n.url || null,
+            attach: n.attach?.trim() || null,
+            mode: n.mode || 'situational'
+        }));
+}
+
+/**
+ * Whether the guided tour would actually be allowed to navigate to `url`.
+ *
+ * MUST stay in agreement with `trustKey` in @repo/screen's cobrowse.js, which
+ * compares **registrable domains** via tldts — not hostnames. That distinction
+ * is not cosmetic: `demo.cyberverse.com.tr` and `www.cyberverse.com.tr` share
+ * one registrable domain, so a naive hostname or `endsWith` comparison would
+ * reject a demo subdomain the runtime navigates to happily. `.com.tr` is a
+ * multi-label public suffix, so this cannot be hand-rolled correctly.
+ *
+ * Checked in the editor as the marketer types, so a bad address is caught
+ * there rather than in front of a customer mid-call; the API re-checks on save
+ * because an allowlist can change after a playbook was written.
+ *
+ * @param {string} url
+ * @param {{ websiteUrl?: string, tourAllowedDomains?: string[] }} product
+ */
+export function isTourNavigableUrl(url, { websiteUrl, tourAllowedDomains = [] } = {}) {
+    if (!isSafeProductUrl(url)) return false;
+    const key = registrableKey(url);
+    if (!key) return false;
+
+    const trusted = new Set();
+    if (websiteUrl) {
+        const k = registrableKey(websiteUrl);
+        if (k) trusted.add(k);
+    }
+    for (const domain of tourAllowedDomains) {
+        // Allowlist entries are bare domains, not URLs — give tldts a parsable
+        // input rather than relying on it to guess.
+        const k = registrableKey(/^https?:\/\//i.test(domain) ? domain : `https://${domain}`);
+        if (k) trusted.add(k);
+    }
+    return trusted.has(key);
+}
+
+function registrableKey(value) {
+    let parsed;
+    try {
+        parsed = new URL(value);
+    } catch {
+        return null;
+    }
+    return getDomain(value, { allowPrivateDomains: true }) || parsed.origin;
+}
 
 // ─── RAG retrieval ────────────────────────────────────────────
 export const RetrievalQuery = z.object({

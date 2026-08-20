@@ -5,6 +5,7 @@ export { Product } from './Product.js';
 export { KnowledgeSource } from './KnowledgeSource.js';
 export { KnowledgeChunk } from './KnowledgeChunk.js';
 export { Agent } from './Agent.js';
+export { Playbook } from './Playbook.js';
 export { ShareLink } from './ShareLink.js';
 export { Session } from './Session.js';
 export { Message } from './Message.js';

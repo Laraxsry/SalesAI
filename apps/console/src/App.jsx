@@ -16,6 +16,7 @@ const KnowledgeGaps = lazy(() => import('./pages/KnowledgeGaps.jsx').then((m) =>
 const Agents = lazy(() => import('./pages/Agents.jsx').then((m) => ({ default: m.Agents })));
 const AgentDetail = lazy(() => import('./pages/AgentDetail.jsx').then((m) => ({ default: m.AgentDetail })));
 const AgentSessions = lazy(() => import('./pages/AgentSessions.jsx').then((m) => ({ default: m.AgentSessions })));
+const AgentGoals = lazy(() => import('./pages/AgentGoals.jsx').then((m) => ({ default: m.AgentGoals })));
 const EmbedStudio = lazy(() => import('./pages/EmbedStudio.jsx').then((m) => ({ default: m.EmbedStudio })));
 const Analytics = lazy(() => import('./pages/Analytics.jsx').then((m) => ({ default: m.Analytics })));
 const Leads = lazy(() => import('./pages/Leads.jsx').then((m) => ({ default: m.Leads })));
@@ -173,6 +174,7 @@ export function App() {
                                 <Route path="/knowledge/gaps" element={<KnowledgeGaps />} />
                                 <Route path="/agents" element={<Agents />} />
                                 <Route path="/agents/:id" element={<AgentDetail />} />
+                                <Route path="/agents/:id/goals" element={<AgentGoals />} />
                                 <Route path="/agents/:id/sessions" element={<AgentSessions />} />
                                 <Route path="/agents/:id/embed" element={<EmbedStudio />} />
                                 <Route path="/analytics" element={<Analytics />} />

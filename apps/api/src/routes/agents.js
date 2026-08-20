@@ -1,7 +1,14 @@
 import { Router } from 'express';
 import { validate } from '@repo/validation';
-import { AgentConfigInput, AgentUpdateInput, EmbedConfigInput } from '@repo/contracts';
-import { Agent, ShareLink, Product, Message, Session, EmbedConfig, EmbedDomain } from '@repo/database';
+import {
+    AgentConfigInput,
+    AgentUpdateInput,
+    EmbedConfigInput,
+    PlaybookInput,
+    normalizePlaybook,
+    isTourNavigableUrl
+} from '@repo/contracts';
+import { Agent, ShareLink, Product, Message, Session, EmbedConfig, EmbedDomain, Playbook } from '@repo/database';
 import { requireAuth } from '@repo/auth';
 import { shareToken, buildEmbedSnippet, logAudit, extractRequestMeta, AUDIT_ACTIONS } from '@repo/utils';
 import { retrieve } from '@repo/rag';
@@ -346,6 +353,88 @@ agentsRouter.post('/:id/embed', requireAuth, validate({ body: EmbedConfigInput }
             sdkVersion: getSdkVersion()
         });
         res.json({ ...embedConfig.toObject(), domains: allowlist, snippet });
+    } catch (err) {
+        next(err);
+    }
+});
+
+/**
+ * The agent's presentation route — see md/backend/agent_flow.md. One
+ * Playbook per agent; GET returns schema defaults (200, not 404) when none
+ * has been saved yet, same convention as GET /:id/embed, so the editor can
+ * always render a blank list to start from. Also returns the product's
+ * `websiteUrl`/`tourAllowedDomains` so the console can validate a step's URL
+ * against the exact same trust root the server will re-check on save,
+ * without a second request.
+ */
+agentsRouter.get('/:id/playbook', requireAuth, async (req, res, next) => {
+    try {
+        const agent = await Agent.findById(req.params.id);
+        if (!agent) return res.status(404).json({ error: 'Agent not found' });
+
+        const [doc, product] = await Promise.all([
+            Playbook.findOne({ agentId: agent._id }),
+            Product.findById(agent.productId)
+        ]);
+
+        const playbook = (doc || new Playbook({ agentId: agent._id })).toObject();
+        res.json({
+            ...playbook,
+            product: {
+                websiteUrl: product?.websiteUrl || null,
+                tourAllowedDomains: product?.tourAllowedDomains || []
+            }
+        });
+    } catch (err) {
+        next(err);
+    }
+});
+
+/**
+ * Save the agent's playbook. Upsert semantics: the body's `nodes` is the new
+ * complete route, normalized (sorted, densely renumbered, blank steps
+ * dropped — see normalizePlaybook) before it's stored. Every step's `url` is
+ * re-checked against the product's trust root server-side — never trust the
+ * client-side check alone, since the allowlist can change after a playbook
+ * was written. `version` is bumped on every save so a session's transcript
+ * can record exactly which revision it ran against.
+ */
+agentsRouter.post('/:id/playbook', requireAuth, validate({ body: PlaybookInput }), async (req, res, next) => {
+    try {
+        const agent = await Agent.findById(req.params.id);
+        if (!agent) return res.status(404).json({ error: 'Agent not found' });
+
+        const product = await Product.findById(agent.productId);
+        if (!product) return res.status(404).json({ error: 'Product not found' });
+
+        const nodes = normalizePlaybook(req.body.nodes);
+        const badIndex = nodes.findIndex((n) => n.url && !isTourNavigableUrl(n.url, product));
+        if (badIndex !== -1) {
+            return res.status(422).json({
+                error: `Step ${badIndex + 1}: URL is outside the product's allowed domains`,
+                index: badIndex
+            });
+        }
+
+        // $inc against a field that also carries a schema `default` can be
+        // rejected by Mongoose on the insert branch of an upsert, so the new
+        // version number is computed explicitly instead (read-then-write;
+        // playbook saves are an infrequent, editor-driven operation, not a
+        // hot path where the extra round trip matters).
+        const existing = await Playbook.findOne({ agentId: agent._id }, 'version').lean();
+        const doc = await Playbook.findOneAndUpdate(
+            { agentId: agent._id },
+            { $set: { nodes, enabled: req.body.enabled !== false, version: (existing?.version || 0) + 1 } },
+            { new: true, upsert: true, setDefaultsOnInsert: true }
+        );
+
+        res.json({
+            ...doc.toObject(),
+            product: {
+                websiteUrl: product.websiteUrl || null,
+                tourAllowedDomains: product.tourAllowedDomains || []
+            }
+        });
     } catch (err) {
         next(err);
     }

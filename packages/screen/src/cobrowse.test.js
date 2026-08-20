@@ -1,5 +1,6 @@
 import { describe, it, expect, vi } from 'vitest';
 import { trustKey, assertHttpUrl, authRouteKey, GuidedTour } from './cobrowse.js';
+import { isTourNavigableUrl } from '@repo/contracts';
 
 /**
  * trustKey/assertHttpUrl are the pure core of the guided tour's SSRF guard.
@@ -26,6 +27,29 @@ describe('trustKey', () => {
     it('returns null for an unparseable URL', () => {
         expect(trustKey('not a url')).toBeNull();
         expect(trustKey('')).toBeNull();
+    });
+});
+
+/**
+ * @repo/contracts' isTourNavigableUrl is the editor-side check the playbook
+ * feature runs as a marketer types a URL — it must agree with this module's
+ * own trustKey, or a step that the editor accepts would fail here mid-call
+ * (or worse, the editor would reject a step the runtime would have allowed).
+ * Both are eTLD+1-based via tldts; this pins that agreement down directly
+ * rather than trusting two independent implementations to stay in sync.
+ */
+describe('isTourNavigableUrl agrees with trustKey', () => {
+    const product = { websiteUrl: 'https://www.cyberverse.example', tourAllowedDomains: ['partner.example'] };
+    const trustedKeys = new Set([trustKey(product.websiteUrl), trustKey('https://partner.example')]);
+
+    it.each([
+        ['same domain as websiteUrl', 'https://www.cyberverse.example/landing'],
+        ['a subdomain sharing the registrable domain', 'https://demo.cyberverse.example/reports'],
+        ['a domain only in tourAllowedDomains', 'https://partner.example/demo'],
+        ['an unrelated domain', 'https://untrusted.example/'],
+        ['a private IP', 'http://127.0.0.1/']
+    ])('%s: isTourNavigableUrl matches trustKey membership', (_label, url) => {
+        expect(isTourNavigableUrl(url, product)).toBe(trustedKeys.has(trustKey(url)));
     });
 });
 
@@ -104,6 +128,35 @@ function makeTour(page) {
     tour.page = page;
     return tour;
 }
+
+describe('GuidedTour#requiresDemoLogin', () => {
+    it('requires login when the first destination is the demo login domain', () => {
+        const tour = new GuidedTour({
+            startUrl: 'https://www.cyberverse.example',
+            auth: { loginUrl: 'https://demo.cyberverse.example/login', username: 'demo', password: 'x' }
+        });
+        expect(tour.requiresDemoLogin('https://demo.cyberverse.example/dashboard')).toBe(true);
+    });
+
+    it('skips login when the first destination is the public site, not the demo domain', () => {
+        const tour = new GuidedTour({
+            startUrl: 'https://www.cyberverse.example',
+            auth: { loginUrl: 'https://demo.cyberverse.example/login', username: 'demo', password: 'x' }
+        });
+        expect(tour.requiresDemoLogin('https://www.cyberverse.example/?p=solutions')).toBe(false);
+    });
+
+    it('falls back to startUrl for both sides when no explicit loginUrl/targetUrl is given', () => {
+        // Matches loginWithCredentials' own fallback (auth.loginUrl || fallbackUrl):
+        // a demoSession without a separate loginUrl logs in at startUrl itself,
+        // so an open() with no known first destination yet must still gate in.
+        const tour = new GuidedTour({
+            startUrl: 'https://demo.cyberverse.example',
+            auth: { username: 'demo', password: 'x' }
+        });
+        expect(tour.requiresDemoLogin()).toBe(true);
+    });
+});
 
 describe('GuidedTour#goto', () => {
     it('resolves an in-app relative path against the current page before navigating', async () => {

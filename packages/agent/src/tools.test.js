@@ -33,7 +33,8 @@ describe('buildTools', () => {
             'read_customer_screen',
             'stop_screen_share',
             'read_tour_screen',
-            'save_contact_info'
+            'save_contact_info',
+            'advance_step'
         ]);
         for (const tool of tools) {
             expect(typeof tool.description).toBe('string');
@@ -135,6 +136,24 @@ describe('buildTools', () => {
         it('falls back to { ok: false } when stopScreenShare is missing', async () => {
             const tools = buildTools({ productId: 'p1' });
             const result = await findTool(tools, 'stop_screen_share').handler({});
+            expect(result).toEqual({ ok: false });
+        });
+    });
+
+    describe('advance_step', () => {
+        it('calls the bound advanceStep and returns its result', async () => {
+            const advanceStep = vi.fn().mockResolvedValue({ ok: true });
+            const tools = buildTools({ productId: 'p1', advanceStep });
+
+            const result = await findTool(tools, 'advance_step').handler({});
+
+            expect(advanceStep).toHaveBeenCalledTimes(1);
+            expect(result).toEqual({ ok: true });
+        });
+
+        it('falls back to { ok: false } when advanceStep is missing (no playbook running)', async () => {
+            const tools = buildTools({ productId: 'p1' });
+            const result = await findTool(tools, 'advance_step').handler({});
             expect(result).toEqual({ ok: false });
         });
     });

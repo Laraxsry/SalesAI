@@ -2,7 +2,7 @@ import { useState } from 'react';
 import { useParams, Link, useNavigate } from 'react-router-dom';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { Button } from '@repo/ui';
-import { ArrowLeft, Bot, Rocket, Pause, Copy, Check, ExternalLink, AlertCircle, Trash2, MessageSquare, Code } from 'lucide-react';
+import { ArrowLeft, Bot, Rocket, Pause, Copy, Check, ExternalLink, AlertCircle, Trash2, MessageSquare, Code, Target } from 'lucide-react';
 import { agentsApi } from '../lib/api.js';
 
 const STATUS_STYLE = {
@@ -180,6 +180,13 @@ export function AgentDetail() {
                         {busy ? 'Duraklatılıyor…' : 'Duraklat'}
                     </Button>
                 )}
+                <Link
+                    to={`/agents/${id}/goals`}
+                    className="inline-flex h-10 items-center justify-center gap-2 rounded-[var(--radius-input)] bg-transparent px-4 text-sm font-semibold text-text-muted transition-all hover:bg-surface-raised hover:text-text"
+                >
+                    <Target size={16} />
+                    Hedefler
+                </Link>
                 <Link
                     to={`/agents/${id}/sessions`}
                     className="inline-flex h-10 items-center justify-center gap-2 rounded-[var(--radius-input)] bg-transparent px-4 text-sm font-semibold text-text-muted transition-all hover:bg-surface-raised hover:text-text"

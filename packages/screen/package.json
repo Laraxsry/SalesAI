@@ -20,6 +20,7 @@
     "@browserbasehq/stagehand": "^2.0.0"
   },
   "devDependencies": {
+    "@repo/contracts": "*",
     "@repo/eslint-config": "*",
     "@repo/testing": "*",
     "eslint": "^9.17.0",

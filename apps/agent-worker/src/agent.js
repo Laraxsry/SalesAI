@@ -2,14 +2,14 @@ import '@repo/config-env/load';
 import './tracing.js';
 import { fileURLToPath } from 'node:url';
 import { context as otelContext, trace } from '@opentelemetry/api';
-import { WorkerOptions, cli, defineAgent, voice } from '@livekit/agents';
+import { WorkerOptions, cli, defineAgent, voice, tool } from '@livekit/agents';
 import * as openai from '@livekit/agents-plugin-openai';
 import {
     VideoSource, LocalVideoTrack, VideoBufferType, VideoStream, TrackKind, TrackSource, VideoFrame, RoomEvent
 } from '@livekit/rtc-node';
 import sharp from 'sharp';
-import { connectDB, Agent, Product, Session, Message } from '@repo/database';
-import { buildSystemPrompt, buildTools } from '@repo/agent';
+import { connectDB, Agent, Product, Session, Message, Playbook } from '@repo/database';
+import { buildSystemPrompt, buildTools, buildIdleNudgeInstructions } from '@repo/agent';
 import { startAvatarWithFallback } from '@repo/avatar';
 import { roomService } from '@repo/livekit';
 import { GuidedTour, analyzeFrame } from '@repo/screen';
@@ -20,6 +20,10 @@ import { extractParentContext } from './trace-context.js';
 import { withToolCallMetrics } from './tool-metrics.js';
 import { createSessionCostTracker } from './session-cost-tracker.js';
 import { createRealtimeGate } from './realtime-gate.js';
+import { createSilenceDriver } from './silence-driver.js';
+import { createPlaybookCursor } from './playbook-cursor.js';
+import { createPlaybookRuntime } from './playbook-runtime.js';
+import { withPlaybookProgress } from './playbook-progress.js';
 
 /**
  * Runs the session with the trace context extracted from the LiveKit dispatch
@@ -77,10 +81,40 @@ async function runSession(ctx) {
     // in this session carries both identifiers.
     log = log.child({ sessionId: String(session._id) });
 
+    // Playbook — the presentation route this agent follows, if the marketer
+    // configured one (md/backend/agent_flow.md). Snapshotted into a plain
+    // array right here and never re-read: that snapshot IS the version pin,
+    // so a marketer editing a live playbook mid-call can never change what
+    // this session does. `playbookCursor` is pure and can be built
+    // immediately; `playbookRuntime` needs agentSession/tourControls, which
+    // don't exist yet, so it's constructed further down and referenced here
+    // only through closures (tools, silence.onIdle) that don't run until
+    // well after everything is initialized.
+    const playbookDoc = await Playbook.findOne({ agentId: agentDoc._id });
+    const playbookNodes = (playbookDoc?.enabled ? playbookDoc.nodes : []).map((n) =>
+        typeof n.toObject === 'function' ? n.toObject() : n
+    );
+    const playbookActive = playbookNodes.length > 0;
+    const playbookCursor = playbookActive ? createPlaybookCursor(playbookNodes) : null;
+    /** @type {ReturnType<typeof createPlaybookRuntime>|null} */
+    let playbookRuntime = null;
+
+    // Logged unconditionally, including the inactive case: "was a playbook
+    // even running?" is otherwise unanswerable from the logs, and every
+    // silent-agent report starts with that question.
+    log.info('playbook loaded', {
+        active: playbookActive,
+        nodeCount: playbookNodes.length,
+        version: playbookDoc?.version ?? null,
+        enabled: playbookDoc?.enabled ?? null,
+        firstNodeHasUrl: Boolean(playbookNodes[0]?.url)
+    });
+
     const instructions = buildSystemPrompt({
         name: agentDoc.name,
         product: { name: product.name, description: product.description },
-        persona: agentDoc.persona
+        persona: agentDoc.persona,
+        playbookActive
     });
 
     // screenModes defined on the agent doc govern which tools are available
@@ -140,15 +174,28 @@ async function runSession(ctx) {
             if (isTourActive) {
                 return { ok: false, error: 'Tour already active. Use navigate_to to move within the current tour.' };
             }
+            // Set BEFORE awaiting tour.open(), not after: open() takes real
+            // wall-clock time (browser launch), and isTourActive staying
+            // false for that whole window let a second call — whether a
+            // duplicate model tool-call or (with a playbook running) the
+            // runtime's own automatic navigation racing the model's own
+            // start_guided_tour call — slip past this guard and reach
+            // tour.open() concurrently. GuidedTour's own internal guard then
+            // throws "Already open" for whichever call loses the race, and
+            // its catch's tour.close() tears down the OTHER call's still-
+            // in-flight browser, producing a second, differently-worded
+            // failure right after. Rolled back in the catch below on failure.
+            isTourActive = true;
+            const openStartedAt = Date.now();
+            log.info('GuidedTour opening', { url: url || null });
             try {
                 // If configured demo authentication fails, fail loudly instead
                 // of silently showing the public site as if login succeeded.
-                await tour.open();
+                await tour.open(url);
                 if (url) {
                     await tour.goto(url);
                 }
-                isTourActive = true;
-                log.info('GuidedTour started', { url });
+                log.info('GuidedTour started', { url, durationMs: Date.now() - openStartedAt });
 
                 // Create a LiveKit VideoSource and publish it as a screen-share track
                 tourVideoSource = new VideoSource(1280, 720);
@@ -220,7 +267,7 @@ async function runSession(ctx) {
 
                 return { ok: true, status: 'Tour started. Visitor can now see the browser. Use navigate_to or highlight next.' };
             } catch (e) {
-                log.error('GuidedTour open failed: ' + e.message, { error: e.message });
+                log.error('GuidedTour open failed: ' + e.message, { error: e.message, durationMs: Date.now() - openStartedAt });
                 await tour.close().catch(() => {});
                 isTourActive = false;
                 latestTourFrameBase64 = null;
@@ -518,13 +565,32 @@ async function runSession(ctx) {
     };
 
     const { llm } = await import('@livekit/agents');
-    const tools = withToolCallMetrics(buildTools({
-        productId: String(product._id),
-        tour: tourControls,
-        screen: screenControls,
-        stopScreenShare,
-        saveContactInfo
-    })).map(t => llm.tool({
+    const tools = withToolCallMetrics(
+        withPlaybookProgress(
+            buildTools({
+                productId: String(product._id),
+                tour: tourControls,
+                screen: screenControls,
+                stopScreenShare,
+                saveContactInfo,
+                // Not yet awaitable at this point in the source (playbookRuntime
+                // is constructed further down, once agentSession exists) — this
+                // closure only reads it, and by the time the model can actually
+                // call the tool the runtime is long since assigned. When no
+                // playbook is running playbookRuntime stays null and this is a
+                // harmless no-op; the model is never told to call advance_step
+                // in that mode anyway (see persona.js's playbookActive gate).
+                advanceStep: () => {
+                    playbookRuntime?.signal('advance_step');
+                    return { ok: true };
+                }
+            }),
+            {
+                currentNode: () => playbookCursor?.current() ?? null,
+                onGoalReached: () => playbookRuntime?.signal('tool')
+            }
+        )
+    ).map(t => tool({
         name: t.name,
         description: t.description,
         parameters: t.parameters,
@@ -541,8 +607,88 @@ async function runSession(ctx) {
         llm: new openai.realtime.RealtimeModel({
             model: process.env.OPENAI_REALTIME_MODEL || 'gpt-realtime-2',
             voice: 'cedar'
-        })
+        }),
+        // Disables the SDK's own quiet-detector so it doesn't run on a second,
+        // differently-timed clock against the same silence our driver is
+        // watching. Its 15s timeout fires at most once per visitor utterance
+        // (it flips userState to 'away' and only re-arms on the next final
+        // transcript), which is not what a proactive agent needs — see
+        // silence-driver.js.
+        userAwayTimeout: null
     });
+
+    // Now that agentSession/tourControls/stopScreenShare all exist, build the
+    // actual runtime the tool decorator and silence driver above were only
+    // holding a reference to. `screen` is deliberately just these two
+    // methods, not the full tourControls surface — navigation is data the
+    // runtime can act on by itself; clicking/highlighting/scrolling stay the
+    // model's judgment call (ISP, see md/backend/agent_flow.md).
+    if (playbookActive) {
+        playbookRuntime = createPlaybookRuntime({
+            cursor: playbookCursor,
+            screen: {
+                // Timed and logged on both sides: the pump awaits this before
+                // it can speak, so a slow navigation is indistinguishable from
+                // a dead agent unless the duration is visible.
+                showUrl: async (url) => {
+                    const startedAt = Date.now();
+                    log.info('playbook showUrl: begin', { url, reusingOpenTour: isTourActive });
+                    const result = isTourActive ? await tourControls.goto(url) : await tourControls.openAt(url);
+                    log.info('playbook showUrl: end', {
+                        url,
+                        ok: result?.ok !== false,
+                        error: result?.error,
+                        durationMs: Date.now() - startedAt
+                    });
+                    return result;
+                },
+                hideScreen: async () => {
+                    const startedAt = Date.now();
+                    log.info('playbook hideScreen: begin');
+                    const result = await stopScreenShare();
+                    log.info('playbook hideScreen: end', { durationMs: Date.now() - startedAt });
+                    return result;
+                }
+            },
+            speak: (instructions) => agentSession.generateReply({ instructions }),
+            onNodeEvent: (node, phase, meta) => {
+                // What was actually on screen for this event — folded into the
+                // human-readable `text` (what the console transcript renders),
+                // not left as a separate [screen:...] line the reader has to
+                // correlate by hand. `failed` reports the URL that DIDN'T open
+                // (screenVisible is always false there); every other phase
+                // reports what's genuinely showing right now, or 'avatar' when
+                // nothing is.
+                const screenPart = phase === 'failed'
+                    ? `attemptedUrl=${meta?.url ?? '-'}`
+                    : `screen=${meta?.screenVisible && meta?.url ? meta.url : 'avatar'}`;
+
+                // Logged as well as persisted: the Message write goes to Mongo
+                // for the transcript timeline, which is invisible while
+                // debugging a live call from the terminal.
+                log.info(`playbook node: ${phase}`, {
+                    order: node.order,
+                    nodeId: node.id,
+                    mode: node.mode,
+                    hasUrl: Boolean(node.url),
+                    hasAttach: Boolean(node.attach),
+                    ...meta
+                });
+                Message.create({
+                    sessionId: session._id,
+                    role: 'system',
+                    text: `[playbook:${phase}] order=${node.order} ${screenPart}`,
+                    meta: { action: `playbook_node_${phase}`, nodeId: node.id, order: node.order, ...meta }
+                }).catch(() => {});
+            },
+            onCompleted: () => {
+                log.info('playbook completed', { sessionId: session._id });
+            },
+            onError: (message, meta) => {
+                log.error('playbook runtime error', { error: message, ...meta });
+            }
+        });
+    }
 
     // A provider error is emitted as an event, not thrown: a `recoverable`
     // one (e.g. the model rejecting every request) then leaves the session
@@ -613,6 +759,56 @@ async function runSession(ctx) {
         }
     }));
 
+    // ── Proactive turn-taking ───────────────────────────────────────────────
+    // Without this the agent is purely reactive: after the opening greeting it
+    // never speaks again unless spoken to, so a visitor who goes quiet — the
+    // normal case while they read a page we just showed them — is left with
+    // silence indefinitely. The driver only ever arms once the agent has
+    // stopped speaking and the visitor isn't speaking either, so it cannot
+    // talk over anyone; see silence-driver.js for the two SDK behaviours it
+    // depends on.
+    const silence = createSilenceDriver({
+        idleMs: Number(process.env.AGENT_IDLE_NUDGE_MS ?? 12_000),
+        onIdle: ({ consecutive }) => {
+            // While a playbook is running and hasn't finished, silence is the
+            // presentation's own advance signal — see md/backend/agent_flow.md,
+            // "Adım ilerlemesi" — not a generic re-engagement nudge. Once the
+            // playbook completes, this falls through to the ordinary nudge so
+            // the agent stays proactive for the rest of the conversation.
+            if (playbookActive && playbookRuntime && !playbookRuntime.completed) {
+                playbookRuntime.signal('silence');
+                return;
+            }
+            try {
+                agentSession.generateReply({
+                    instructions: buildIdleNudgeInstructions({ consecutive })
+                });
+                log.info('idle nudge sent', { consecutive });
+            } catch (err) {
+                // generateReply THROWS synchronously (it does not reject) when
+                // the session isn't running yet or is already closing — the
+                // latter happens on essentially every teardown, so this is an
+                // expected path, not an error.
+                log.warn('idle nudge skipped', { error: err.message, consecutive });
+            }
+        },
+        // Vetoes the timer while the playbook is mid-navigate-or-narrate — see
+        // playbook-runtime.js's `busy` getter and hazard #2 in the plan.
+        isBusy: () => playbookRuntime?.busy ?? false
+    });
+
+    agentSession.on(voice.AgentSessionEventTypes.AgentStateChanged, (ev) =>
+        silence.handleAgentState(ev.newState)
+    );
+    agentSession.on(voice.AgentSessionEventTypes.UserStateChanged, (ev) =>
+        silence.handleUserState(ev.newState)
+    );
+    // A completed visitor utterance is the clearest sign someone is still
+    // there, so the nudge budget starts over.
+    agentSession.on(voice.AgentSessionEventTypes.UserInputTranscribed, (ev) => {
+        if (ev.isFinal) silence.resetConsecutive();
+    });
+
     // Idempotent — may be triggered by agentSession's own Close event OR
     // directly by the no-participant watchdog below. Deliberately does the
     // critical DB update FIRST and unconditionally, not nested inside/gated
@@ -627,6 +823,8 @@ async function runSession(ctx) {
         sessionEnded = true;
         try {
             // Cleanup: stop tour publish loop, heartbeat, and close browser
+            silence.dispose();
+            playbookRuntime?.stop();
             if (tourPublishTimer) clearTimeout(tourPublishTimer);
             if (customerSampleInterval) clearInterval(customerSampleInterval);
             clearInterval(heartbeatInterval);
@@ -692,10 +890,20 @@ async function runSession(ctx) {
                 agent: new voice.Agent({ instructions, tools }),
                 room: ctx.room
             }).then(() => {
-                agentSession.generateReply({
-                    instructions: 'Greet the visitor warmly in one short sentence and ask how you can help. Do not call any tools.',
-                    toolChoice: 'none'
-                });
+                // No synthetic "step 0": the editor seeds a playbook's first
+                // row with the greeting itself (AgentGoals.jsx), so starting
+                // the runtime IS the greeting — the worker holds no special
+                // case for it.
+                if (playbookActive && playbookRuntime) {
+                    log.info('playbook: starting run');
+                    playbookRuntime.start();
+                } else {
+                    log.info('no playbook; sending plain greeting');
+                    agentSession.generateReply({
+                        instructions: 'Greet the visitor warmly in one short sentence and ask how you can help. Do not call any tools.',
+                        toolChoice: 'none'
+                    });
+                }
             }).catch((err) => log.error('failed to start realtime session', { error: err.message }));
         }
     });

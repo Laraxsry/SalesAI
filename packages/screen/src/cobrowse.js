@@ -1,5 +1,8 @@
 import { chromium } from 'playwright';
 import { getDomain } from 'tldts';
+import { getLogger } from '@repo/logger';
+
+const log = getLogger({ mod: 'guided-tour' });
 
 /**
  * AI-driven guided tour (screen-share mode A).
@@ -171,7 +174,39 @@ export class GuidedTour {
         }
     }
 
-    async open() {
+    /**
+     * Whether the tour's first destination (`targetUrl`, e.g. the opening
+     * playbook node's URL — defaults to `startUrl` when the caller doesn't
+     * know one yet) actually lives on the demoSession's own domain.
+     * `Product.demoSession` logs into a long-lived demo account whose login
+     * form commonly lives on a different *host* than the seller's public
+     * marketing site (e.g. `demo.cyberverse.com.tr` vs
+     * `www.cyberverse.com.tr`) — attempting that login before every tour
+     * regardless of where the tour actually opens cost every session
+     * ~46-50s (3 retries × goto+settle+12s redirect race, see
+     * md/backend/playbook_session_log.md §4.4/§7.1) even when the first
+     * (sometimes only) stop was the public site and never touched the demo
+     * panel at all.
+     *
+     * Compared by exact hostname, not `trustKey`'s eTLD+1 — `demo.` and
+     * `www.` subdomains are deliberately treated as equivalent for *trust*
+     * (see `trustKey` docs) but are exactly the two hosts this check exists
+     * to tell apart, so collapsing them here would defeat the guard.
+     */
+    requiresDemoLogin(targetUrl) {
+        let demoHost;
+        let requestedHost;
+        try {
+            demoHost = new URL(this.auth?.loginUrl || this.startUrl).hostname;
+            requestedHost = new URL(targetUrl || this.startUrl).hostname;
+        } catch {
+            return false;
+        }
+        return Boolean(demoHost && requestedHost && demoHost === requestedHost);
+    }
+
+    /** @param {string} [targetUrl] - the first destination the caller actually wants to show (e.g. the opening playbook node's URL); defaults to `startUrl` when not yet known. */
+    async open(targetUrl) {
         if (this.browser || this.stagehand) {
             throw new Error('[GuidedTour] Already open. Call close() before opening again.');
         }
@@ -181,6 +216,15 @@ export class GuidedTour {
                 'Try again later or increase MAX_TOUR_BROWSERS env var.'
             );
         }
+
+        // Per-phase timing: `open()` has no explicit timeouts, so it inherits
+        // Playwright's defaults (30s for launch, 30s for goto) plus a hard 3s
+        // settle wait — up to ~63s in the worst case. When a caller is waiting
+        // on this before it can speak, knowing WHICH phase burned the time is
+        // the difference between fixing the browser and fixing the site.
+        const openStartedAt = Date.now();
+        const phase = {};
+        log.info('GuidedTour open: begin', { backend: this.backend, startUrl: this.startUrl });
 
         let context;
         if (this.backend === 'stagehand') {
@@ -202,10 +246,16 @@ export class GuidedTour {
         }
 
         if (this.backend === 'playwright') {
+            let t = Date.now();
             this.browser = await chromium.launch({ headless: true });
+            phase.launchMs = Date.now() - t;
             activeBrowsers.add(this.browser);
+
+            t = Date.now();
             context = await this.browser.newContext({ viewport: this.viewport });
             this.page = await context.newPage();
+            phase.contextMs = Date.now() - t;
+            log.info('GuidedTour open: browser ready', { launchMs: phase.launchMs, contextMs: phase.contextMs });
         }
 
         // Authenticate before the first navigation so the tour lands already
@@ -216,19 +266,38 @@ export class GuidedTour {
         //    handed over for this one session only and deleted from the DB
         //    right after being read (see agent-worker/src/agent.js) -> no
         //    staleness concern, so the direct snapshot injection is fine.
-        const usedCredentialLogin = Boolean((this.auth?.username || this.auth?.email) && this.auth?.password);
+        const hasDemoCredentials = Boolean((this.auth?.username || this.auth?.email) && this.auth?.password);
+        const usedCredentialLogin = hasDemoCredentials && this.requiresDemoLogin(targetUrl);
+        if (hasDemoCredentials && !usedCredentialLogin) {
+            log.info('GuidedTour open: skipping demoSession login, first destination is outside its domain', {
+                loginDomain: trustKey(this.auth?.loginUrl || this.startUrl),
+                targetDomain: trustKey(targetUrl || this.startUrl)
+            });
+        }
         if (usedCredentialLogin) {
+            const t = Date.now();
             await this.login();
+            phase.loginMs = Date.now() - t;
+            log.info('GuidedTour open: credential login done', { loginMs: phase.loginMs });
         } else if (this.auth?.cookies || this.auth?.localStorage) {
+            const t = Date.now();
             await injectSessionSnapshot(context, this.page, this.startUrl, this.auth);
+            phase.snapshotMs = Date.now() - t;
         }
 
         if (this.startUrl && !usedCredentialLogin) {
             // 'networkidle' hangs/crashes on SPAs that keep a live connection
             // open (polling, websockets, dashboards) — they never go idle.
+            let t = Date.now();
             await this.page.goto(this.startUrl, { waitUntil: 'domcontentloaded' });
+            phase.gotoMs = Date.now() - t;
+            log.info('GuidedTour open: initial navigation done', { url: this.startUrl, gotoMs: phase.gotoMs });
+
+            t = Date.now();
             await this.page.waitForTimeout(3000);
+            phase.settleMs = Date.now() - t;
         }
+        log.info('GuidedTour open: complete', { ...phase, totalMs: Date.now() - openStartedAt });
         // When credential login redirects into an authenticated in-app route,
         // keep that landed page instead of immediately bouncing back to the
         // public marketing URL and losing the useful session context.

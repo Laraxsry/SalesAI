@@ -5,9 +5,9 @@ import { retrieve } from '@repo/rag';
  * wired by the agent-worker (it owns the GuidedTour + screen track). Here we
  * define the schema + the knowledge tool that only needs productId.
  *
- * @param {{ productId:string, tour?:object, screen?:object, stopScreenShare?:Function, saveContactInfo?:Function }} ctx
+ * @param {{ productId:string, tour?:object, screen?:object, stopScreenShare?:Function, saveContactInfo?:Function, advanceStep?:Function }} ctx
  */
-export function buildTools({ productId, tour, screen, stopScreenShare, saveContactInfo }) {
+export function buildTools({ productId, tour, screen, stopScreenShare, saveContactInfo, advanceStep }) {
     return [
         {
             name: 'search_knowledge',
@@ -125,6 +125,13 @@ export function buildTools({ productId, tour, screen, stopScreenShare, saveConta
                 required: ['field', 'value']
             },
             handler: async ({ field, value }) => saveContactInfo?.(field, value) ?? { ok: false }
+        },
+        {
+            name: 'advance_step',
+            description:
+                'Call this the moment you have finished saying everything you were just asked to cover. Judge only the sentence you just spoke — do not try to track or reason about any larger plan.',
+            parameters: { type: 'object', properties: {} },
+            handler: async () => advanceStep?.() ?? { ok: false }
         }
     ];
 }

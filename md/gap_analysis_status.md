@@ -50,11 +50,11 @@
 
 | Faz | Doc | Kod | Durum | Eksik / not |
 |---|---|---|---|---|
-| 1 Visitor | Açık | Expo iskelet | Açık | Deep link + LiveKit + mic/captions |
-| 2 Avatar / screen | Açık | Minimal | Açık | Provider avatars, tour, share |
-| 3 Push & saved | Açık | Mock (`push.js`, `savedConversations.js`) | Açık | Devices, magic-link, `/sessions/mine`, push |
-| 4 Console-lite | Auth `[x]` | Auth + dashboard stub | Kısmi | Live sessions, analytics, leads, pause/resume |
-| 5 Release | Açık | Yok | Açık | EAS, store, Sentry, universal links |
+| 1 Visitor | Done | Deep link + LiveKit + mic/captions | Hazır | `app/v/[token].jsx`, deep linking, captions |
+| 2 Avatar / screen | Done | AvatarView, Tour, Screen share | Hazır | Tavus/HeyGen/DID/Simli, tour video, call controls |
+| 3 Push & saved | Done | AsyncStorage, Magic-link, `/devices`, Saved UI | Hazır | `saved.jsx`, `visitorIdentity.js`, `push.js` |
+| 4 Console-lite | Done | Auth, Live Socket, KPIs, Leads, Pause/Resume | Hazır | `dashboard.jsx`, `session/[id].jsx`, switcher |
+| 5 Release | Kısmi | `eas.json`, `app.json`, permissions | Kısmi | Sentry native SDK, App Store / Google Play submission |
 
 ---
 

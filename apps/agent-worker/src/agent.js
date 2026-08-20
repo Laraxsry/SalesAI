@@ -753,6 +753,16 @@ async function runSession(ctx) {
                     text: msg.text,
                     createdAt: msg.createdAt
                 });
+
+                // Publish to LiveKit data channel for realtime mobile/web captions
+                if (text && (item.role === 'assistant' || item.role === 'agent')) {
+                    try {
+                        const payload = new TextEncoder().encode(JSON.stringify({ type: 'agent_chat', text: text.trim() }));
+                        await ctx.room.localParticipant.publishData(payload, { reliable: true });
+                    } catch (publishErr) {
+                        log.warn('Failed to publish data message to room:', { error: publishErr?.message });
+                    }
+                }
             }
         } catch (err) {
             log.error('failed to save message', { error: err });
@@ -868,18 +878,7 @@ async function runSession(ctx) {
                 });
             }
         } else {
-            log.warn('skipping usage flush: product has no workspaceId', { productId: String(product._id) });
-        }
-
-        publishMetric(SESSION_METRICS.SESSION_COST_USD, totalCostUsd);
-    }
-
-    agentSession.on(
-        voice.AgentSessionEventTypes.Close,
-        otelContext.bind(parentContext, () => endSession('agent-session-close'))
-    );
-
-    // The only thing that actually spends money is `agentSession.start()` —
+     // The only thing that actually spends money is `agentSession.start()` —
     // it opens a persistent websocket to the OpenAI Realtime API. See
     // realtime-gate.js for why this is gated on real visitor audio (COST
     // WARNING documented there) instead of firing as soon as we join the room.
@@ -921,6 +920,26 @@ async function runSession(ctx) {
         remoteParticipantCount: ctx.room.remoteParticipants.size
     });
     realtimeGate.checkAlreadySubscribed(ctx.room);
+
+    // Handle text chat messages sent over data channel
+    ctx.room.on('dataReceived', async (payload, participant) => {
+        if (participant?.identity === ctx.room.localParticipant?.identity) return;
+        try {
+            const raw = new TextDecoder().decode(payload);
+            const data = JSON.parse(raw);
+            if (data.type === 'chat' && data.text) {
+                log.info('Chat message received from visitor', { text: data.text });
+                if (!realtimeGate.started) {
+                    realtimeGate.handleTrackSubscribed({ kind: 1 });
+                }
+                agentSession.generateReply({ userInput: data.text }).catch((err) => {
+                    log.warn('generateReply with user input failed:', { error: err?.message });
+                });
+            }
+        } catch {
+            // Ignore non-json messages
+        }
+    });
 
     // *** COST + STALE-SESSION WARNING — see realtime-gate.js for the opening
     // half of the cost concern ***

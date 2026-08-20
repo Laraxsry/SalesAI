@@ -57,8 +57,18 @@ function NativeSessionScreen() {
         console.log('[mobile-session]', ...args);
     }
 
-    // Activate native call audio before LiveKit publishes the microphone.
+    // Prepares the native audio session (speaker/earpiece routing, category, playAndRecord) before joining.
     useEffect(() => {
+        AudioSession.configureAudio({
+            ios: { defaultOutput: 'speaker' }
+        }).catch(() => {});
+        if (Platform.OS === 'ios' && AudioSession.setAppleAudioConfiguration) {
+            AudioSession.setAppleAudioConfiguration({
+                audioCategory: 'playAndRecord',
+                audioMode: 'voiceChat',
+                audioCategoryOptions: ['defaultToSpeaker', 'allowBluetooth']
+            }).catch(() => {});
+        }
         AudioSession.startAudioSession().catch(() => {});
         return () => {
             AudioSession.stopAudioSession().catch(() => {});
@@ -85,6 +95,8 @@ function NativeSessionScreen() {
                 if (granted !== PermissionsAndroid.RESULTS.GRANTED) {
                     throw new Error('Temsilciyle konuşmak için mikrofon izni gereklidir.');
                 }
+            } else if (Platform.OS === 'ios') {
+                // iOS permissions are handled natively by LiveKit / AVFoundation on audio track enable
             }
 
             setConnectionState('fetching');
@@ -197,7 +209,7 @@ function NativeSessionScreen() {
 
             {connDetails?.token && (
                 <LiveKitRoom
-                    serverUrl={CONFIG.LIVEKIT_URL}
+                    serverUrl={connDetails?.livekitUrl || CONFIG.LIVEKIT_URL}
                     token={connDetails.token}
                     connect={true}
                     audio={true}
@@ -362,6 +374,10 @@ function RoomView({ agentName, setAgentName, avatarProvider, handleDisconnect })
             if (msg?.type === 'salesai:stop_screen_share' && room.localParticipant) {
                 room.localParticipant.setScreenShareEnabled(false).catch(() => {});
                 setIsSharingScreen(false);
+            }
+            if (msg?.type === 'agent_chat' && msg?.text) {
+                setCaptions(msg.text);
+                setTimeout(() => setCaptions((prev) => (prev === msg.text ? '' : prev)), 8000);
             }
         };
         room.on(RoomEvent.DataReceived, handleData);

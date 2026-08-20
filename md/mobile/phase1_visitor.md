@@ -51,11 +51,22 @@ flowchart LR
 
 ---
 
+## Tasks
+
+- [x] Expo Router app structure and deep linking setup (`salesai://v/:token` and `/v/[token]`).
+- [x] Integration with LiveKit React Native (`@livekit/react-native`, `@livekit/react-native-webrtc`).
+- [x] Room session bootstrap via `POST /api/v1/sessions` and LiveKit connection.
+- [x] Microphone permission flow and touch-friendly mute/unmute controls.
+- [x] Live transcript/captions overlay on call screen.
+- [x] Reconnection and lifecycle state management.
+
+---
+
 ## Acceptance criteria
 
-- Opening a deep link starts a session and connects to the room.
-- Two-way voice works; the avatar video renders for video providers.
-- Captions show the live transcript; mute/end work reliably.
+- [x] Opening a deep link starts a session and connects to the room.
+- [x] Two-way voice works; the avatar video renders for video providers.
+- [x] Captions show the live transcript; mute/end work reliably.
 
 ---
 

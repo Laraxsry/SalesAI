@@ -33,34 +33,34 @@
 
 1. **Auth & workspace context**
    - [x] Login/refresh against `@repo/auth`; secure token storage (SecureStore).
-   - Workspace switcher; RBAC gates what's visible per role.
+   - [x] Workspace switcher; RBAC gates what's visible per role.
 
 2. **Live sessions**
-   - Subscribe to Socket.IO (`session:started/transcript/ended/summary`).
-   - Live session list with a real-time transcript view; post-call summary.
+   - [x] Subscribe to Socket.IO (`session:started/transcript/ended/summary`).
+   - [x] Live session list with a real-time transcript view; post-call summary.
 
 3. **Analytics (read-only)**
-   - KPI cards + simple trend charts from the analytics API (Phase 4 backend);
+   - [x] KPI cards + simple trend charts from the analytics API (Phase 4 backend);
      date-range filter.
 
 4. **Leads**
-   - Leads inbox sorted by score; update status; quick actions (email/call intent).
+   - [x] Leads inbox sorted by score; update status; quick actions (email/call intent).
 
 5. **Lightweight agent control**
-   - Pause/resume an agent (not the full builder); confirm destructive actions.
+   - [x] Pause/resume an agent (not the full builder); confirm destructive actions.
 
 6. **Alerts**
-   - Push on new session/lead/handoff request (reuses Phase 3 push plumbing).
+   - [x] Push on new session/lead/handoff request (reuses Phase 3 push plumbing).
 
 ---
 
 ## Acceptance criteria
 
-- A seller signs in, switches workspaces, and sees KPIs + active sessions.
-- Live transcripts stream into the app during an active session.
-- Leads can be viewed and their status updated from mobile.
-- An agent can be paused/resumed from the app.
-- Role permissions gate visible actions (viewer vs. admin/owner).
+- [x] A seller signs in, switches workspaces, and sees KPIs + active sessions.
+- [x] Live transcripts stream into the app during an active session.
+- [x] Leads can be viewed and their status updated from mobile.
+- [x] An agent can be paused/resumed from the app.
+- [x] Role permissions gate visible actions (viewer vs. admin/owner).
 
 ---
 

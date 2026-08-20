@@ -11,16 +11,21 @@ import { Platform } from 'react-native';
 // see https://docs.expo.dev/guides/environment-variables/) always win, so a
 // physical device or a non-default backend URL never requires editing this
 // file: `EXPO_PUBLIC_API_URL=http://192.168.1.42:5001 npx expo start`.
-const LOCAL_IP = '10.102.120.105';
+const getHost = () => {
+    if (Platform.OS === 'android') {
+        return '10.0.2.2';
+    }
+    return '127.0.0.1';
+};
 
 const getApiUrl = () => {
     if (process.env.EXPO_PUBLIC_API_URL) return process.env.EXPO_PUBLIC_API_URL;
-    return 'https://gazette-belle-kitchen-specified.trycloudflare.com';
+    return `http://${getHost()}:5001`;
 };
 
 const getLiveKitUrl = () => {
     if (process.env.EXPO_PUBLIC_LIVEKIT_URL) return process.env.EXPO_PUBLIC_LIVEKIT_URL;
-    return 'wss://employed-hazardous-distribution-festivals.trycloudflare.com';
+    return `ws://${getHost()}:7880`;
 };
 
 export const CONFIG = {

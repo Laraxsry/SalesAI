@@ -19,26 +19,26 @@
 ## Tasks
 
 1. **Lightweight identity**
-   - Anonymous device identity by default; optional email magic-link to sync
+   - [x] Anonymous device identity by default; optional email magic-link to sync
      history across devices (no full account required).
-   - Store a `visitorId` and associate sessions to it (backend supports an
+   - [x] Store a `visitorId` and associate sessions to it (backend supports an
      optional visitor identity on `Session`).
 
 2. **Saved conversations**
-   - `Saved` screen lists past sessions with agent, product, date, and the
+   - [x] `Saved` screen lists past sessions with agent, product, date, and the
      auto-summary (from analytics Phase 4).
-   - Detail view shows the full transcript; "Resume" opens a fresh session with
+   - [x] Detail view shows the full transcript; "Resume" opens a fresh session with
      the prior summary as context (agent greets with continuity).
 
 3. **Push notifications** (`expo-notifications`)
-   - Register the Expo push token; send to the API (`POST /devices`).
-   - Notification types: follow-up from seller, "agent is available", saved-answer
+   - [x] Register the Expo push token; send to the API (`POST /devices`).
+   - [x] Notification types: follow-up from seller, "agent is available", saved-answer
      ready, demo reminder.
-   - Deep-link payloads open `salesai://v/:token` or the saved conversation.
+   - [x] Deep-link payloads open `salesai://v/:token` or the saved conversation.
 
 4. **Preferences & priming**
-   - Pre-permission priming screen before the OS prompt; per-type toggles.
-   - Respect quiet hours; unsubscribe handling.
+   - [x] Pre-permission priming screen before the OS prompt; per-type toggles.
+   - [x] Respect quiet hours; unsubscribe handling.
 
 ---
 
@@ -55,10 +55,10 @@
 
 ## Acceptance criteria
 
-- A visitor's past conversations appear in the Saved list with summaries.
-- Resuming a conversation opens a session that has prior context.
-- Push tokens register; a test push deep-links into the right screen.
-- Notification preferences are respected, including opt-out.
+- [x] A visitor's past conversations appear in the Saved list with summaries.
+- [x] Resuming a conversation opens a session that has prior context.
+- [x] Push tokens register; a test push deep-links into the right screen.
+- [x] Notification preferences are respected, including opt-out.
 
 ---
 

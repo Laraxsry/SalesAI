@@ -3,6 +3,7 @@ import { useEffect } from 'react';
 import { LogBox, Platform } from 'react-native';
 import * as Notifications from 'expo-notifications';
 import { getNotificationRoute } from '../src/notificationRoute';
+import { COLORS } from '../src/theme';
 
 // Intercept global fetch to bypass localtunnel reminder pages automatically
 if (typeof global.fetch === 'function') {
@@ -48,7 +49,7 @@ export default function RootLayout() {
         <Stack
             screenOptions={{
                 headerShown: false,
-                contentStyle: { backgroundColor: '#0b0b12' },
+                contentStyle: { backgroundColor: COLORS.ink },
             }}
         />
     );

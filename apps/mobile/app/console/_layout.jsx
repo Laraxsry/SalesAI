@@ -3,6 +3,7 @@ import { Stack } from 'expo-router';
 import { View, ActivityIndicator, StyleSheet } from 'react-native';
 import * as SecureStore from 'expo-secure-store';
 import { CONFIG } from '../../config';
+import { COLORS } from '../../src/theme';
 
 const AuthContext = createContext();
 
@@ -126,7 +127,7 @@ export default function ConsoleLayout() {
     if (restoring) {
         return (
             <View style={styles.splash}>
-                <ActivityIndicator size="large" color="#6d5efc" />
+                <ActivityIndicator size="large" color={COLORS.lime} />
             </View>
         );
     }
@@ -136,7 +137,7 @@ export default function ConsoleLayout() {
             <Stack
                 screenOptions={{
                     headerShown: false,
-                    contentStyle: { backgroundColor: '#0b0b12' },
+                    contentStyle: { backgroundColor: COLORS.ink },
                 }}
             />
         </AuthContext.Provider>
@@ -146,7 +147,7 @@ export default function ConsoleLayout() {
 const styles = StyleSheet.create({
     splash: {
         flex: 1,
-        backgroundColor: '#0b0b12',
+        backgroundColor: COLORS.ink,
         alignItems: 'center',
         justifyContent: 'center',
     },

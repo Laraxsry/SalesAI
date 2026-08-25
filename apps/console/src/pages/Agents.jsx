@@ -42,6 +42,13 @@ const LANGUAGES = [
     { value: 'en', label: 'English' }
 ];
 
+const DEFAULT_PERSONA_TONE = 'consultative, persuasive, concise, outcome-focused';
+const DEFAULT_PERSONA_GOALS = [
+    'Musterinin ihtiyacini hizlica anlamak',
+    'Urun degerini is sonucuna baglayarak anlatmak',
+    'Uygun oldugunda demo veya sonraki adima ilerletmek'
+].join(', ');
+
 /** Form values use a flat tone/language/goalsText shape; this reshapes + validates against the real API contract. */
 function buildAgentFormSchema(productId) {
     return z.preprocess((data) => {
@@ -69,9 +76,9 @@ function NewAgentModal({ productId, onClose, onCreated }) {
         resolver: zodResolver(buildAgentFormSchema(productId)),
         defaultValues: {
             name: '',
-            tone: 'friendly, expert, concise',
+            tone: DEFAULT_PERSONA_TONE,
             language: 'tr',
-            goalsText: '',
+            goalsText: DEFAULT_PERSONA_GOALS,
             avatarProvider: 'voice-only',
             screenModes: ['guided-tour', 'customer-share']
         }
@@ -109,7 +116,7 @@ function NewAgentModal({ productId, onClose, onCreated }) {
                     <Input
                         id="agent-tone"
                         label="Ton"
-                        placeholder="friendly, expert, concise"
+                        placeholder={DEFAULT_PERSONA_TONE}
                         {...register('tone')}
                     />
 
@@ -130,7 +137,7 @@ function NewAgentModal({ productId, onClose, onCreated }) {
                     <Input
                         id="agent-goals"
                         label="Hedefler (virgülle ayır, opsiyonel)"
-                        placeholder="demo ayarla, itirazları yanıtla"
+                        placeholder={DEFAULT_PERSONA_GOALS}
                         {...register('goalsText')}
                     />
 

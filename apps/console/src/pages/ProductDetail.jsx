@@ -8,12 +8,12 @@ function DemoSessionForm({ product }) {
     const queryClient = useQueryClient();
     const existing = product.demoSession || {};
     const [loginUrl, setLoginUrl] = useState(existing.loginUrl || '');
-    const [email, setEmail] = useState(existing.email || '');
+    const [username, setUsername] = useState(existing.username || existing.email || '');
     const [password, setPassword] = useState(existing.password || '');
     const [showAdvanced, setShowAdvanced] = useState(
-        Boolean(existing.selectors?.email || existing.selectors?.password || existing.selectors?.submit)
+        Boolean(existing.selectors?.username || existing.selectors?.email || existing.selectors?.password || existing.selectors?.submit)
     );
-    const [emailSelector, setEmailSelector] = useState(existing.selectors?.email || '');
+    const [usernameSelector, setUsernameSelector] = useState(existing.selectors?.username || existing.selectors?.email || '');
     const [passwordSelector, setPasswordSelector] = useState(existing.selectors?.password || '');
     const [submitSelector, setSubmitSelector] = useState(existing.selectors?.submit || '');
     const [error, setError] = useState(null);
@@ -29,19 +29,19 @@ function DemoSessionForm({ product }) {
     });
 
     const handleSave = () => {
-        if (!email.trim() || !password.trim()) {
-            setError('Email ve şifre zorunludur.');
+        if (!username.trim() || !password.trim()) {
+            setError('Kullanici adi/e-posta ve sifre zorunludur.');
             return;
         }
         const selectors = {};
-        if (emailSelector.trim()) selectors.email = emailSelector.trim();
+        if (usernameSelector.trim()) selectors.username = usernameSelector.trim();
         if (passwordSelector.trim()) selectors.password = passwordSelector.trim();
         if (submitSelector.trim()) selectors.submit = submitSelector.trim();
 
         setError(null);
         mutation.mutate({
             ...(loginUrl.trim() && { loginUrl: loginUrl.trim() }),
-            email: email.trim(),
+            username: username.trim(),
             password,
             ...(Object.keys(selectors).length > 0 && { selectors })
         });
@@ -51,9 +51,9 @@ function DemoSessionForm({ product }) {
         if (!confirm('Demo oturumu bilgilerini kaldırmak istediğinize emin misiniz?')) return;
         mutation.mutate(null);
         setLoginUrl('');
-        setEmail('');
+        setUsername('');
         setPassword('');
-        setEmailSelector('');
+        setUsernameSelector('');
         setPasswordSelector('');
         setSubmitSelector('');
     };
@@ -83,13 +83,13 @@ function DemoSessionForm({ product }) {
 
             <div className="mb-4 grid gap-4 sm:grid-cols-2">
                 <div>
-                    <label className="block text-xs font-medium text-text-muted mb-2">Demo Hesap E-postası</label>
+                    <label className="block text-xs font-medium text-text-muted mb-2">Demo Kullanici Adi / E-posta</label>
                     <input
-                        type="email"
+                        type="text"
                         className="w-full rounded-[var(--radius-input)] border border-input-border bg-input-bg px-3 py-2 text-sm text-text focus:border-brand focus:outline-none focus:ring-1 focus:ring-brand"
-                        placeholder="demo@urun.com"
-                        value={email}
-                        onChange={(e) => setEmail(e.target.value)}
+                        placeholder="demo-kullanici veya demo@urun.com"
+                        value={username}
+                        onChange={(e) => setUsername(e.target.value)}
                     />
                 </div>
                 <div>
@@ -128,17 +128,17 @@ function DemoSessionForm({ product }) {
             {showAdvanced && (
                 <div className="mb-4 grid gap-4 rounded border border-border/50 bg-bg-muted p-3 sm:grid-cols-3">
                     <p className="sm:col-span-3 text-xs text-text-muted">
-                        Giriş formu otomatik algılanır; algılama başarısız olursa DevTools'tan bulduğunuz CSS
+                        Giris formu otomatik algilanir; algilama basarisiz olursa DevTools'tan buldugunuz CSS
                         selector'ları buraya girin.
                     </p>
                     <div>
-                        <label className="block text-xs font-medium text-text-muted mb-2">Email input selector</label>
+                        <label className="block text-xs font-medium text-text-muted mb-2">Kullanici adi / e-posta input selector</label>
                         <input
                             type="text"
                             className="w-full rounded-[var(--radius-input)] border border-input-border bg-input-bg px-3 py-2 text-xs font-mono text-text focus:border-brand focus:outline-none focus:ring-1 focus:ring-brand"
-                            placeholder="otomatik algılanır"
-                            value={emailSelector}
-                            onChange={(e) => setEmailSelector(e.target.value)}
+                            placeholder="otomatik algilanir"
+                            value={usernameSelector}
+                            onChange={(e) => setUsernameSelector(e.target.value)}
                         />
                     </div>
                     <div>

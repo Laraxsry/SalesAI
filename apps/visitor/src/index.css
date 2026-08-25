@@ -1,6 +1,20 @@
-@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap');
+@import url('https://fonts.googleapis.com/css2?family=Manrope:wght@400;500;600;700;800&family=Space+Grotesk:wght@500;600;700&display=swap');
 @import '@repo/tailwind-config/css';
 @import '@livekit/components-styles';
+
+:root {
+    --color-brand: #0f766e;
+    --color-brand-light: #14b8a6;
+    --color-brand-dark: #0b5f59;
+    --color-bg: #071713;
+    --color-surface: #0d2923;
+    --color-surface-raised: #15372f;
+    --color-border: rgb(255 255 255 / 10%);
+    --color-text: #f8fbf8;
+    --color-text-muted: #9baba4;
+    --radius-card: 22px;
+    --radius-input: 13px;
+}
 
 html,
 body,
@@ -8,18 +22,46 @@ body,
     height: 100%;
 }
 
+* {
+    box-sizing: border-box;
+}
+
 body {
     margin: 0;
+    overflow: hidden;
     background: var(--color-bg);
     color: var(--color-text);
-    font-family: 'Inter', system-ui, -apple-system, Segoe UI, Roboto, sans-serif;
+    font-family: 'Manrope', sans-serif;
+    -webkit-font-smoothing: antialiased;
+}
+
+h1,
+h2,
+h3 {
+    font-family: 'Space Grotesk', sans-serif;
+}
+
+.visitor-stage {
+    background:
+        radial-gradient(circle at 50% 35%, rgb(20 184 166 / 13%), transparent 31rem),
+        linear-gradient(145deg, #06120f, #0a211c 58%, #061611);
+}
+
+.visitor-grid {
+    background-image: radial-gradient(circle, rgb(215 249 91 / 14%) 1px, transparent 1.2px);
+    background-size: 20px 20px;
+    mask-image: radial-gradient(circle at center, black, transparent 68%);
+}
+
+.voice-orb {
+    animation: voice-float 4s ease-in-out infinite;
 }
 
 .app-loading {
     min-height: 100dvh;
     display: grid;
     place-items: center;
-    color: var(--color-muted);
+    color: var(--color-text-muted);
     font-size: 0.875rem;
     font-weight: 600;
     letter-spacing: 0.02em;
@@ -27,8 +69,13 @@ body {
 
 button:focus-visible,
 a:focus-visible {
-    outline: 2px solid var(--color-brand-light);
-    outline-offset: 2px;
+    outline: 2px solid #d7f95b;
+    outline-offset: 3px;
+}
+
+@keyframes voice-float {
+    0%, 100% { transform: translateY(0); }
+    50% { transform: translateY(-7px); }
 }
 
 @media (prefers-reduced-motion: reduce) {

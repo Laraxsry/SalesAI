@@ -4,6 +4,7 @@ import { StatusBar } from 'expo-status-bar';
 import { useRouter } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import { useAuth } from './_layout';
+import { COLORS, FONT } from '../../src/theme';
 
 const SESSION_STATUS_LABELS = {
     live: 'CANLI',
@@ -255,7 +256,7 @@ export default function DashboardScreen() {
     if (loading) {
         return (
             <View style={styles.centerContainer}>
-                <ActivityIndicator size="large" color="#6d5efc" />
+                <ActivityIndicator size="large" color={COLORS.lime} />
                 <Text style={styles.loadingText}>Çalışma alanları yükleniyor…</Text>
             </View>
         );
@@ -274,16 +275,15 @@ export default function DashboardScreen() {
 
             {/* Top Workspace Selector & Header */}
             <View style={styles.header}>
-                <View>
-                    <Text style={styles.brandTitle}>SalesAI Konsolu</Text>
-                    {activeWorkspace && (
-                        <Text style={styles.workspaceSubtitle}>
-                            Çalışma Alanı: {activeWorkspace.name}
-                        </Text>
-                    )}
+                <View style={styles.headerBrandRow}>
+                    <View style={styles.brandMark}><Text style={styles.brandMarkText}>S</Text></View>
+                    <View>
+                        <Text style={styles.brandTitle}>Satış merkezi</Text>
+                        {activeWorkspace && <Text style={styles.workspaceSubtitle}>{activeWorkspace.name}</Text>}
+                    </View>
                 </View>
                 <TouchableOpacity style={styles.logoutButton} onPress={handleLogout} activeOpacity={0.7}>
-                    <Text style={styles.logoutText}>Çıkış</Text>
+                    <Ionicons name="log-out-outline" size={18} color="#FF9B91" />
                 </TouchableOpacity>
             </View>
 
@@ -291,7 +291,7 @@ export default function DashboardScreen() {
             <View style={styles.contentContainer}>
                 {activeTab === 'home' && (
                     <ScrollView 
-                        refreshControl={<RefreshControl refreshing={refreshing} onRefresh={handleRefresh} tintColor="#6d5efc" />}
+                        refreshControl={<RefreshControl refreshing={refreshing} onRefresh={handleRefresh} tintColor={COLORS.teal} />}
                         contentContainerStyle={styles.tabContent}
                     >
                         {/* KPI Cards */}
@@ -351,7 +351,7 @@ export default function DashboardScreen() {
                         <TextInput
                             style={styles.searchBar}
                             placeholder="Görüşme veya temsilci ara…"
-                            placeholderTextColor="#6c727f"
+                            placeholderTextColor={COLORS.soft}
                             value={searchQuery}
                             onChangeText={handleSearch}
                             autoCapitalize="none"
@@ -360,7 +360,7 @@ export default function DashboardScreen() {
                         <FlatList
                             data={filteredSessions}
                             keyExtractor={(item) => item._id}
-                            refreshControl={<RefreshControl refreshing={refreshing} onRefresh={handleRefresh} tintColor="#6d5efc" />}
+                            refreshControl={<RefreshControl refreshing={refreshing} onRefresh={handleRefresh} tintColor={COLORS.teal} />}
                             contentContainerStyle={styles.listContent}
                             renderItem={({ item }) => (
                                 <TouchableOpacity
@@ -395,7 +395,7 @@ export default function DashboardScreen() {
                     <FlatList
                         data={leads}
                         keyExtractor={(item) => item._id}
-                        refreshControl={<RefreshControl refreshing={refreshing} onRefresh={handleRefresh} tintColor="#6d5efc" />}
+                        refreshControl={<RefreshControl refreshing={refreshing} onRefresh={handleRefresh} tintColor={COLORS.teal} />}
                         contentContainerStyle={styles.listContent}
                         renderItem={({ item }) => (
                             <View style={styles.leadCard}>
@@ -459,7 +459,7 @@ export default function DashboardScreen() {
                     <FlatList
                         data={agents}
                         keyExtractor={(item) => item._id}
-                        refreshControl={<RefreshControl refreshing={refreshing} onRefresh={handleRefresh} tintColor="#6d5efc" />}
+                        refreshControl={<RefreshControl refreshing={refreshing} onRefresh={handleRefresh} tintColor={COLORS.teal} />}
                         contentContainerStyle={styles.listContent}
                         renderItem={({ item }) => (
                             <View style={styles.agentItem}>
@@ -476,7 +476,7 @@ export default function DashboardScreen() {
                                         value={item.status === 'active'}
                                         onValueChange={() => toggleAgentStatus(item)}
                                         disabled={isViewer}
-                                        trackColor={{ false: '#2d2d44', true: '#10b981' }}
+                                        trackColor={{ false: COLORS.inkRaised, true: COLORS.tealDark }}
                                         thumbColor="#ffffff"
                                     />
                                 </View>
@@ -527,35 +527,35 @@ export default function DashboardScreen() {
                 <View style={styles.floatingTabBar}>
                     <TouchableOpacity style={styles.tabItem} onPress={() => setActiveTab('home')}>
                         <View style={[styles.iconWrapper, activeTab === 'home' && styles.iconWrapperActive]}>
-                            <Ionicons name={activeTab === 'home' ? 'home' : 'home-outline'} size={22} color={activeTab === 'home' ? '#ffffff' : '#6c727f'} />
+                            <Ionicons name={activeTab === 'home' ? 'home' : 'home-outline'} size={21} color={activeTab === 'home' ? COLORS.ink : 'rgba(255,255,255,0.4)'} />
                         </View>
                         <Text style={[styles.tabItemText, activeTab === 'home' && styles.tabItemTextActive]}>Ana Sayfa</Text>
                     </TouchableOpacity>
                     
                     <TouchableOpacity style={styles.tabItem} onPress={() => setActiveTab('sessions')}>
                         <View style={[styles.iconWrapper, activeTab === 'sessions' && styles.iconWrapperActive]}>
-                            <Ionicons name={activeTab === 'sessions' ? 'call' : 'call-outline'} size={22} color={activeTab === 'sessions' ? '#ffffff' : '#6c727f'} />
+                            <Ionicons name={activeTab === 'sessions' ? 'call' : 'call-outline'} size={21} color={activeTab === 'sessions' ? COLORS.ink : 'rgba(255,255,255,0.4)'} />
                         </View>
                         <Text style={[styles.tabItemText, activeTab === 'sessions' && styles.tabItemTextActive]}>Görüşmeler</Text>
                     </TouchableOpacity>
 
                     <TouchableOpacity style={styles.tabItem} onPress={() => setActiveTab('leads')}>
                         <View style={[styles.iconWrapper, activeTab === 'leads' && styles.iconWrapperActive]}>
-                            <Ionicons name={activeTab === 'leads' ? 'people' : 'people-outline'} size={22} color={activeTab === 'leads' ? '#ffffff' : '#6c727f'} />
+                            <Ionicons name={activeTab === 'leads' ? 'people' : 'people-outline'} size={21} color={activeTab === 'leads' ? COLORS.ink : 'rgba(255,255,255,0.4)'} />
                         </View>
                         <Text style={[styles.tabItemText, activeTab === 'leads' && styles.tabItemTextActive]}>Adaylar</Text>
                     </TouchableOpacity>
 
                     <TouchableOpacity style={styles.tabItem} onPress={() => setActiveTab('agents')}>
                         <View style={[styles.iconWrapper, activeTab === 'agents' && styles.iconWrapperActive]}>
-                            <Ionicons name={activeTab === 'agents' ? 'hardware-chip' : 'hardware-chip-outline'} size={22} color={activeTab === 'agents' ? '#ffffff' : '#6c727f'} />
+                            <Ionicons name={activeTab === 'agents' ? 'hardware-chip' : 'hardware-chip-outline'} size={21} color={activeTab === 'agents' ? COLORS.ink : 'rgba(255,255,255,0.4)'} />
                         </View>
                         <Text style={[styles.tabItemText, activeTab === 'agents' && styles.tabItemTextActive]}>Temsilciler</Text>
                     </TouchableOpacity>
 
                     <TouchableOpacity style={styles.tabItem} onPress={() => setActiveTab('settings')}>
                         <View style={[styles.iconWrapper, activeTab === 'settings' && styles.iconWrapperActive]}>
-                            <Ionicons name={activeTab === 'settings' ? 'settings' : 'settings-outline'} size={22} color={activeTab === 'settings' ? '#ffffff' : '#6c727f'} />
+                            <Ionicons name={activeTab === 'settings' ? 'settings' : 'settings-outline'} size={21} color={activeTab === 'settings' ? COLORS.ink : 'rgba(255,255,255,0.4)'} />
                         </View>
                         <Text style={[styles.tabItemText, activeTab === 'settings' && styles.tabItemTextActive]}>Ayarlar</Text>
                     </TouchableOpacity>
@@ -568,17 +568,18 @@ export default function DashboardScreen() {
 const styles = StyleSheet.create({
     container: {
         flex: 1,
-        backgroundColor: '#0b0b12',
+        backgroundColor: COLORS.ink,
     },
     centerContainer: {
         flex: 1,
-        backgroundColor: '#0b0b12',
+        backgroundColor: COLORS.ink,
         justifyContent: 'center',
         alignItems: 'center',
         padding: 24,
     },
     loadingText: {
-        color: '#9ba1b0',
+        color: 'rgba(255,255,255,0.55)',
+        fontFamily: FONT.medium,
         fontSize: 15,
         marginTop: 16,
     },
@@ -586,52 +587,65 @@ const styles = StyleSheet.create({
         flexDirection: 'row',
         justifyContent: 'space-between',
         alignItems: 'center',
-        paddingHorizontal: 24,
-        paddingTop: Platform.OS === 'ios' ? 60 : 40,
-        paddingBottom: 20,
-        backgroundColor: '#10101a',
-        borderBottomWidth: 1,
-        borderColor: '#1e1e2f',
+        paddingHorizontal: 20,
+        paddingTop: Platform.OS === 'ios' ? 58 : 34,
+        paddingBottom: 16,
+        backgroundColor: COLORS.ink,
+    },
+    headerBrandRow: {
+        flexDirection: 'row',
+        alignItems: 'center',
+    },
+    brandMark: {
+        width: 39,
+        height: 39,
+        marginRight: 11,
+        alignItems: 'center',
+        justifyContent: 'center',
+        borderRadius: 12,
+        backgroundColor: COLORS.lime,
+    },
+    brandMarkText: {
+        color: COLORS.ink,
+        fontFamily: FONT.bold,
+        fontSize: 14,
     },
     brandTitle: {
-        color: '#ffffff',
-        fontSize: 20,
-        fontWeight: '800',
+        color: COLORS.white,
+        fontFamily: FONT.bold,
+        fontSize: 17,
     },
     workspaceSubtitle: {
-        color: '#6d5efc',
-        fontSize: 12,
-        fontWeight: '600',
-        marginTop: 2,
+        color: 'rgba(255,255,255,0.45)',
+        fontFamily: FONT.medium,
+        fontSize: 10.5,
+        marginTop: 1,
     },
     logoutButton: {
-        paddingVertical: 6,
-        paddingHorizontal: 12,
-        borderRadius: 8,
-        backgroundColor: '#1b1b2a',
+        width: 38,
+        height: 38,
+        alignItems: 'center',
+        justifyContent: 'center',
+        borderRadius: 12,
+        backgroundColor: 'rgba(255,255,255,0.06)',
         borderWidth: 1,
-        borderColor: '#2d2d44',
-    },
-    logoutText: {
-        color: '#f87171',
-        fontSize: 12,
-        fontWeight: '600',
+        borderColor: 'rgba(255,255,255,0.09)',
     },
     contentContainer: {
         flex: 1,
     },
     tabContent: {
-        padding: 24,
+        padding: 20,
         paddingBottom: 110,
     },
     listContent: {
-        padding: 24,
+        padding: 20,
         paddingBottom: 110,
     },
     sectionTitle: {
-        color: '#ffffff',
-        fontSize: 18,
-        fontWeight: '700',
+        color: COLORS.white,
+        fontFamily: FONT.bold,
+        fontSize: 17,
         marginBottom: 16,
     },
     sectionHeaderRow: {
@@ -644,7 +658,7 @@ const styles = StyleSheet.create({
         width: 8,
         height: 8,
         borderRadius: 4,
-        backgroundColor: '#10b981',
+        backgroundColor: COLORS.lime,
         marginLeft: 8,
     },
     kpiGrid: {
@@ -655,28 +669,29 @@ const styles = StyleSheet.create({
     kpiCard: {
         flex: 1,
         minWidth: '45%',
-        backgroundColor: '#13131e',
-        borderRadius: 16,
-        padding: 16,
+        backgroundColor: COLORS.inkSoft,
+        borderRadius: 20,
+        padding: 17,
         borderWidth: 1,
-        borderColor: '#242436',
+        borderColor: 'rgba(255,255,255,0.075)',
     },
     kpiValue: {
-        color: '#6d5efc',
+        color: COLORS.lime,
+        fontFamily: FONT.bold,
         fontSize: 24,
-        fontWeight: '800',
     },
     kpiLabel: {
-        color: '#9ba1b0',
+        color: 'rgba(255,255,255,0.45)',
+        fontFamily: FONT.medium,
         fontSize: 12,
         marginTop: 4,
     },
     sessionItem: {
-        backgroundColor: '#13131e',
-        borderRadius: 16,
+        backgroundColor: COLORS.inkSoft,
+        borderRadius: 20,
         padding: 16,
         borderWidth: 1,
-        borderColor: '#242436',
+        borderColor: 'rgba(255,255,255,0.075)',
         marginBottom: 12,
     },
     sessionMetaRow: {
@@ -686,17 +701,20 @@ const styles = StyleSheet.create({
         marginBottom: 4,
     },
     sessionVisitor: {
-        color: '#ffffff',
+        color: COLORS.white,
+        fontFamily: FONT.bold,
         fontSize: 16,
         fontWeight: '700',
     },
     sessionAgent: {
-        color: '#9ba1b0',
+        color: 'rgba(255,255,255,0.52)',
+        fontFamily: FONT.regular,
         fontSize: 14,
         marginBottom: 8,
     },
     sessionTime: {
-        color: '#6c727f',
+        color: 'rgba(255,255,255,0.32)',
+        fontFamily: FONT.medium,
         fontSize: 12,
     },
     liveTag: {
@@ -706,7 +724,7 @@ const styles = StyleSheet.create({
         borderRadius: 10,
     },
     liveTagText: {
-        color: '#10b981',
+        color: COLORS.teal,
         fontSize: 10,
         fontWeight: '800',
     },
@@ -726,29 +744,31 @@ const styles = StyleSheet.create({
         fontWeight: '800',
     },
     badgeLiveText: {
-        color: '#10b981',
+        color: COLORS.teal,
     },
     badgeEndedText: {
-        color: '#9ba1b0',
+        color: 'rgba(255,255,255,0.5)',
     },
     emptyCard: {
-        backgroundColor: '#13131e',
-        borderRadius: 16,
+        backgroundColor: COLORS.inkSoft,
+        borderRadius: 20,
         padding: 32,
         borderWidth: 1,
-        borderColor: '#242436',
+        borderColor: 'rgba(255,255,255,0.075)',
         alignItems: 'center',
     },
     emptyCardText: {
-        color: '#4e5564',
+        color: 'rgba(255,255,255,0.34)',
+        fontFamily: FONT.medium,
         fontSize: 14,
     },
     searchBar: {
-        backgroundColor: '#13131e',
-        borderRadius: 12,
+        backgroundColor: COLORS.inkSoft,
+        borderRadius: 16,
         borderWidth: 1,
-        borderColor: '#242436',
-        color: '#ffffff',
+        borderColor: 'rgba(255,255,255,0.075)',
+        color: COLORS.white,
+        fontFamily: FONT.medium,
         paddingHorizontal: 16,
         paddingVertical: 12,
         marginHorizontal: 24,
@@ -758,21 +778,23 @@ const styles = StyleSheet.create({
     agentItem: {
         flexDirection: 'row',
         alignItems: 'center',
-        backgroundColor: '#13131e',
-        borderRadius: 16,
+        backgroundColor: COLORS.inkSoft,
+        borderRadius: 20,
         padding: 16,
         borderWidth: 1,
-        borderColor: '#242436',
+        borderColor: 'rgba(255,255,255,0.075)',
         marginBottom: 12,
     },
     agentNameText: {
-        color: '#ffffff',
+        color: COLORS.white,
+        fontFamily: FONT.bold,
         fontSize: 16,
         fontWeight: '700',
         marginBottom: 4,
     },
     agentConfigText: {
-        color: '#9ba1b0',
+        color: 'rgba(255,255,255,0.48)',
+        fontFamily: FONT.regular,
         fontSize: 13,
         marginTop: 2,
     },
@@ -785,17 +807,17 @@ const styles = StyleSheet.create({
         fontWeight: '800',
     },
     indicatorActive: {
-        color: '#10b981',
+        color: COLORS.teal,
     },
     indicatorPaused: {
         color: '#f87171',
     },
     leadCard: {
-        backgroundColor: '#13131e',
-        borderRadius: 16,
+        backgroundColor: COLORS.inkSoft,
+        borderRadius: 20,
         padding: 16,
         borderWidth: 1,
-        borderColor: '#242436',
+        borderColor: 'rgba(255,255,255,0.075)',
         marginBottom: 12,
     },
     leadHeader: {
@@ -805,23 +827,25 @@ const styles = StyleSheet.create({
         marginBottom: 6,
     },
     leadEmail: {
-        color: '#ffffff',
+        color: COLORS.white,
+        fontFamily: FONT.bold,
         fontSize: 16,
         fontWeight: '700',
     },
     scoreBadge: {
-        backgroundColor: 'rgba(109, 94, 252, 0.15)',
+        backgroundColor: 'rgba(215,249,91,0.1)',
         paddingVertical: 2,
         paddingHorizontal: 8,
         borderRadius: 10,
     },
     scoreText: {
-        color: '#6d5efc',
+        color: COLORS.lime,
+        fontFamily: FONT.bold,
         fontSize: 11,
         fontWeight: '700',
     },
     leadCompany: {
-        color: '#9ba1b0',
+        color: 'rgba(255,255,255,0.48)',
         fontSize: 14,
         marginBottom: 12,
     },
@@ -834,29 +858,29 @@ const styles = StyleSheet.create({
         flex: 1,
         paddingVertical: 6,
         borderRadius: 8,
-        backgroundColor: '#1b1b2a',
+        backgroundColor: 'rgba(255,255,255,0.055)',
         borderWidth: 1,
-        borderColor: '#2d2d44',
+        borderColor: 'rgba(255,255,255,0.09)',
         alignItems: 'center',
     },
     leadStatusBtnActive: {
-        backgroundColor: '#6d5efc',
-        borderColor: '#6d5efc',
+        backgroundColor: COLORS.lime,
+        borderColor: COLORS.lime,
     },
     leadStatusBtnText: {
-        color: '#9ba1b0',
+        color: 'rgba(255,255,255,0.48)',
         fontSize: 12,
         fontWeight: '600',
     },
     leadStatusBtnActiveText: {
-        color: '#ffffff',
+        color: COLORS.ink,
     },
     leadStatusBtnDisabled: {
         opacity: 0.4,
     },
     contactActionsRow: {
         borderTopWidth: 1,
-        borderColor: '#1e1e2f',
+        borderColor: 'rgba(255,255,255,0.075)',
         marginTop: 14,
         paddingTop: 12,
     },
@@ -864,24 +888,25 @@ const styles = StyleSheet.create({
         alignSelf: 'flex-start',
     },
     contactBtnText: {
-        color: '#6d5efc',
+        color: COLORS.teal,
         fontSize: 13,
         fontWeight: '600',
     },
     settingsCard: {
-        backgroundColor: '#13131e',
-        borderRadius: 16,
+        backgroundColor: COLORS.inkSoft,
+        borderRadius: 20,
         padding: 16,
         borderWidth: 1,
-        borderColor: '#242436',
+        borderColor: 'rgba(255,255,255,0.075)',
     },
     settingsLabel: {
-        color: '#6c727f',
+        color: 'rgba(255,255,255,0.35)',
         fontSize: 12,
         marginBottom: 4,
     },
     settingsValue: {
-        color: '#ffffff',
+        color: COLORS.white,
+        fontFamily: FONT.bold,
         fontSize: 16,
         fontWeight: '600',
         marginBottom: 16,
@@ -892,41 +917,41 @@ const styles = StyleSheet.create({
         alignItems: 'center',
         paddingVertical: 12,
         borderBottomWidth: 1,
-        borderColor: '#1e1e2f',
+        borderColor: 'rgba(255,255,255,0.075)',
     },
     workspaceItemActive: {
         borderColor: 'transparent',
     },
     workspaceText: {
-        color: '#9ba1b0',
+        color: 'rgba(255,255,255,0.52)',
         fontSize: 15,
     },
     workspaceTextActive: {
-        color: '#6d5efc',
+        color: COLORS.lime,
         fontWeight: '700',
     },
     activeIndicatorText: {
-        color: '#10b981',
+        color: COLORS.teal,
         fontSize: 12,
         fontWeight: '700',
     },
     tabBarContainer: {
         position: 'absolute',
-        bottom: Platform.OS === 'ios' ? 30 : 20,
-        left: 20,
-        right: 20,
+        bottom: Platform.OS === 'ios' ? 24 : 16,
+        left: 14,
+        right: 14,
         alignItems: 'center',
         justifyContent: 'center',
     },
     floatingTabBar: {
         flexDirection: 'row',
-        height: 70,
-        backgroundColor: 'rgba(22, 22, 34, 0.95)',
-        borderRadius: 35,
-        paddingHorizontal: 10,
+        height: 72,
+        backgroundColor: 'rgba(13,41,35,0.97)',
+        borderRadius: 24,
+        paddingHorizontal: 7,
         borderWidth: 1,
-        borderColor: 'rgba(255, 255, 255, 0.08)',
-        shadowColor: '#000',
+        borderColor: 'rgba(255,255,255,0.1)',
+        shadowColor: COLORS.ink,
         shadowOffset: { width: 0, height: 10 },
         shadowOpacity: 0.5,
         shadowRadius: 20,
@@ -942,21 +967,22 @@ const styles = StyleSheet.create({
     iconWrapper: {
         width: 44,
         height: 32,
-        borderRadius: 16,
+        borderRadius: 12,
         justifyContent: 'center',
         alignItems: 'center',
         marginBottom: 4,
     },
     iconWrapperActive: {
-        backgroundColor: 'rgba(109, 94, 252, 0.2)',
+        backgroundColor: COLORS.lime,
     },
     tabItemText: {
-        color: '#6c727f',
+        color: 'rgba(255,255,255,0.38)',
+        fontFamily: FONT.medium,
         fontSize: 10,
         fontWeight: '600',
     },
     tabItemTextActive: {
-        color: '#ffffff',
-        fontWeight: '700',
+        color: COLORS.lime,
+        fontFamily: FONT.bold,
     },
 });

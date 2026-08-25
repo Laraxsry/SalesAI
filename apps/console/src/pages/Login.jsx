@@ -35,14 +35,16 @@ export function Login() {
 
     return (
         <AuthLayout>
-            <div className="mb-8 flex justify-center lg:hidden">
+            <div className="mb-8 flex items-center gap-3 lg:hidden">
+                <span className="flex h-9 w-9 items-center justify-center rounded-xl bg-[#0b1f1b] text-xs font-extrabold text-[#d7f95b]">S</span>
                 <Logo />
             </div>
 
-            <h1 className="text-2xl font-bold tracking-tight text-text">{t('auth.loginTitle')}</h1>
-            <p className="mt-1.5 text-sm text-text-muted">{t('auth.loginSubtitle')}</p>
+            <p className="mb-2 text-[10px] font-bold uppercase tracking-[0.18em] text-brand">Güvenli konsol erişimi</p>
+            <h1 className="text-3xl font-semibold tracking-[-0.035em] text-text">{t('auth.loginTitle')}</h1>
+            <p className="mt-2 text-sm leading-6 text-text-muted">{t('auth.loginSubtitle')}</p>
 
-            <form onSubmit={onSubmit} className="mt-8">
+            <form onSubmit={onSubmit} className="mt-7">
                 <Input
                     id="email"
                     label={t('auth.email')}

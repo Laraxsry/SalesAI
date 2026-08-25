@@ -13,15 +13,26 @@ const CLOSE_MESSAGE = 'salesai:embed:close';
 
 function CenteredMessage({ embed, icon: Icon, loading = false, onClose, children }) {
     return (
-        <div className="relative flex h-full flex-col items-center justify-center gap-4 bg-bg px-6 text-center">
+        <div className="visitor-stage relative flex h-full flex-col items-center justify-center overflow-hidden px-6 text-center">
+            <div className="visitor-grid pointer-events-none absolute inset-0 opacity-50" />
             {embed && onClose && (
-                <button type="button" onClick={onClose} aria-label="Widget'ı kapat" className="absolute right-3 top-3 flex h-9 w-9 items-center justify-center rounded-full bg-surface-raised text-text-muted hover:text-text">
+                <button type="button" onClick={onClose} aria-label="Widget'ı kapat" className="absolute right-4 top-4 z-10 flex h-10 w-10 items-center justify-center rounded-xl border border-white/10 bg-white/[0.06] text-white/60 hover:bg-white/10 hover:text-white">
                     <X size={17} aria-hidden="true" />
                 </button>
             )}
-            {!embed && <Logo />}
-            <Icon size={28} className={`text-text-muted ${loading ? 'animate-spin' : ''}`} />
-            <p className="text-sm text-text-muted">{children}</p>
+            <div className="relative z-10 w-full max-w-sm rounded-[28px] border border-white/10 bg-white/[0.055] p-8 shadow-2xl shadow-black/20 backdrop-blur-xl">
+                {!embed && (
+                    <div className="mb-9 flex items-center justify-center gap-3">
+                        <span className="flex h-9 w-9 items-center justify-center rounded-xl bg-[#d7f95b] text-xs font-extrabold text-[#071713]">S</span>
+                        <Logo className="[&_span]:text-white [&_span_span]:text-[#d7f95b]" />
+                    </div>
+                )}
+                <span className="mx-auto flex h-14 w-14 items-center justify-center rounded-2xl border border-white/10 bg-white/[0.06] text-[#d7f95b]">
+                    <Icon size={23} className={loading ? 'animate-spin' : ''} />
+                </span>
+                <p className="mt-5 text-sm font-medium leading-6 text-white/60">{children}</p>
+                {loading && <div className="mx-auto mt-6 h-1 w-24 overflow-hidden rounded-full bg-white/8"><div className="h-full w-1/2 animate-pulse rounded-full bg-[#d7f95b]" /></div>}
+            </div>
         </div>
     );
 }
@@ -83,7 +94,7 @@ export function Visit() {
                     body: JSON.stringify(body)
                 });
                 const data = await res.json();
-                if (!res.ok) throw new Error(data.error || 'Bağlantı kurulamadı');
+                if (!res.ok) throw new Error('Bağlantı geçersiz veya artık aktif değil.');
                 // conn: { sessionId, roomName, token, livekitUrl }
                 setConn(data);
             } catch (err) {
@@ -126,18 +137,18 @@ export function Visit() {
 
     if (isDebug && !started) {
         return (
-            <div className="flex h-full flex-col items-center justify-center gap-4 bg-bg px-6">
+            <div className="visitor-stage flex h-full flex-col items-center justify-center gap-4 px-6">
                 <Logo />
                 <p className="text-sm text-text-muted">Test için çerezlerinizi JSON olarak yapıştırın:</p>
                 <textarea 
-                    className="w-full max-w-lg h-48 p-2 text-xs bg-bg-muted border border-border rounded"
+                    className="h-48 w-full max-w-lg rounded-2xl border border-white/10 bg-white/[0.06] p-4 text-xs text-white outline-none focus:border-brand-light"
                     value={debugAuth}
                     onChange={(e) => setDebugAuth(e.target.value)}
                     placeholder='{"cookies": [{"name": "__Secure-1PSID", "value": "...", "domain": ".youtube.com", "path": "/", "secure": true}]}'
                 />
                 <button 
                     onClick={() => setStarted(true)}
-                    className="px-4 py-2 bg-primary text-white rounded text-sm hover:bg-primary-hover"
+                    className="rounded-xl bg-[#d7f95b] px-4 py-2.5 text-sm font-bold text-[#071713] hover:bg-[#c9ed45]"
                 >
                     Çerezlerle Oturum Başlat
                 </button>

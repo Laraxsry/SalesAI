@@ -1,35 +1,23 @@
-import { View, Text, StyleSheet, TouchableOpacity } from 'react-native';
+import { StyleSheet, Text, TouchableOpacity, View } from 'react-native';
+import { Ionicons } from '@expo/vector-icons';
+import { COLORS, FONT } from '../theme';
 
-const MuteIcon = ({ color }) => (
-    <View style={styles.iconContainer}>
-        <View style={[styles.micStem, { backgroundColor: color }]} />
-        <View style={[styles.micBowl, { borderColor: color }]} />
-        <View style={[styles.micStand, { backgroundColor: color }]} />
-    </View>
-);
+function Control({ icon, label, onPress, active = false, danger = false }) {
+    return (
+        <TouchableOpacity style={styles.controlItem} onPress={onPress} activeOpacity={0.78} accessibilityLabel={label}>
+            <View style={[styles.controlButton, active && styles.controlButtonActive, danger && styles.controlButtonDanger]}>
+                <Ionicons
+                    name={icon}
+                    size={21}
+                    color={active ? COLORS.ink : COLORS.white}
+                />
+            </View>
+            <Text style={[styles.controlText, danger && styles.controlTextDanger]}>{label}</Text>
+        </TouchableOpacity>
+    );
+}
 
-const PhoneIcon = () => (
-    <View style={styles.iconContainer}>
-        <View style={styles.phoneBase} />
-    </View>
-);
-
-const HeadphoneIcon = ({ muted }) => (
-    <View style={styles.iconContainer}>
-        <View style={[styles.headphoneBand, muted && styles.headphoneBandMuted]} />
-        <View style={[styles.headphoneEarcup, styles.headphoneEarcupLeft, muted && styles.headphoneEarcupMuted]} />
-        <View style={[styles.headphoneEarcup, styles.headphoneEarcupRight, muted && styles.headphoneEarcupMuted]} />
-        {muted && <View style={styles.headphoneSlash} />}
-    </View>
-);
-
-const ScreenShareIcon = ({ active }) => (
-    <View style={styles.iconContainer}>
-        <View style={[styles.screenRect, active && styles.screenRectActive]} />
-    </View>
-);
-
-/** The mute / headphone (output mute) / screen-share / end-call row shown during a live session. */
+/** Microphone, remote audio, screen-share and end-call controls for a live session. */
 export function CallControls({
     isMuted,
     toggleMute,
@@ -41,160 +29,65 @@ export function CallControls({
 }) {
     return (
         <View style={styles.controlsContainer}>
-            <TouchableOpacity
-                style={[styles.controlButton, isMuted ? styles.controlMuted : styles.controlActive]}
+            <Control
+                icon={isMuted ? 'mic-off' : 'mic'}
+                label={isMuted ? 'Sesi aç' : 'Mikrofon'}
                 onPress={toggleMute}
-                activeOpacity={0.8}
-            >
-                <MuteIcon color="#ffffff" />
-                <Text style={styles.controlText}>{isMuted ? 'Sesi Aç' : 'Sessiz'}</Text>
-            </TouchableOpacity>
-
-            <TouchableOpacity
-                style={[styles.controlButton, isDeafened ? styles.controlMuted : styles.controlActive]}
+                active={isMuted}
+            />
+            <Control
+                icon={isDeafened ? 'volume-mute' : 'volume-high'}
+                label={isDeafened ? 'Sesi aç' : 'Hoparlör'}
                 onPress={toggleDeafen}
-                activeOpacity={0.8}
-            >
-                <HeadphoneIcon muted={isDeafened} />
-                <Text style={styles.controlText}>{isDeafened ? 'Sesi Aç' : 'Kulaklık'}</Text>
-            </TouchableOpacity>
-
-            <TouchableOpacity
-                style={[styles.controlButton, isSharingScreen ? styles.controlSharing : styles.controlActive]}
+                active={isDeafened}
+            />
+            <Control
+                icon={isSharingScreen ? 'stop-circle' : 'share-outline'}
+                label={isSharingScreen ? 'Durdur' : 'Paylaş'}
                 onPress={toggleScreenShare}
-                activeOpacity={0.8}
-            >
-                <ScreenShareIcon active={isSharingScreen} />
-                <Text style={styles.controlText}>Paylaş</Text>
-            </TouchableOpacity>
-
-            <TouchableOpacity
-                style={[styles.controlButton, styles.controlEnd]}
-                onPress={handleDisconnect}
-                activeOpacity={0.8}
-            >
-                <PhoneIcon />
-                <Text style={styles.controlText}>Bitir</Text>
-            </TouchableOpacity>
+                active={isSharingScreen}
+            />
+            <Control icon="call" label="Bitir" onPress={handleDisconnect} danger />
         </View>
     );
 }
 
 const styles = StyleSheet.create({
     controlsContainer: {
-        flexDirection: 'row',
-        justifyContent: 'space-around',
-        alignItems: 'center',
         width: '100%',
+        flexDirection: 'row',
+        alignItems: 'flex-start',
+        justifyContent: 'space-between',
+    },
+    controlItem: {
+        width: 70,
+        alignItems: 'center',
     },
     controlButton: {
+        width: 54,
+        height: 54,
         alignItems: 'center',
         justifyContent: 'center',
-        width: 68,
-        height: 68,
-        borderRadius: 34,
-    },
-    controlActive: {
-        backgroundColor: '#1b1b2a',
+        borderRadius: 18,
         borderWidth: 1,
-        borderColor: '#2d2d44',
+        borderColor: 'rgba(255,255,255,0.1)',
+        backgroundColor: 'rgba(255,255,255,0.075)',
     },
-    controlMuted: {
-        backgroundColor: '#ef4444',
+    controlButtonActive: {
+        borderColor: COLORS.lime,
+        backgroundColor: COLORS.lime,
     },
-    controlSharing: {
-        backgroundColor: '#6d5efc',
-    },
-    controlEnd: {
-        backgroundColor: '#f87171',
+    controlButtonDanger: {
+        borderColor: 'rgba(231,88,74,0.55)',
+        backgroundColor: COLORS.danger,
     },
     controlText: {
-        color: '#9ba1b0',
-        fontSize: 11,
-        marginTop: 4,
-        fontWeight: '500',
+        marginTop: 7,
+        color: 'rgba(255,255,255,0.55)',
+        fontFamily: FONT.medium,
+        fontSize: 10.5,
     },
-    iconContainer: {
-        width: 28,
-        height: 28,
-        justifyContent: 'center',
-        alignItems: 'center',
-    },
-    micStem: {
-        width: 8,
-        height: 16,
-        borderRadius: 4,
-        position: 'absolute',
-        top: 4,
-    },
-    micBowl: {
-        width: 14,
-        height: 14,
-        borderRadius: 7,
-        borderWidth: 2,
-        borderTopWidth: 0,
-        position: 'absolute',
-        bottom: 8,
-    },
-    micStand: {
-        width: 2,
-        height: 6,
-        position: 'absolute',
-        bottom: 2,
-    },
-    phoneBase: {
-        width: 20,
-        height: 20,
-        borderRadius: 10,
-        backgroundColor: '#ffffff',
-        transform: [{ rotate: '135deg' }],
-    },
-    headphoneBand: {
-        position: 'absolute',
-        top: 2,
-        width: 18,
-        height: 12,
-        borderTopLeftRadius: 9,
-        borderTopRightRadius: 9,
-        borderWidth: 2,
-        borderBottomWidth: 0,
-        borderColor: '#ffffff',
-    },
-    headphoneBandMuted: {
-        borderColor: '#ffffff',
-    },
-    headphoneEarcup: {
-        position: 'absolute',
-        bottom: 4,
-        width: 7,
-        height: 10,
-        borderRadius: 3,
-        backgroundColor: '#ffffff',
-    },
-    headphoneEarcupLeft: {
-        left: 2,
-    },
-    headphoneEarcupRight: {
-        right: 2,
-    },
-    headphoneEarcupMuted: {
-        backgroundColor: '#ffffff',
-    },
-    headphoneSlash: {
-        position: 'absolute',
-        width: 26,
-        height: 2,
-        backgroundColor: '#ffffff',
-        transform: [{ rotate: '45deg' }],
-    },
-    screenRect: {
-        width: 22,
-        height: 16,
-        borderRadius: 3,
-        borderWidth: 2,
-        borderColor: '#ffffff',
-    },
-    screenRectActive: {
-        backgroundColor: 'rgba(255,255,255,0.2)',
+    controlTextDanger: {
+        color: '#FFB1A8',
     },
 });

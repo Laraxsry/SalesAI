@@ -4,10 +4,12 @@ import { useLocalSearchParams, useRouter } from 'expo-router';
 import { ConnectionState, Track, RoomEvent } from 'livekit-client';
 import { StatusBar } from 'expo-status-bar';
 import * as Haptics from 'expo-haptics';
+import { Ionicons } from '@expo/vector-icons';
 import { CONFIG } from '../../config';
 import { saveConversation } from '../../src/savedConversations';
 import { getVisitorId } from '../../src/visitorIdentity';
 import { CallControls } from '../../src/components/CallControls';
+import { COLORS, FONT } from '../../src/theme';
 
 /* global __DEV__ */
 
@@ -160,7 +162,7 @@ function NativeSessionScreen() {
     if (connectionState === 'permissions') {
         return (
             <View style={styles.centerContainer}>
-                <ActivityIndicator size="large" color="#6d5efc" />
+                <ActivityIndicator size="large" color={COLORS.lime} />
                 <Text style={styles.loadingText}>Mikrofon izni isteniyor…</Text>
             </View>
         );
@@ -169,7 +171,7 @@ function NativeSessionScreen() {
     if (connectionState === 'fetching') {
         return (
             <View style={styles.centerContainer}>
-                <ActivityIndicator size="large" color="#6d5efc" />
+                <ActivityIndicator size="large" color={COLORS.lime} />
                 <Text style={styles.loadingText}>Temsilciyle görüşme hazırlanıyor…</Text>
                 <TouchableOpacity style={[styles.backButton, { marginTop: 24 }]} onPress={handleDisconnect}>
                     <Text style={styles.backText}>Vazgeç</Text>
@@ -199,7 +201,7 @@ function NativeSessionScreen() {
 
             {connectionState === 'connecting' && (
                 <View style={[StyleSheet.absoluteFill, styles.centerContainer, { zIndex: 10 }]}>
-                    <ActivityIndicator size="large" color="#6d5efc" />
+                    <ActivityIndicator size="large" color={COLORS.lime} />
                     <Text style={styles.loadingText}>Görüşmeye bağlanılıyor…</Text>
                     <TouchableOpacity style={[styles.backButton, { marginTop: 24 }]} onPress={handleDisconnect}>
                         <Text style={styles.backText}>Vazgeç</Text>
@@ -375,10 +377,6 @@ function RoomView({ agentName, setAgentName, avatarProvider, handleDisconnect })
                 room.localParticipant.setScreenShareEnabled(false).catch(() => {});
                 setIsSharingScreen(false);
             }
-            if (msg?.type === 'agent_chat' && msg?.text) {
-                setCaptions(msg.text);
-                setTimeout(() => setCaptions((prev) => (prev === msg.text ? '' : prev)), 8000);
-            }
         };
         room.on(RoomEvent.DataReceived, handleData);
 
@@ -457,10 +455,13 @@ function RoomView({ agentName, setAgentName, avatarProvider, handleDisconnect })
 
     return (
         <View style={[styles.innerContainer, isPresentingScreen && styles.presentationContainer]}>
-            {/* Header info */}
+            {!isPresentingScreen && <View style={styles.ambientGlow} />}
             <View style={[styles.topBar, isPresentingScreen && styles.presentationTopBar]}>
                 <View style={[styles.statusDot, reconnecting && styles.statusDotWarn]} />
-                <Text style={styles.agentTitle}>{reconnecting ? 'Yeniden bağlanıyor…' : agentName}</Text>
+                <View>
+                    <Text style={styles.agentTitle}>{reconnecting ? 'Yeniden bağlanıyor…' : agentName}</Text>
+                    <Text style={styles.agentStatus}>{reconnecting ? 'Bağlantı kontrol ediliyor' : 'Görüşme aktif'}</Text>
+                </View>
             </View>
 
             {/* Any shared screen becomes the primary view and is never cropped. */}
@@ -502,14 +503,14 @@ function RoomView({ agentName, setAgentName, avatarProvider, handleDisconnect })
                     <TextInput
                         style={styles.chatInput}
                         placeholder="Yazarak da mesaj gönderebilirsiniz…"
-                        placeholderTextColor="#64748b"
+                        placeholderTextColor="rgba(255,255,255,0.35)"
                         value={chatInput}
                         onChangeText={setChatInput}
                         onSubmitEditing={sendChatMessage}
                         returnKeyType="send"
                     />
                     <TouchableOpacity style={styles.sendButton} onPress={sendChatMessage}>
-                        <Text style={styles.sendButtonText}>Gönder</Text>
+                        <Ionicons name="arrow-up" size={17} color={COLORS.ink} />
                     </TouchableOpacity>
                 </KeyboardAvoidingView>
             )}
@@ -520,7 +521,7 @@ function RoomView({ agentName, setAgentName, avatarProvider, handleDisconnect })
 const styles = StyleSheet.create({
     container: {
         flex: 1,
-        backgroundColor: '#0b0b12',
+        backgroundColor: COLORS.ink,
     },
     roomContainer: {
         flex: 1,
@@ -528,8 +529,9 @@ const styles = StyleSheet.create({
     innerContainer: {
         flex: 1,
         justifyContent: 'space-between',
-        paddingVertical: 40,
-        paddingHorizontal: 24,
+        paddingTop: Platform.OS === 'ios' ? 58 : 30,
+        paddingBottom: Platform.OS === 'ios' ? 28 : 20,
+        paddingHorizontal: 18,
     },
     presentationContainer: {
         paddingVertical: 0,
@@ -537,32 +539,34 @@ const styles = StyleSheet.create({
     },
     centerContainer: {
         flex: 1,
-        backgroundColor: '#0b0b12',
+        backgroundColor: COLORS.ink,
         alignItems: 'center',
         justifyContent: 'center',
         padding: 24,
     },
     loadingText: {
-        color: '#9ba1b0',
-        fontSize: 16,
+        color: 'rgba(255,255,255,0.6)',
+        fontFamily: FONT.medium,
+        fontSize: 15,
         marginTop: 16,
     },
     errorHeader: {
-        color: '#f87171',
+        color: '#FF9287',
         fontSize: 24,
-        fontWeight: '700',
+        fontFamily: FONT.bold,
         marginBottom: 8,
     },
     errorDesc: {
-        color: '#9ba1b0',
+        color: 'rgba(255,255,255,0.55)',
+        fontFamily: FONT.regular,
         fontSize: 15,
         textAlign: 'center',
         lineHeight: 22,
         marginBottom: 32,
     },
     retryButton: {
-        backgroundColor: '#6d5efc',
-        borderRadius: 12,
+        backgroundColor: COLORS.lime,
+        borderRadius: 16,
         paddingVertical: 14,
         paddingHorizontal: 32,
         marginBottom: 12,
@@ -570,57 +574,71 @@ const styles = StyleSheet.create({
         alignItems: 'center',
     },
     retryText: {
-        color: '#ffffff',
+        color: COLORS.ink,
         fontSize: 16,
-        fontWeight: '600',
+        fontFamily: FONT.bold,
     },
     backButton: {
-        backgroundColor: '#1b1b2a',
-        borderRadius: 12,
+        backgroundColor: 'rgba(255,255,255,0.06)',
+        borderRadius: 16,
         paddingVertical: 14,
         paddingHorizontal: 32,
         width: '80%',
         alignItems: 'center',
         borderWidth: 1,
-        borderColor: '#2d2d44',
+        borderColor: 'rgba(255,255,255,0.1)',
     },
     backText: {
-        color: '#9ba1b0',
+        color: 'rgba(255,255,255,0.62)',
         fontSize: 16,
-        fontWeight: '600',
+        fontFamily: FONT.medium,
+    },
+    ambientGlow: {
+        position: 'absolute',
+        top: 120,
+        left: '18%',
+        width: 250,
+        height: 250,
+        borderRadius: 125,
+        backgroundColor: 'rgba(20,184,166,0.075)',
     },
     topBar: {
         flexDirection: 'row',
         alignItems: 'center',
-        justifyContent: 'center',
-        backgroundColor: 'rgba(27, 27, 42, 0.6)',
-        paddingVertical: 12,
-        paddingHorizontal: 24,
-        borderRadius: 30,
+        backgroundColor: 'rgba(255,255,255,0.055)',
+        paddingVertical: 10,
+        paddingHorizontal: 14,
+        borderRadius: 17,
         alignSelf: 'center',
         borderWidth: 1,
-        borderColor: 'rgba(255, 255, 255, 0.05)',
+        borderColor: 'rgba(255,255,255,0.09)',
     },
     presentationTopBar: {
         position: 'absolute',
         top: Platform.OS === 'ios' ? 54 : 18,
         zIndex: 3,
-        backgroundColor: 'rgba(11, 11, 18, 0.82)',
+        backgroundColor: 'rgba(7,23,19,0.9)',
     },
     statusDot: {
         width: 8,
         height: 8,
         borderRadius: 4,
-        backgroundColor: '#10b981',
-        marginRight: 10,
+        backgroundColor: COLORS.lime,
+        marginRight: 11,
     },
     statusDotWarn: {
-        backgroundColor: '#f59e0b',
+        backgroundColor: COLORS.amber,
     },
     agentTitle: {
-        color: '#ffffff',
-        fontSize: 15,
-        fontWeight: '600',
+        color: COLORS.white,
+        fontFamily: FONT.bold,
+        fontSize: 13.5,
+    },
+    agentStatus: {
+        marginTop: 1,
+        color: 'rgba(255,255,255,0.42)',
+        fontFamily: FONT.medium,
+        fontSize: 9.5,
     },
     visualizerContainer: {
         flex: 1,
@@ -629,25 +647,29 @@ const styles = StyleSheet.create({
         marginVertical: 20,
         width: '100%',
         overflow: 'hidden',
-        borderRadius: 24,
+        borderRadius: 28,
+        borderWidth: 1,
+        borderColor: 'rgba(255,255,255,0.08)',
+        backgroundColor: COLORS.inkSoft,
     },
     presentationVisualizer: {
         ...StyleSheet.absoluteFillObject,
         marginVertical: 0,
         borderRadius: 0,
-        backgroundColor: '#050508',
+        borderWidth: 0,
+        backgroundColor: '#020806',
     },
     screenShareTrack: {
         width: '100%',
         height: '100%',
-        backgroundColor: '#050508',
+        backgroundColor: '#020806',
     },
     remoteShareBadge: {
         position: 'absolute',
         top: Platform.OS === 'ios' ? 106 : 68,
         left: 14,
         borderRadius: 16,
-        backgroundColor: 'rgba(0, 0, 0, 0.72)',
+        backgroundColor: 'rgba(7,23,19,0.84)',
         paddingHorizontal: 12,
         paddingVertical: 7,
     },
@@ -656,17 +678,18 @@ const styles = StyleSheet.create({
         left: 14,
         top: Platform.OS === 'ios' ? 106 : 68,
         borderRadius: 16,
-        backgroundColor: 'rgba(109, 94, 252, 0.92)',
+        backgroundColor: 'rgba(15,118,110,0.94)',
         paddingHorizontal: 12,
         paddingVertical: 7,
     },
     shareBadgeText: {
-        color: '#ffffff',
+        color: COLORS.white,
+        fontFamily: FONT.bold,
         fontSize: 11,
-        fontWeight: '700',
     },
     controlsWrapper: {
         width: '100%',
+        paddingTop: 4,
     },
     presentationControls: {
         position: 'absolute',
@@ -675,10 +698,10 @@ const styles = StyleSheet.create({
         right: 12,
         bottom: Platform.OS === 'ios' ? 28 : 16,
         width: 'auto',
-        borderRadius: 26,
-        paddingVertical: 8,
-        paddingHorizontal: 6,
-        backgroundColor: 'rgba(11, 11, 18, 0.84)',
+        borderRadius: 24,
+        paddingVertical: 12,
+        paddingHorizontal: 7,
+        backgroundColor: 'rgba(7,23,19,0.92)',
         borderWidth: 1,
         borderColor: 'rgba(255, 255, 255, 0.08)',
     },
@@ -686,29 +709,28 @@ const styles = StyleSheet.create({
         flexDirection: 'row',
         alignItems: 'center',
         marginTop: 16,
-        backgroundColor: '#161626',
-        borderRadius: 24,
-        paddingHorizontal: 16,
-        paddingVertical: 4,
+        backgroundColor: 'rgba(255,255,255,0.065)',
+        borderRadius: 18,
+        paddingLeft: 15,
+        paddingRight: 6,
+        paddingVertical: 6,
         borderWidth: 1,
-        borderColor: '#27273e',
+        borderColor: 'rgba(255,255,255,0.1)',
     },
     chatInput: {
         flex: 1,
-        color: '#ffffff',
+        color: COLORS.white,
+        fontFamily: FONT.medium,
         fontSize: 14,
         paddingVertical: 8,
     },
     sendButton: {
-        backgroundColor: '#6d5efc',
-        borderRadius: 16,
-        paddingHorizontal: 14,
-        paddingVertical: 8,
+        width: 38,
+        height: 38,
+        alignItems: 'center',
+        justifyContent: 'center',
+        backgroundColor: COLORS.lime,
+        borderRadius: 13,
         marginLeft: 8,
-    },
-    sendButtonText: {
-        color: '#ffffff',
-        fontSize: 13,
-        fontWeight: '600',
     },
 });

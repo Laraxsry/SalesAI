@@ -21,7 +21,6 @@ export function SellerAuthShell({ eyebrow, title, subtitle, children, footer }) 
                 <View style={styles.hero}>
                     <View style={styles.glow} />
                     <View style={styles.brandRow}>
-                        <View style={styles.brandMark}><Text style={styles.brandMarkText}>S</Text></View>
                         <Text style={styles.brand}>Sales<Text style={styles.brandAccent}>AI</Text></Text>
                         <View style={styles.consolePill}><Text style={styles.consolePillText}>YÖNETİM</Text></View>
                     </View>
@@ -99,9 +98,7 @@ const styles = StyleSheet.create({
         top: -86,
     },
     brandRow: { flexDirection: 'row', alignItems: 'center' },
-    brandMark: { width: 36, height: 36, alignItems: 'center', justifyContent: 'center', borderRadius: 11, backgroundColor: COLORS.lime },
-    brandMarkText: { color: COLORS.ink, fontFamily: FONT.bold, fontSize: 14 },
-    brand: { marginLeft: 10, color: COLORS.white, fontFamily: FONT.bold, fontSize: 19, letterSpacing: -0.5 },
+    brand: { color: COLORS.white, fontFamily: FONT.bold, fontSize: 19, letterSpacing: -0.5 },
     brandAccent: { color: COLORS.lime },
     consolePill: { marginLeft: 'auto', borderRadius: 20, borderWidth: 1, borderColor: 'rgba(255,255,255,0.1)', paddingHorizontal: 9, paddingVertical: 6 },
     consolePillText: { color: 'rgba(255,255,255,0.48)', fontFamily: FONT.bold, fontSize: 8.5, letterSpacing: 1.2 },

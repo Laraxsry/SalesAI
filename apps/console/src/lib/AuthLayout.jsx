@@ -21,7 +21,6 @@ export function AuthLayout({ children }) {
                 />
 
                 <div className="relative z-10 flex items-center gap-3">
-                    <span className="flex h-10 w-10 items-center justify-center rounded-xl bg-[#d7f95b] text-sm font-extrabold text-[#0b1f1b]">S</span>
                     <Logo className="[&_span]:text-white [&_span_span]:text-[#d7f95b]" />
                 </div>
 

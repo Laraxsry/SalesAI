@@ -36,7 +36,6 @@ export function Login() {
     return (
         <AuthLayout>
             <div className="mb-8 flex items-center gap-3 lg:hidden">
-                <span className="flex h-9 w-9 items-center justify-center rounded-xl bg-[#0b1f1b] text-xs font-extrabold text-[#d7f95b]">S</span>
                 <Logo />
             </div>
 

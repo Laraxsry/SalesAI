@@ -276,7 +276,6 @@ export default function DashboardScreen() {
             {/* Top Workspace Selector & Header */}
             <View style={styles.header}>
                 <View style={styles.headerBrandRow}>
-                    <View style={styles.brandMark}><Text style={styles.brandMarkText}>S</Text></View>
                     <View>
                         <Text style={styles.brandTitle}>Satış merkezi</Text>
                         {activeWorkspace && <Text style={styles.workspaceSubtitle}>{activeWorkspace.name}</Text>}
@@ -595,20 +594,6 @@ const styles = StyleSheet.create({
     headerBrandRow: {
         flexDirection: 'row',
         alignItems: 'center',
-    },
-    brandMark: {
-        width: 39,
-        height: 39,
-        marginRight: 11,
-        alignItems: 'center',
-        justifyContent: 'center',
-        borderRadius: 12,
-        backgroundColor: COLORS.lime,
-    },
-    brandMarkText: {
-        color: COLORS.ink,
-        fontFamily: FONT.bold,
-        fontSize: 14,
     },
     brandTitle: {
         color: COLORS.white,

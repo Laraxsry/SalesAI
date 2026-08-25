@@ -90,7 +90,6 @@ function Shell({ children }) {
                 <div className="relative z-10 mb-7 px-2">
                     <div className="flex items-center justify-between">
                         <div className="flex items-center gap-3">
-                            <span className="flex h-9 w-9 items-center justify-center rounded-xl bg-[#d7f95b] text-sm font-extrabold text-[#0b1f1b] shadow-[0_8px_24px_-12px_rgba(215,249,91,0.8)]">S</span>
                             <Logo className="[&_span]:text-white [&_span_span]:text-[#d7f95b]" />
                         </div>
                         <button type="button" onClick={() => setMobileNavOpen(false)} aria-label="Menüyü kapat" className="flex h-9 w-9 items-center justify-center rounded-xl text-white/60 hover:bg-white/8 hover:text-white md:hidden">
@@ -146,7 +145,6 @@ function Shell({ children }) {
             <div className="relative z-10 min-w-0 flex-1">
                 <header className="sticky top-0 z-20 flex h-[72px] items-center justify-between border-b border-border/80 bg-white/85 px-4 backdrop-blur-xl md:px-7">
                     <div className="flex items-center gap-3 md:hidden">
-                        <span className="flex h-8 w-8 items-center justify-center rounded-lg bg-[#0b1f1b] text-xs font-extrabold text-[#d7f95b]">S</span>
                         <Logo />
                     </div>
                     <div className="hidden items-center gap-3 md:flex">

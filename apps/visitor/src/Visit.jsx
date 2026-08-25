@@ -23,7 +23,6 @@ function CenteredMessage({ embed, icon: Icon, loading = false, onClose, children
             <div className="relative z-10 w-full max-w-sm rounded-[28px] border border-white/10 bg-white/[0.055] p-8 shadow-2xl shadow-black/20 backdrop-blur-xl">
                 {!embed && (
                     <div className="mb-9 flex items-center justify-center gap-3">
-                        <span className="flex h-9 w-9 items-center justify-center rounded-xl bg-[#d7f95b] text-xs font-extrabold text-[#071713]">S</span>
                         <Logo className="[&_span]:text-white [&_span_span]:text-[#d7f95b]" />
                     </div>
                 )}

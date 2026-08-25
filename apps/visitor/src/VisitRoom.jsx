@@ -121,7 +121,6 @@ export function VisitRoom({ embed, embedConfig, sessionId, roomName, onClose, on
             {!embed && (
                 <div className="relative z-20 flex h-[72px] items-center justify-between border-b border-white/8 bg-[#071713]/85 px-5 backdrop-blur-xl sm:px-7">
                     <div className="flex items-center gap-3">
-                        <span className="flex h-9 w-9 items-center justify-center rounded-xl bg-[#d7f95b] text-xs font-extrabold text-[#071713]">S</span>
                         <Logo className="[&_span]:text-white [&_span_span]:text-[#d7f95b]" />
                     </div>
                     <span className="inline-flex items-center gap-2 rounded-full border border-white/10 bg-white/[0.06] px-3 py-1.5 text-[11px] font-bold text-white/60">

@@ -1,10 +1,9 @@
 import { useState, useEffect, useRef } from 'react';
-import { View, Text, StyleSheet, TouchableOpacity, ActivityIndicator, Platform, PermissionsAndroid, Alert, Linking, TextInput, KeyboardAvoidingView } from 'react-native';
+import { View, Text, StyleSheet, TouchableOpacity, ActivityIndicator, Platform, PermissionsAndroid, Alert, Linking } from 'react-native';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { ConnectionState, Track, RoomEvent } from 'livekit-client';
 import { StatusBar } from 'expo-status-bar';
 import * as Haptics from 'expo-haptics';
-import { Ionicons } from '@expo/vector-icons';
 import { CONFIG } from '../../config';
 import { saveConversation } from '../../src/savedConversations';
 import { getVisitorId } from '../../src/visitorIdentity';
@@ -14,8 +13,19 @@ import { COLORS, FONT } from '../../src/theme';
 /* global __DEV__ */
 
 const liveKitNative = Platform.OS === 'web' ? {} : require('@livekit/react-native');
-const { LiveKitRoom, VideoTrack, useTracks, useRoomContext, AudioSession } = liveKitNative;
-const AvatarView = Platform.OS === 'web' ? null : require('../../src/components/AvatarView').AvatarView;
+const { LiveKitRoom, VideoTrack, useTracks, useRoomContext, AudioSession, BarVisualizer, useVoiceAssistant } = liveKitNative;
+
+const VOICE_STATE_LABEL = {
+    connecting: 'Bağlanıyor…',
+    'pre-connect-buffering': 'Bağlanıyor…',
+    initializing: 'Hazırlanıyor…',
+    idle: 'Hazır',
+    listening: 'Dinliyor…',
+    thinking: 'Düşünüyor…',
+    speaking: 'Konuşuyor…',
+    disconnected: 'Bağlantı kesildi',
+    failed: 'Bağlantı başarısız',
+};
 
 function resolveLiveKitUrl(url) {
     const candidate = url || CONFIG.LIVEKIT_URL;
@@ -235,10 +245,7 @@ function NativeSessionScreen() {
                     style={styles.roomContainer}
                 >
                     <RoomView
-                        agentName={agentName}
                         setAgentName={setAgentName}
-                        avatarProvider={connDetails.avatarProvider}
-                        handleDisconnect={handleDisconnect}
                     />
                 </LiveKitRoom>
             )}
@@ -251,13 +258,13 @@ function NativeSessionScreen() {
 // takes no arguments — @livekit/react-native's LiveKitRoomProps.onConnected is
 // `() => void` — so capturing "the room" via that callback, as this used to,
 // silently produced `undefined` and made every control a no-op.)
-function RoomView({ agentName, setAgentName, avatarProvider, handleDisconnect }) {
+function RoomView({ setAgentName }) {
     const room = useRoomContext();
+    const { state: voiceState, audioTrack } = useVoiceAssistant();
     const [isMuted, setIsMuted] = useState(false);
     const [isSharingScreen, setIsSharingScreen] = useState(false);
     const [reconnecting, setReconnecting] = useState(false);
-    const [isDeafened, setIsDeafened] = useState(false);
-    const [chatInput, setChatInput] = useState('');
+    const [showShareConsent, setShowShareConsent] = useState(false);
 
     function debug(...args) {
         console.log('[mobile-room]', ...args);
@@ -279,22 +286,6 @@ function RoomView({ agentName, setAgentName, avatarProvider, handleDisconnect })
         };
     }
 
-    const sendChatMessage = async () => {
-        if (!chatInput.trim() || !room?.localParticipant) return;
-        const text = chatInput.trim();
-        setChatInput('');
-        try {
-            const payload = new TextEncoder().encode(JSON.stringify({ type: 'chat', text }));
-            await room.localParticipant.publishData(payload, { reliable: true });
-            if (typeof room.localParticipant.sendChatMessage === 'function') {
-                await room.localParticipant.sendChatMessage(text).catch(() => {});
-            }
-            Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light).catch(() => {});
-        } catch (e) {
-            console.warn('Failed to send text message:', e);
-        }
-    };
-
     // Guided tours arrive as remote screen-share tracks, separately from the
     // agent avatar camera. Keep local shares out of the main presentation.
     const cameraTracks = useTracks([Track.Source.Camera]);
@@ -302,9 +293,6 @@ function RoomView({ agentName, setAgentName, avatarProvider, handleDisconnect })
     const remoteVideoTrack = cameraTracks.find((trackRef) => !trackRef.participant?.isLocal);
     const remoteScreenTrack = screenTracks.find((trackRef) => !trackRef.participant?.isLocal);
     const localScreenTrack = screenTracks.find((trackRef) => trackRef.participant?.isLocal);
-    const primaryScreenTrack = remoteScreenTrack || localScreenTrack;
-    const isPresentingScreen = Boolean(primaryScreenTrack);
-    const hasVideo = Boolean(remoteVideoTrack);
 
     // Transcription + connection-lifecycle listeners, now on the real room.
     useEffect(() => {
@@ -355,6 +343,7 @@ function RoomView({ agentName, setAgentName, avatarProvider, handleDisconnect })
         room.on(RoomEvent.Reconnected, onReconnected);
 
         const handleLocalTrackPublished = (publication) => {
+            if (publication?.source === Track.Source.ScreenShare) setIsSharingScreen(true);
             debug('local track published', {
                 source: publication?.source,
                 kind: publication?.kind,
@@ -363,6 +352,7 @@ function RoomView({ agentName, setAgentName, avatarProvider, handleDisconnect })
             });
         };
         const handleLocalTrackUnpublished = (publication) => {
+            if (publication?.source === Track.Source.ScreenShare) setIsSharingScreen(false);
             debug('local track unpublished', {
                 source: publication?.source,
                 kind: publication?.kind,
@@ -422,10 +412,13 @@ function RoomView({ agentName, setAgentName, avatarProvider, handleDisconnect })
             console.warn('toggleScreenShare: room not ready yet');
             return;
         }
+        if (!isSharingScreen) {
+            setShowShareConsent(true);
+            return;
+        }
         try {
-            const next = !isSharingScreen;
-            await room.localParticipant.setScreenShareEnabled(next);
-            setIsSharingScreen(next);
+            await room.localParticipant.setScreenShareEnabled(false);
+            setIsSharingScreen(false);
             Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium).catch(() => {});
         } catch (err) {
             // Best-effort: screen share needs OS-level setup (ReplayKit / MediaProjection)
@@ -435,25 +428,16 @@ function RoomView({ agentName, setAgentName, avatarProvider, handleDisconnect })
         }
     };
 
-    // Mutes what you *hear* (the agent's voice), separate from the mic mute
-    // above. Sets volume on every currently-subscribed remote audio track,
-    // plus the default for tracks that subscribe later (e.g. the agent
-    // hasn't published audio yet when this is first tapped).
-    const toggleDeafen = async () => {
-        const next = !isDeafened;
-        const volume = next ? 0 : 1;
+    const confirmScreenShare = async () => {
+        setShowShareConsent(false);
+        if (!room?.localParticipant) return;
         try {
-            room?.remoteParticipants?.forEach?.((participant) => {
-                participant.audioTrackPublications?.forEach?.((pub) => {
-                    pub.track?.setVolume?.(volume);
-                });
-            });
-            await AudioSession.setDefaultRemoteAudioTrackVolume(volume);
-            setIsDeafened(next);
-            Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light).catch(() => {});
+            await room.localParticipant.setScreenShareEnabled(true);
+            setIsSharingScreen(true);
+            Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium).catch(() => {});
         } catch (err) {
-            console.warn('Failed to toggle headphone audio:', err?.message);
-            Alert.alert('Ses kapatılamadı', err?.message || 'Bilinmeyen hata');
+            console.warn('Screen share unavailable on this device:', err?.message);
+            Alert.alert('Ekran paylaşımı kullanılamıyor', 'Bu cihazda/derlemede ekran paylaşımı desteklenmiyor.');
         }
     };
 
@@ -461,67 +445,92 @@ function RoomView({ agentName, setAgentName, avatarProvider, handleDisconnect })
         room?.disconnect();
     };
 
+    const stateLabel = reconnecting ? 'Yeniden bağlanıyor…' : (VOICE_STATE_LABEL[voiceState] || 'Hazır');
+
     return (
-        <View style={[styles.innerContainer, isPresentingScreen && styles.presentationContainer]}>
-            {!isPresentingScreen && <View style={styles.ambientGlow} />}
-            <View style={[styles.topBar, isPresentingScreen && styles.presentationTopBar]}>
-                <View style={[styles.statusDot, reconnecting && styles.statusDotWarn]} />
-                <View>
-                    <Text style={styles.agentTitle}>{reconnecting ? 'Yeniden bağlanıyor…' : agentName}</Text>
-                    <Text style={styles.agentStatus}>{reconnecting ? 'Bağlantı kontrol ediliyor' : 'Görüşme aktif'}</Text>
+        <View style={styles.innerContainer}>
+            <View style={styles.meetingHeader}>
+                <Text style={styles.wordmark}>Sales<Text style={styles.wordmarkAccent}>AI</Text></Text>
+                <View style={styles.statePill}>
+                    <View style={[styles.statusDot, reconnecting && styles.statusDotWarn]} />
+                    <Text style={styles.stateText}>{stateLabel}</Text>
                 </View>
             </View>
 
-            {/* Any shared screen becomes the primary view and is never cropped. */}
-            <View style={[styles.visualizerContainer, isPresentingScreen && styles.presentationVisualizer]}>
-                {primaryScreenTrack ? (
-                    <>
-                        <VideoTrack trackRef={primaryScreenTrack} objectFit="contain" style={styles.screenShareTrack} />
-                        <View style={remoteScreenTrack ? styles.remoteShareBadge : styles.localShareBadge}>
-                            <Text style={styles.shareBadgeText}>
-                                {remoteScreenTrack ? 'AI size ürünü gösteriyor' : 'Ekranınız paylaşılıyor'}
-                            </Text>
-                        </View>
-                    </>
+            <View style={styles.stage}>
+                {remoteScreenTrack ? (
+                    <VideoTrack trackRef={remoteScreenTrack} objectFit="contain" style={styles.mainTrack} />
+                ) : remoteVideoTrack ? (
+                    <VideoTrack trackRef={remoteVideoTrack} objectFit="cover" style={styles.mainTrack} />
                 ) : (
-                    <AvatarView hasVideo={hasVideo} videoTrackRef={remoteVideoTrack} avatarProvider={avatarProvider} />
+                    <View style={styles.voiceStage}>
+                        <View style={styles.voiceOrb}>
+                            <BarVisualizer
+                                state={voiceState}
+                                trackRef={audioTrack}
+                                barCount={5}
+                                options={{ minHeight: 0.18, maxHeight: 0.82, barColor: COLORS.lime, barWidth: 6, barBorderRadius: 8 }}
+                                style={styles.barVisualizer}
+                            />
+                        </View>
+                        <Text style={styles.voiceTitle}>AI temsilciniz</Text>
+                        <Text style={styles.voiceStatus}>{stateLabel}</Text>
+                    </View>
                 )}
 
-                {isSharingScreen && !localScreenTrack && (
+                {remoteScreenTrack && remoteVideoTrack && (
+                    <View style={styles.pictureInPicture}>
+                        <VideoTrack trackRef={remoteVideoTrack} objectFit="cover" style={styles.previewTrack} />
+                    </View>
+                )}
+
+                {remoteScreenTrack && (
+                    <View style={styles.remoteShareBadge}>
+                        <Text style={styles.shareBadgeText}>AI size ürünü gösteriyor</Text>
+                    </View>
+                )}
+
+                {isSharingScreen && localScreenTrack && (
+                    <View style={styles.localPreview}>
+                        <VideoTrack trackRef={localScreenTrack} objectFit="cover" style={styles.previewTrack} />
+                    </View>
+                )}
+
+                {isSharingScreen && (
                     <View style={styles.localShareBadge}>
-                        <Text style={styles.shareBadgeText}>Ekranınız paylaşılıyor</Text>
+                        <Text style={styles.shareBadgeText}>Ekranınız görüşmeyle paylaşılıyor</Text>
                     </View>
                 )}
             </View>
 
-            <View style={[styles.controlsWrapper, isPresentingScreen && styles.presentationControls]}>
+            {showShareConsent && (
+                <View style={styles.shareConsentOverlay}>
+                    <View style={styles.shareConsentCard}>
+                        <Text style={styles.shareConsentTitle}>Ekranınızı paylaşmak istiyor musunuz?</Text>
+                        <Text style={styles.shareConsentText}>
+                            Seçtiğiniz ekran görüşmedeki AI tarafından analiz edilebilir. Paylaşımı istediğiniz an durdurabilirsiniz.
+                        </Text>
+                        <View style={styles.shareConsentActions}>
+                            <TouchableOpacity style={styles.consentCancelButton} onPress={() => setShowShareConsent(false)}>
+                                <Text style={styles.consentCancelText}>Vazgeç</Text>
+                            </TouchableOpacity>
+                            <TouchableOpacity style={styles.consentShareButton} onPress={confirmScreenShare}>
+                                <Text style={styles.consentShareText}>Paylaş</Text>
+                            </TouchableOpacity>
+                        </View>
+                    </View>
+                </View>
+            )}
+
+            <View style={styles.controlsBar}>
                 <CallControls
                     isMuted={isMuted}
                     toggleMute={toggleMute}
-                    isDeafened={isDeafened}
-                    toggleDeafen={toggleDeafen}
                     isSharingScreen={isSharingScreen}
                     toggleScreenShare={toggleScreenShare}
                     handleDisconnect={onEndPress}
                 />
             </View>
-
-            {!isPresentingScreen && (
-                <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : 'height'} style={styles.chatInputContainer}>
-                    <TextInput
-                        style={styles.chatInput}
-                        placeholder="Yazarak da mesaj gönderebilirsiniz…"
-                        placeholderTextColor="rgba(255,255,255,0.35)"
-                        value={chatInput}
-                        onChangeText={setChatInput}
-                        onSubmitEditing={sendChatMessage}
-                        returnKeyType="send"
-                    />
-                    <TouchableOpacity style={styles.sendButton} onPress={sendChatMessage}>
-                        <Ionicons name="arrow-up" size={17} color={COLORS.ink} />
-                    </TouchableOpacity>
-                </KeyboardAvoidingView>
-            )}
         </View>
     );
 }
@@ -536,14 +545,7 @@ const styles = StyleSheet.create({
     },
     innerContainer: {
         flex: 1,
-        justifyContent: 'space-between',
-        paddingTop: Platform.OS === 'ios' ? 58 : 30,
-        paddingBottom: Platform.OS === 'ios' ? 28 : 20,
-        paddingHorizontal: 18,
-    },
-    presentationContainer: {
-        paddingVertical: 0,
-        paddingHorizontal: 0,
+        backgroundColor: COLORS.ink,
     },
     centerContainer: {
         flex: 1,
@@ -601,144 +603,224 @@ const styles = StyleSheet.create({
         fontSize: 16,
         fontFamily: FONT.medium,
     },
-    ambientGlow: {
-        position: 'absolute',
-        top: 120,
-        left: '18%',
-        width: 250,
-        height: 250,
-        borderRadius: 125,
-        backgroundColor: 'rgba(20,184,166,0.075)',
-    },
-    topBar: {
+    meetingHeader: {
+        minHeight: Platform.OS === 'ios' ? 96 : 72,
+        paddingTop: Platform.OS === 'ios' ? 46 : 18,
+        paddingBottom: 14,
+        paddingHorizontal: 20,
         flexDirection: 'row',
         alignItems: 'center',
-        backgroundColor: 'rgba(255,255,255,0.055)',
-        paddingVertical: 10,
-        paddingHorizontal: 14,
-        borderRadius: 17,
-        alignSelf: 'center',
-        borderWidth: 1,
-        borderColor: 'rgba(255,255,255,0.09)',
+        justifyContent: 'space-between',
+        backgroundColor: 'rgba(7,23,19,0.98)',
+        borderBottomWidth: 1,
+        borderBottomColor: 'rgba(255,255,255,0.08)',
+        zIndex: 5,
     },
-    presentationTopBar: {
-        position: 'absolute',
-        top: Platform.OS === 'ios' ? 54 : 18,
-        zIndex: 3,
-        backgroundColor: 'rgba(7,23,19,0.9)',
+    wordmark: {
+        color: COLORS.white,
+        fontFamily: FONT.bold,
+        fontSize: 19,
+        letterSpacing: -0.55,
+    },
+    wordmarkAccent: {
+        color: COLORS.lime,
+    },
+    statePill: {
+        minHeight: 32,
+        flexDirection: 'row',
+        alignItems: 'center',
+        borderRadius: 18,
+        borderWidth: 1,
+        borderColor: 'rgba(255,255,255,0.1)',
+        backgroundColor: 'rgba(255,255,255,0.06)',
+        paddingHorizontal: 12,
+    },
+    stage: {
+        flex: 1,
+        overflow: 'hidden',
+        alignItems: 'center',
+        justifyContent: 'center',
+        backgroundColor: '#06120F',
     },
     statusDot: {
-        width: 8,
-        height: 8,
-        borderRadius: 4,
+        width: 6,
+        height: 6,
+        borderRadius: 3,
         backgroundColor: COLORS.lime,
-        marginRight: 11,
+        marginRight: 8,
     },
     statusDotWarn: {
         backgroundColor: COLORS.amber,
     },
-    agentTitle: {
-        color: COLORS.white,
+    stateText: {
+        color: 'rgba(255,255,255,0.62)',
         fontFamily: FONT.bold,
-        fontSize: 13.5,
+        fontSize: 10.5,
     },
-    agentStatus: {
-        marginTop: 1,
-        color: 'rgba(255,255,255,0.42)',
-        fontFamily: FONT.medium,
-        fontSize: 9.5,
-    },
-    visualizerContainer: {
-        flex: 1,
-        justifyContent: 'center',
-        alignItems: 'center',
-        marginVertical: 20,
-        width: '100%',
-        overflow: 'hidden',
-        borderRadius: 28,
-        borderWidth: 1,
-        borderColor: 'rgba(255,255,255,0.08)',
-        backgroundColor: COLORS.inkSoft,
-    },
-    presentationVisualizer: {
+    mainTrack: {
         ...StyleSheet.absoluteFillObject,
-        marginVertical: 0,
-        borderRadius: 0,
-        borderWidth: 0,
-        backgroundColor: '#020806',
-    },
-    screenShareTrack: {
         width: '100%',
         height: '100%',
         backgroundColor: '#020806',
     },
+    voiceStage: {
+        alignItems: 'center',
+        justifyContent: 'center',
+    },
+    voiceOrb: {
+        width: 144,
+        height: 144,
+        alignItems: 'center',
+        justifyContent: 'center',
+        overflow: 'hidden',
+        borderRadius: 44,
+        borderWidth: 1,
+        borderColor: 'rgba(255,255,255,0.1)',
+        backgroundColor: COLORS.inkSoft,
+        shadowColor: COLORS.teal,
+        shadowOffset: { width: 0, height: 24 },
+        shadowOpacity: 0.24,
+        shadowRadius: 40,
+        elevation: 10,
+    },
+    barVisualizer: {
+        width: 82,
+        height: 64,
+    },
+    voiceTitle: {
+        marginTop: 26,
+        color: COLORS.white,
+        fontFamily: FONT.bold,
+        fontSize: 16,
+    },
+    voiceStatus: {
+        marginTop: 6,
+        color: 'rgba(255,255,255,0.42)',
+        fontFamily: FONT.medium,
+        fontSize: 11.5,
+    },
+    pictureInPicture: {
+        position: 'absolute',
+        right: 16,
+        top: 16,
+        width: 92,
+        height: 132,
+        overflow: 'hidden',
+        borderRadius: 14,
+        borderWidth: 1,
+        borderColor: 'rgba(255,255,255,0.2)',
+        backgroundColor: '#020806',
+        elevation: 8,
+    },
+    localPreview: {
+        position: 'absolute',
+        right: 16,
+        bottom: 16,
+        width: 128,
+        height: 82,
+        overflow: 'hidden',
+        borderRadius: 12,
+        borderWidth: 1,
+        borderColor: 'rgba(215,249,91,0.65)',
+        backgroundColor: '#020806',
+        elevation: 8,
+    },
+    previewTrack: {
+        width: '100%',
+        height: '100%',
+    },
     remoteShareBadge: {
         position: 'absolute',
-        top: Platform.OS === 'ios' ? 106 : 68,
-        left: 14,
-        borderRadius: 16,
+        top: 16,
+        left: 16,
+        borderRadius: 12,
         backgroundColor: 'rgba(7,23,19,0.84)',
         paddingHorizontal: 12,
-        paddingVertical: 7,
+        paddingVertical: 8,
+        borderWidth: 1,
+        borderColor: 'rgba(255,255,255,0.1)',
     },
     localShareBadge: {
         position: 'absolute',
-        left: 14,
-        top: Platform.OS === 'ios' ? 106 : 68,
-        borderRadius: 16,
-        backgroundColor: 'rgba(15,118,110,0.94)',
+        left: 16,
+        top: 58,
+        borderRadius: 12,
+        backgroundColor: COLORS.tealDark,
         paddingHorizontal: 12,
-        paddingVertical: 7,
+        paddingVertical: 8,
     },
     shareBadgeText: {
         color: COLORS.white,
         fontFamily: FONT.bold,
-        fontSize: 11,
+        fontSize: 10.5,
     },
-    controlsWrapper: {
-        width: '100%',
-        paddingTop: 4,
-    },
-    presentationControls: {
-        position: 'absolute',
-        zIndex: 3,
-        left: 12,
-        right: 12,
-        bottom: Platform.OS === 'ios' ? 28 : 16,
-        width: 'auto',
-        borderRadius: 24,
-        paddingVertical: 12,
-        paddingHorizontal: 7,
-        backgroundColor: 'rgba(7,23,19,0.92)',
-        borderWidth: 1,
-        borderColor: 'rgba(255, 255, 255, 0.08)',
-    },
-    chatInputContainer: {
-        flexDirection: 'row',
-        alignItems: 'center',
-        marginTop: 16,
-        backgroundColor: 'rgba(255,255,255,0.065)',
-        borderRadius: 18,
-        paddingLeft: 15,
-        paddingRight: 6,
-        paddingVertical: 6,
-        borderWidth: 1,
-        borderColor: 'rgba(255,255,255,0.1)',
-    },
-    chatInput: {
-        flex: 1,
-        color: COLORS.white,
-        fontFamily: FONT.medium,
-        fontSize: 14,
-        paddingVertical: 8,
-    },
-    sendButton: {
-        width: 38,
-        height: 38,
+    shareConsentOverlay: {
+        ...StyleSheet.absoluteFillObject,
+        zIndex: 30,
         alignItems: 'center',
         justifyContent: 'center',
-        backgroundColor: COLORS.lime,
+        paddingHorizontal: 22,
+        backgroundColor: 'rgba(0,0,0,0.72)',
+    },
+    shareConsentCard: {
+        width: '100%',
+        maxWidth: 380,
+        borderRadius: 24,
+        padding: 22,
+        backgroundColor: COLORS.inkSoft,
+        borderWidth: 1,
+        borderColor: 'rgba(255,255,255,0.1)',
+        elevation: 18,
+    },
+    shareConsentTitle: {
+        color: COLORS.white,
+        fontFamily: FONT.bold,
+        fontSize: 17,
+        lineHeight: 23,
+    },
+    shareConsentText: {
+        marginTop: 10,
+        color: 'rgba(255,255,255,0.55)',
+        fontFamily: FONT.regular,
+        fontSize: 13.5,
+        lineHeight: 20,
+    },
+    shareConsentActions: {
+        marginTop: 22,
+        flexDirection: 'row',
+        alignItems: 'center',
+        justifyContent: 'flex-end',
+        gap: 10,
+    },
+    consentCancelButton: {
+        minHeight: 44,
+        justifyContent: 'center',
+        paddingHorizontal: 15,
         borderRadius: 13,
-        marginLeft: 8,
+    },
+    consentCancelText: {
+        color: 'rgba(255,255,255,0.55)',
+        fontFamily: FONT.medium,
+        fontSize: 13.5,
+    },
+    consentShareButton: {
+        minHeight: 44,
+        justifyContent: 'center',
+        paddingHorizontal: 18,
+        borderRadius: 13,
+        backgroundColor: COLORS.lime,
+    },
+    consentShareText: {
+        color: COLORS.ink,
+        fontFamily: FONT.bold,
+        fontSize: 13.5,
+    },
+    controlsBar: {
+        paddingTop: 14,
+        paddingBottom: Platform.OS === 'ios' ? 28 : 16,
+        paddingHorizontal: 20,
+        borderTopWidth: 1,
+        borderTopColor: 'rgba(255,255,255,0.08)',
+        backgroundColor: 'rgba(7,23,19,0.98)',
     },
 });

@@ -17,6 +17,14 @@ const liveKitNative = Platform.OS === 'web' ? {} : require('@livekit/react-nativ
 const { LiveKitRoom, VideoTrack, useTracks, useRoomContext, AudioSession } = liveKitNative;
 const AvatarView = Platform.OS === 'web' ? null : require('../../src/components/AvatarView').AvatarView;
 
+function resolveLiveKitUrl(url) {
+    const candidate = url || CONFIG.LIVEKIT_URL;
+    if (Platform.OS !== 'web' && /^wss?:\/\/(localhost|127\.0\.0\.1)(?=[:/])/i.test(candidate)) {
+        return CONFIG.LIVEKIT_URL;
+    }
+    return candidate;
+}
+
 export default function SessionRoute() {
     if (Platform.OS === 'web') return <WebSessionRedirect />;
     return <NativeSessionScreen />;
@@ -211,7 +219,7 @@ function NativeSessionScreen() {
 
             {connDetails?.token && (
                 <LiveKitRoom
-                    serverUrl={connDetails?.livekitUrl || CONFIG.LIVEKIT_URL}
+                    serverUrl={resolveLiveKitUrl(connDetails?.livekitUrl)}
                     token={connDetails.token}
                     connect={true}
                     audio={true}

@@ -878,7 +878,18 @@ async function runSession(ctx) {
                 });
             }
         } else {
-     // The only thing that actually spends money is `agentSession.start()` —
+            log.warn('skipping usage flush: product has no workspaceId', { productId: String(product._id) });
+        }
+
+        publishMetric(SESSION_METRICS.SESSION_COST_USD, totalCostUsd);
+    }
+
+    agentSession.on(
+        voice.AgentSessionEventTypes.Close,
+        otelContext.bind(parentContext, () => endSession('agent-session-close'))
+    );
+
+    // The only thing that actually spends money is `agentSession.start()` —
     // it opens a persistent websocket to the OpenAI Realtime API. See
     // realtime-gate.js for why this is gated on real visitor audio (COST
     // WARNING documented there) instead of firing as soon as we join the room.

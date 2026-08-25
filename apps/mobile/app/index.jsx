@@ -18,7 +18,7 @@ import { COLORS, FONT, SHADOWS } from '../src/theme';
 /** Mobile visitor landing. Users join with an agent token or share link. */
 export default function Home() {
     const router = useRouter();
-    const [input, setInput] = useState('test-token-5686');
+    const [input, setInput] = useState('');
     const [error, setError] = useState('');
     const [savedCount, setSavedCount] = useState(0);
 
@@ -30,7 +30,10 @@ export default function Home() {
 
     const handleConnect = (overrideToken) => {
         let token = (typeof overrideToken === 'string' ? overrideToken : input).trim();
-        if (!token) token = 'test-token-5686';
+        if (!token) {
+            setError('Paylaşım bağlantısını veya erişim kodunu girin.');
+            return;
+        }
 
         setError('');
         const tokenMatch = token.match(/(?:v\/|v=)([a-zA-Z0-9_-]+)/) || token.match(/\/v\/([a-zA-Z0-9_-]+)/);

@@ -3,11 +3,12 @@ import { Text, TouchableOpacity } from 'react-native';
 import { useRouter } from 'expo-router';
 import { useAuth } from './_layout';
 import { CONFIG } from '../../config';
-import { SellerAuthButton, SellerAuthField, SellerAuthShell, sellerAuthStyles as styles } from '../../src/components/SellerAuthShell';
+import { SellerAuthButton, SellerAuthField, SellerAuthShell, useSellerAuthStyles } from '../../src/components/SellerAuthShell';
 
 export default function RegisterScreen() {
     const router = useRouter();
     const { login } = useAuth();
+    const styles = useSellerAuthStyles();
 
     const [name, setName] = useState('');
     const [email, setEmail] = useState('');

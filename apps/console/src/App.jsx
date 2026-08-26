@@ -1,13 +1,15 @@
 import { Suspense, lazy, useState } from 'react';
-import { Routes, Route, NavLink, useNavigate } from 'react-router-dom';
+import { Routes, Route, NavLink, Navigate, useNavigate } from 'react-router-dom';
 import { Logo, cn } from '@repo/ui';
 import { useTranslation } from 'react-i18next';
-import { LayoutDashboard, BookOpen, Bot, Users, BarChart3, Settings as SettingsIcon, LogOut, Menu, X, ChevronDown, Sparkles } from 'lucide-react';
+import { LayoutDashboard, BookOpen, Bot, Users, BarChart3, Settings as SettingsIcon, LogOut, Menu, X, ChevronDown, Sparkles, Moon, Sun } from 'lucide-react';
 import { Login } from './pages/Login.jsx';
 import { Register } from './pages/Register.jsx';
 import { AcceptInvite } from './pages/AcceptInvite.jsx';
+import { Landing } from './pages/Landing.jsx';
 import { RequireAuth } from './lib/RequireAuth.jsx';
 import { useAuthStore } from './store/auth.js';
+import { useTheme } from './lib/ThemeProvider.jsx';
 
 const Overview = lazy(() => import('./pages/Overview.jsx').then((m) => ({ default: m.Overview })));
 const ProductDetail = lazy(() => import('./pages/ProductDetail.jsx').then((m) => ({ default: m.ProductDetail })));
@@ -66,6 +68,7 @@ function Shell({ children }) {
     const logout = useAuthStore((s) => s.logout);
     const navigate = useNavigate();
     const [mobileNavOpen, setMobileNavOpen] = useState(false);
+    const { isDark, toggleTheme } = useTheme();
 
     function onLogout() {
         logout();
@@ -143,7 +146,7 @@ function Shell({ children }) {
             </aside>
 
             <div className="relative z-10 min-w-0 flex-1">
-                <header className="sticky top-0 z-20 flex h-[72px] items-center justify-between border-b border-border/80 bg-white/85 px-4 backdrop-blur-xl md:px-7">
+                <header className="sticky top-0 z-20 flex h-[72px] items-center justify-between border-b border-border/80 bg-surface/85 px-4 backdrop-blur-xl md:px-7">
                     <div className="flex items-center gap-3 md:hidden">
                         <Logo />
                     </div>
@@ -156,15 +159,26 @@ function Shell({ children }) {
                             </button>
                         </div>
                     </div>
-                    <button
-                        type="button"
-                        onClick={() => setMobileNavOpen(true)}
-                        aria-label="Menüyü aç"
-                        aria-expanded={mobileNavOpen}
-                        className="flex h-10 w-10 items-center justify-center rounded-xl border border-border bg-white text-text shadow-sm hover:bg-surface-raised md:hidden"
-                    >
-                        <Menu size={19} aria-hidden="true" />
-                    </button>
+                    <div className="flex items-center gap-2">
+                        <button
+                            type="button"
+                            onClick={toggleTheme}
+                            title={isDark ? 'Açık temaya geç' : 'Koyu temaya geç'}
+                            aria-label={isDark ? 'Açık temaya geç' : 'Koyu temaya geç'}
+                            className="flex h-10 w-10 items-center justify-center rounded-xl border border-border bg-surface text-text shadow-sm transition-colors hover:bg-surface-raised"
+                        >
+                            {isDark ? <Sun size={18} aria-hidden="true" /> : <Moon size={18} aria-hidden="true" />}
+                        </button>
+                        <button
+                            type="button"
+                            onClick={() => setMobileNavOpen(true)}
+                            aria-label="Menüyü aç"
+                            aria-expanded={mobileNavOpen}
+                            className="flex h-10 w-10 items-center justify-center rounded-xl border border-border bg-surface text-text shadow-sm hover:bg-surface-raised md:hidden"
+                        >
+                            <Menu size={19} aria-hidden="true" />
+                        </button>
+                    </div>
                 </header>
                 <main className="mx-auto w-full max-w-[1480px] overflow-y-auto p-4 sm:p-6 md:p-8 lg:p-10">
                     <div className="page-enter"><Suspense fallback={<PageSkeleton />}>{children}</Suspense></div>
@@ -175,8 +189,24 @@ function Shell({ children }) {
 }
 
 export function App() {
+    const accessToken = useAuthStore((state) => state.accessToken);
+
     return (
         <Routes>
+            <Route
+                path="/"
+                element={
+                    accessToken ? (
+                        <RequireAuth>
+                            <Shell><Overview /></Shell>
+                        </RequireAuth>
+                    ) : (
+                        <Landing />
+                    )
+                }
+            />
+            <Route path="/mainpage" element={<Landing />} />
+            <Route path="/home" element={<Navigate to="/mainpage" replace />} />
             <Route path="/login" element={<Login />} />
             <Route path="/register" element={<Register />} />
             <Route path="/invite/:token" element={<AcceptInvite />} />
@@ -186,7 +216,6 @@ export function App() {
                     <RequireAuth>
                         <Shell>
                             <Routes>
-                                <Route path="/" element={<Overview />} />
                                 <Route path="/products/:id" element={<ProductDetail />} />
                                 <Route path="/knowledge" element={<Knowledge />} />
                                 <Route path="/knowledge/gaps" element={<KnowledgeGaps />} />

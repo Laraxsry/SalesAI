@@ -1,5 +1,6 @@
 import { Logo } from '@repo/ui';
-import { Sparkles, Mic, LineChart, ScreenShare, ArrowUpRight, ShieldCheck } from 'lucide-react';
+import { Sparkles, Mic, LineChart, ScreenShare, ArrowUpRight, ShieldCheck, Moon, Sun } from 'lucide-react';
+import { useTheme } from './ThemeProvider.jsx';
 
 const FEATURES = [
     { icon: Mic, text: 'Sesli + görüntülü AI satış temsilcisi' },
@@ -9,8 +10,19 @@ const FEATURES = [
 
 /** Two-column shell shared by the login and register screens. */
 export function AuthLayout({ children }) {
+    const { isDark, toggleTheme } = useTheme();
+
     return (
-        <div className="grid min-h-screen bg-[#f7f9f6] lg:grid-cols-[1.08fr_0.92fr]">
+        <div className="relative grid min-h-screen bg-bg lg:grid-cols-[1.08fr_0.92fr]">
+            <button
+                type="button"
+                onClick={toggleTheme}
+                title={isDark ? 'Açık temaya geç' : 'Koyu temaya geç'}
+                aria-label={isDark ? 'Açık temaya geç' : 'Koyu temaya geç'}
+                className="absolute right-5 top-5 z-30 flex h-10 w-10 items-center justify-center rounded-xl border border-border bg-surface text-text shadow-sm transition-colors hover:bg-surface-raised"
+            >
+                {isDark ? <Sun size={18} aria-hidden="true" /> : <Moon size={18} aria-hidden="true" />}
+            </button>
             <div className="relative hidden flex-col justify-between overflow-hidden bg-[#0b1f1b] p-10 text-white lg:flex xl:p-14">
                 <div
                     className="pointer-events-none absolute inset-0"
@@ -56,7 +68,7 @@ export function AuthLayout({ children }) {
 
             <div className="relative flex items-center justify-center overflow-hidden p-6 sm:p-12">
                 <div className="pointer-events-none absolute -right-24 -top-24 h-72 w-72 rounded-full bg-brand/8 blur-3xl" />
-                <div className="relative w-full max-w-[420px] rounded-[28px] border border-white bg-white/80 p-7 shadow-[0_30px_90px_-45px_rgba(13,45,38,0.38)] backdrop-blur sm:p-9">
+                <div className="relative w-full max-w-[420px] rounded-[28px] border border-border bg-surface/80 p-7 shadow-[0_30px_90px_-45px_rgba(13,45,38,0.38)] backdrop-blur sm:p-9">
                     <span className="absolute right-7 top-7 hidden h-9 w-9 items-center justify-center rounded-xl bg-surface-raised text-brand sm:flex"><ArrowUpRight size={16} /></span>
                     {children}
                 </div>

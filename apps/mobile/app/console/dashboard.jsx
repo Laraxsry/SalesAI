@@ -4,7 +4,8 @@ import { StatusBar } from 'expo-status-bar';
 import { useRouter } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import { useAuth } from './_layout';
-import { COLORS, FONT } from '../../src/theme';
+import { FONT } from '../../src/theme';
+import { useAppTheme } from '../../src/theme-context';
 
 const SESSION_STATUS_LABELS = {
     live: 'CANLI',
@@ -46,6 +47,8 @@ function formatTone(tone) {
 export default function DashboardScreen() {
     const router = useRouter();
     const { token, user, logout, apiFetch } = useAuth();
+    const { colors, isDark, toggleTheme } = useAppTheme();
+    const styles = createStyles(colors, isDark);
 
     const [activeTab, setActiveTab] = useState('home'); // home, sessions, leads, agents, settings
     const [loading, setLoading] = useState(true);
@@ -256,7 +259,7 @@ export default function DashboardScreen() {
     if (loading) {
         return (
             <View style={styles.centerContainer}>
-                <ActivityIndicator size="large" color={COLORS.lime} />
+                <ActivityIndicator size="large" color={colors.lime} />
                 <Text style={styles.loadingText}>Çalışma alanları yükleniyor…</Text>
             </View>
         );
@@ -290,7 +293,7 @@ export default function DashboardScreen() {
             <View style={styles.contentContainer}>
                 {activeTab === 'home' && (
                     <ScrollView 
-                        refreshControl={<RefreshControl refreshing={refreshing} onRefresh={handleRefresh} tintColor={COLORS.teal} />}
+                        refreshControl={<RefreshControl refreshing={refreshing} onRefresh={handleRefresh} tintColor={colors.teal} />}
                         contentContainerStyle={styles.tabContent}
                     >
                         {/* KPI Cards */}
@@ -350,7 +353,7 @@ export default function DashboardScreen() {
                         <TextInput
                             style={styles.searchBar}
                             placeholder="Görüşme veya temsilci ara…"
-                            placeholderTextColor={COLORS.soft}
+                            placeholderTextColor={colors.soft}
                             value={searchQuery}
                             onChangeText={handleSearch}
                             autoCapitalize="none"
@@ -359,7 +362,7 @@ export default function DashboardScreen() {
                         <FlatList
                             data={filteredSessions}
                             keyExtractor={(item) => item._id}
-                            refreshControl={<RefreshControl refreshing={refreshing} onRefresh={handleRefresh} tintColor={COLORS.teal} />}
+                            refreshControl={<RefreshControl refreshing={refreshing} onRefresh={handleRefresh} tintColor={colors.teal} />}
                             contentContainerStyle={styles.listContent}
                             renderItem={({ item }) => (
                                 <TouchableOpacity
@@ -394,7 +397,7 @@ export default function DashboardScreen() {
                     <FlatList
                         data={leads}
                         keyExtractor={(item) => item._id}
-                        refreshControl={<RefreshControl refreshing={refreshing} onRefresh={handleRefresh} tintColor={COLORS.teal} />}
+                        refreshControl={<RefreshControl refreshing={refreshing} onRefresh={handleRefresh} tintColor={colors.teal} />}
                         contentContainerStyle={styles.listContent}
                         renderItem={({ item }) => (
                             <View style={styles.leadCard}>
@@ -458,7 +461,7 @@ export default function DashboardScreen() {
                     <FlatList
                         data={agents}
                         keyExtractor={(item) => item._id}
-                        refreshControl={<RefreshControl refreshing={refreshing} onRefresh={handleRefresh} tintColor={COLORS.teal} />}
+                        refreshControl={<RefreshControl refreshing={refreshing} onRefresh={handleRefresh} tintColor={colors.teal} />}
                         contentContainerStyle={styles.listContent}
                         renderItem={({ item }) => (
                             <View style={styles.agentItem}>
@@ -475,7 +478,7 @@ export default function DashboardScreen() {
                                         value={item.status === 'active'}
                                         onValueChange={() => toggleAgentStatus(item)}
                                         disabled={isViewer}
-                                        trackColor={{ false: COLORS.inkRaised, true: COLORS.tealDark }}
+                                        trackColor={{ false: colors.line, true: colors.tealDark }}
                                         thumbColor="#ffffff"
                                     />
                                 </View>
@@ -491,7 +494,26 @@ export default function DashboardScreen() {
 
                 {activeTab === 'settings' && (
                     <ScrollView contentContainerStyle={styles.tabContent}>
-                        <Text style={styles.sectionTitle}>Kullanıcı Hesabı</Text>
+                        <Text style={styles.sectionTitle}>Görünüm</Text>
+                        <View style={styles.settingsCard}>
+                            <View style={styles.themeSettingRow}>
+                                <View style={styles.themeSettingIcon}>
+                                    <Ionicons name={isDark ? 'moon' : 'sunny'} size={18} color={colors.teal} />
+                                </View>
+                                <View style={styles.themeSettingCopy}>
+                                    <Text style={styles.settingsValueCompact}>Koyu tema</Text>
+                                    <Text style={styles.settingsLabelCompact}>Uygulama görünümünü cihazınızda saklar.</Text>
+                                </View>
+                                <Switch
+                                    value={isDark}
+                                    onValueChange={toggleTheme}
+                                    trackColor={{ false: colors.line, true: colors.tealDark }}
+                                    thumbColor={colors.white}
+                                />
+                            </View>
+                        </View>
+
+                        <Text style={[styles.sectionTitle, { marginTop: 24 }]}>Kullanıcı Hesabı</Text>
                         <View style={styles.settingsCard}>
                             <Text style={styles.settingsLabel}>Ad Soyad</Text>
                             <Text style={styles.settingsValue}>{user?.name || 'Satıcı Kullanıcı'}</Text>
@@ -526,35 +548,35 @@ export default function DashboardScreen() {
                 <View style={styles.floatingTabBar}>
                     <TouchableOpacity style={styles.tabItem} onPress={() => setActiveTab('home')}>
                         <View style={[styles.iconWrapper, activeTab === 'home' && styles.iconWrapperActive]}>
-                            <Ionicons name={activeTab === 'home' ? 'home' : 'home-outline'} size={21} color={activeTab === 'home' ? COLORS.ink : 'rgba(255,255,255,0.4)'} />
+                            <Ionicons name={activeTab === 'home' ? 'home' : 'home-outline'} size={21} color={activeTab === 'home' ? colors.ink : 'rgba(255,255,255,0.4)'} />
                         </View>
                         <Text style={[styles.tabItemText, activeTab === 'home' && styles.tabItemTextActive]}>Ana Sayfa</Text>
                     </TouchableOpacity>
                     
                     <TouchableOpacity style={styles.tabItem} onPress={() => setActiveTab('sessions')}>
                         <View style={[styles.iconWrapper, activeTab === 'sessions' && styles.iconWrapperActive]}>
-                            <Ionicons name={activeTab === 'sessions' ? 'call' : 'call-outline'} size={21} color={activeTab === 'sessions' ? COLORS.ink : 'rgba(255,255,255,0.4)'} />
+                            <Ionicons name={activeTab === 'sessions' ? 'call' : 'call-outline'} size={21} color={activeTab === 'sessions' ? colors.ink : 'rgba(255,255,255,0.4)'} />
                         </View>
                         <Text style={[styles.tabItemText, activeTab === 'sessions' && styles.tabItemTextActive]}>Görüşmeler</Text>
                     </TouchableOpacity>
 
                     <TouchableOpacity style={styles.tabItem} onPress={() => setActiveTab('leads')}>
                         <View style={[styles.iconWrapper, activeTab === 'leads' && styles.iconWrapperActive]}>
-                            <Ionicons name={activeTab === 'leads' ? 'people' : 'people-outline'} size={21} color={activeTab === 'leads' ? COLORS.ink : 'rgba(255,255,255,0.4)'} />
+                            <Ionicons name={activeTab === 'leads' ? 'people' : 'people-outline'} size={21} color={activeTab === 'leads' ? colors.ink : 'rgba(255,255,255,0.4)'} />
                         </View>
                         <Text style={[styles.tabItemText, activeTab === 'leads' && styles.tabItemTextActive]}>Adaylar</Text>
                     </TouchableOpacity>
 
                     <TouchableOpacity style={styles.tabItem} onPress={() => setActiveTab('agents')}>
                         <View style={[styles.iconWrapper, activeTab === 'agents' && styles.iconWrapperActive]}>
-                            <Ionicons name={activeTab === 'agents' ? 'hardware-chip' : 'hardware-chip-outline'} size={21} color={activeTab === 'agents' ? COLORS.ink : 'rgba(255,255,255,0.4)'} />
+                            <Ionicons name={activeTab === 'agents' ? 'hardware-chip' : 'hardware-chip-outline'} size={21} color={activeTab === 'agents' ? colors.ink : 'rgba(255,255,255,0.4)'} />
                         </View>
                         <Text style={[styles.tabItemText, activeTab === 'agents' && styles.tabItemTextActive]}>Temsilciler</Text>
                     </TouchableOpacity>
 
                     <TouchableOpacity style={styles.tabItem} onPress={() => setActiveTab('settings')}>
                         <View style={[styles.iconWrapper, activeTab === 'settings' && styles.iconWrapperActive]}>
-                            <Ionicons name={activeTab === 'settings' ? 'settings' : 'settings-outline'} size={21} color={activeTab === 'settings' ? COLORS.ink : 'rgba(255,255,255,0.4)'} />
+                            <Ionicons name={activeTab === 'settings' ? 'settings' : 'settings-outline'} size={21} color={activeTab === 'settings' ? colors.ink : 'rgba(255,255,255,0.4)'} />
                         </View>
                         <Text style={[styles.tabItemText, activeTab === 'settings' && styles.tabItemTextActive]}>Ayarlar</Text>
                     </TouchableOpacity>
@@ -564,14 +586,14 @@ export default function DashboardScreen() {
     );
 }
 
-const styles = StyleSheet.create({
+const createStyles = (colors, isDark) => StyleSheet.create({
     container: {
         flex: 1,
-        backgroundColor: COLORS.ink,
+        backgroundColor: colors.canvas,
     },
     centerContainer: {
         flex: 1,
-        backgroundColor: COLORS.ink,
+        backgroundColor: colors.canvas,
         justifyContent: 'center',
         alignItems: 'center',
         padding: 24,
@@ -589,14 +611,14 @@ const styles = StyleSheet.create({
         paddingHorizontal: 20,
         paddingTop: Platform.OS === 'ios' ? 58 : 34,
         paddingBottom: 16,
-        backgroundColor: COLORS.ink,
+        backgroundColor: colors.ink,
     },
     headerBrandRow: {
         flexDirection: 'row',
         alignItems: 'center',
     },
     brandTitle: {
-        color: COLORS.white,
+        color: colors.white,
         fontFamily: FONT.bold,
         fontSize: 17,
     },
@@ -618,6 +640,7 @@ const styles = StyleSheet.create({
     },
     contentContainer: {
         flex: 1,
+        backgroundColor: colors.canvas,
     },
     tabContent: {
         padding: 20,
@@ -628,7 +651,7 @@ const styles = StyleSheet.create({
         paddingBottom: 110,
     },
     sectionTitle: {
-        color: COLORS.white,
+        color: colors.text,
         fontFamily: FONT.bold,
         fontSize: 17,
         marginBottom: 16,
@@ -643,7 +666,7 @@ const styles = StyleSheet.create({
         width: 8,
         height: 8,
         borderRadius: 4,
-        backgroundColor: COLORS.lime,
+        backgroundColor: colors.lime,
         marginLeft: 8,
     },
     kpiGrid: {
@@ -654,29 +677,29 @@ const styles = StyleSheet.create({
     kpiCard: {
         flex: 1,
         minWidth: '45%',
-        backgroundColor: COLORS.inkSoft,
+        backgroundColor: colors.surface,
         borderRadius: 20,
         padding: 17,
         borderWidth: 1,
-        borderColor: 'rgba(255,255,255,0.075)',
+        borderColor: colors.line,
     },
     kpiValue: {
-        color: COLORS.lime,
+        color: isDark ? colors.lime : colors.tealDark,
         fontFamily: FONT.bold,
         fontSize: 24,
     },
     kpiLabel: {
-        color: 'rgba(255,255,255,0.45)',
+        color: colors.muted,
         fontFamily: FONT.medium,
         fontSize: 12,
         marginTop: 4,
     },
     sessionItem: {
-        backgroundColor: COLORS.inkSoft,
+        backgroundColor: colors.surface,
         borderRadius: 20,
         padding: 16,
         borderWidth: 1,
-        borderColor: 'rgba(255,255,255,0.075)',
+        borderColor: colors.line,
         marginBottom: 12,
     },
     sessionMetaRow: {
@@ -686,19 +709,19 @@ const styles = StyleSheet.create({
         marginBottom: 4,
     },
     sessionVisitor: {
-        color: COLORS.white,
+        color: colors.text,
         fontFamily: FONT.bold,
         fontSize: 16,
         fontWeight: '700',
     },
     sessionAgent: {
-        color: 'rgba(255,255,255,0.52)',
+        color: colors.muted,
         fontFamily: FONT.regular,
         fontSize: 14,
         marginBottom: 8,
     },
     sessionTime: {
-        color: 'rgba(255,255,255,0.32)',
+        color: colors.soft,
         fontFamily: FONT.medium,
         fontSize: 12,
     },
@@ -709,7 +732,7 @@ const styles = StyleSheet.create({
         borderRadius: 10,
     },
     liveTagText: {
-        color: COLORS.teal,
+        color: colors.teal,
         fontSize: 10,
         fontWeight: '800',
     },
@@ -729,30 +752,30 @@ const styles = StyleSheet.create({
         fontWeight: '800',
     },
     badgeLiveText: {
-        color: COLORS.teal,
+        color: colors.teal,
     },
     badgeEndedText: {
-        color: 'rgba(255,255,255,0.5)',
+        color: colors.muted,
     },
     emptyCard: {
-        backgroundColor: COLORS.inkSoft,
+        backgroundColor: colors.surface,
         borderRadius: 20,
         padding: 32,
         borderWidth: 1,
-        borderColor: 'rgba(255,255,255,0.075)',
+        borderColor: colors.line,
         alignItems: 'center',
     },
     emptyCardText: {
-        color: 'rgba(255,255,255,0.34)',
+        color: colors.muted,
         fontFamily: FONT.medium,
         fontSize: 14,
     },
     searchBar: {
-        backgroundColor: COLORS.inkSoft,
+        backgroundColor: colors.surface,
         borderRadius: 16,
         borderWidth: 1,
-        borderColor: 'rgba(255,255,255,0.075)',
-        color: COLORS.white,
+        borderColor: colors.line,
+        color: colors.text,
         fontFamily: FONT.medium,
         paddingHorizontal: 16,
         paddingVertical: 12,
@@ -763,22 +786,22 @@ const styles = StyleSheet.create({
     agentItem: {
         flexDirection: 'row',
         alignItems: 'center',
-        backgroundColor: COLORS.inkSoft,
+        backgroundColor: colors.surface,
         borderRadius: 20,
         padding: 16,
         borderWidth: 1,
-        borderColor: 'rgba(255,255,255,0.075)',
+        borderColor: colors.line,
         marginBottom: 12,
     },
     agentNameText: {
-        color: COLORS.white,
+        color: colors.text,
         fontFamily: FONT.bold,
         fontSize: 16,
         fontWeight: '700',
         marginBottom: 4,
     },
     agentConfigText: {
-        color: 'rgba(255,255,255,0.48)',
+        color: colors.muted,
         fontFamily: FONT.regular,
         fontSize: 13,
         marginTop: 2,
@@ -792,17 +815,17 @@ const styles = StyleSheet.create({
         fontWeight: '800',
     },
     indicatorActive: {
-        color: COLORS.teal,
+        color: colors.teal,
     },
     indicatorPaused: {
         color: '#f87171',
     },
     leadCard: {
-        backgroundColor: COLORS.inkSoft,
+        backgroundColor: colors.surface,
         borderRadius: 20,
         padding: 16,
         borderWidth: 1,
-        borderColor: 'rgba(255,255,255,0.075)',
+        borderColor: colors.line,
         marginBottom: 12,
     },
     leadHeader: {
@@ -812,7 +835,7 @@ const styles = StyleSheet.create({
         marginBottom: 6,
     },
     leadEmail: {
-        color: COLORS.white,
+        color: colors.text,
         fontFamily: FONT.bold,
         fontSize: 16,
         fontWeight: '700',
@@ -824,13 +847,13 @@ const styles = StyleSheet.create({
         borderRadius: 10,
     },
     scoreText: {
-        color: COLORS.lime,
+        color: isDark ? colors.lime : colors.tealDark,
         fontFamily: FONT.bold,
         fontSize: 11,
         fontWeight: '700',
     },
     leadCompany: {
-        color: 'rgba(255,255,255,0.48)',
+        color: colors.muted,
         fontSize: 14,
         marginBottom: 12,
     },
@@ -843,29 +866,29 @@ const styles = StyleSheet.create({
         flex: 1,
         paddingVertical: 6,
         borderRadius: 8,
-        backgroundColor: 'rgba(255,255,255,0.055)',
+        backgroundColor: colors.surfaceMuted,
         borderWidth: 1,
-        borderColor: 'rgba(255,255,255,0.09)',
+        borderColor: colors.line,
         alignItems: 'center',
     },
     leadStatusBtnActive: {
-        backgroundColor: COLORS.lime,
-        borderColor: COLORS.lime,
+        backgroundColor: colors.lime,
+        borderColor: colors.lime,
     },
     leadStatusBtnText: {
-        color: 'rgba(255,255,255,0.48)',
+        color: colors.muted,
         fontSize: 12,
         fontWeight: '600',
     },
     leadStatusBtnActiveText: {
-        color: COLORS.ink,
+        color: colors.ink,
     },
     leadStatusBtnDisabled: {
         opacity: 0.4,
     },
     contactActionsRow: {
         borderTopWidth: 1,
-        borderColor: 'rgba(255,255,255,0.075)',
+        borderColor: colors.line,
         marginTop: 14,
         paddingTop: 12,
     },
@@ -873,24 +896,24 @@ const styles = StyleSheet.create({
         alignSelf: 'flex-start',
     },
     contactBtnText: {
-        color: COLORS.teal,
+        color: colors.teal,
         fontSize: 13,
         fontWeight: '600',
     },
     settingsCard: {
-        backgroundColor: COLORS.inkSoft,
+        backgroundColor: colors.surface,
         borderRadius: 20,
         padding: 16,
         borderWidth: 1,
-        borderColor: 'rgba(255,255,255,0.075)',
+        borderColor: colors.line,
     },
     settingsLabel: {
-        color: 'rgba(255,255,255,0.35)',
+        color: colors.soft,
         fontSize: 12,
         marginBottom: 4,
     },
     settingsValue: {
-        color: COLORS.white,
+        color: colors.text,
         fontFamily: FONT.bold,
         fontSize: 16,
         fontWeight: '600',
@@ -902,23 +925,51 @@ const styles = StyleSheet.create({
         alignItems: 'center',
         paddingVertical: 12,
         borderBottomWidth: 1,
-        borderColor: 'rgba(255,255,255,0.075)',
+        borderColor: colors.line,
     },
     workspaceItemActive: {
         borderColor: 'transparent',
     },
     workspaceText: {
-        color: 'rgba(255,255,255,0.52)',
+        color: colors.muted,
         fontSize: 15,
     },
     workspaceTextActive: {
-        color: COLORS.lime,
+        color: isDark ? colors.lime : colors.tealDark,
         fontWeight: '700',
     },
     activeIndicatorText: {
-        color: COLORS.teal,
+        color: colors.teal,
         fontSize: 12,
         fontWeight: '700',
+    },
+    themeSettingRow: {
+        flexDirection: 'row',
+        alignItems: 'center',
+    },
+    themeSettingIcon: {
+        width: 40,
+        height: 40,
+        alignItems: 'center',
+        justifyContent: 'center',
+        borderRadius: 13,
+        backgroundColor: colors.surfaceMuted,
+    },
+    themeSettingCopy: {
+        flex: 1,
+        marginLeft: 12,
+        marginRight: 12,
+    },
+    settingsValueCompact: {
+        color: colors.text,
+        fontFamily: FONT.bold,
+        fontSize: 14,
+    },
+    settingsLabelCompact: {
+        marginTop: 3,
+        color: colors.muted,
+        fontFamily: FONT.regular,
+        fontSize: 11.5,
     },
     tabBarContainer: {
         position: 'absolute',
@@ -936,7 +987,7 @@ const styles = StyleSheet.create({
         paddingHorizontal: 7,
         borderWidth: 1,
         borderColor: 'rgba(255,255,255,0.1)',
-        shadowColor: COLORS.ink,
+        shadowColor: colors.ink,
         shadowOffset: { width: 0, height: 10 },
         shadowOpacity: 0.5,
         shadowRadius: 20,
@@ -958,7 +1009,7 @@ const styles = StyleSheet.create({
         marginBottom: 4,
     },
     iconWrapperActive: {
-        backgroundColor: COLORS.lime,
+        backgroundColor: colors.lime,
     },
     tabItemText: {
         color: 'rgba(255,255,255,0.38)',
@@ -967,7 +1018,7 @@ const styles = StyleSheet.create({
         fontWeight: '600',
     },
     tabItemTextActive: {
-        color: COLORS.lime,
+        color: colors.lime,
         fontFamily: FONT.bold,
     },
 });

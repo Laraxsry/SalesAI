@@ -1,6 +1,6 @@
 import { Platform } from 'react-native';
 
-export const COLORS = {
+export const LIGHT_COLORS = {
     ink: '#071713',
     inkSoft: '#0D2923',
     inkRaised: '#15372F',
@@ -18,6 +18,28 @@ export const COLORS = {
     danger: '#E7584A',
     white: '#FFFFFF',
 };
+
+export const DARK_COLORS = {
+    ink: '#071713',
+    inkSoft: '#0D2923',
+    inkRaised: '#15372F',
+    canvas: '#07110F',
+    surface: '#0D1F1B',
+    surfaceMuted: '#163029',
+    line: '#25443B',
+    text: '#EDF5F1',
+    muted: '#91A59D',
+    soft: '#657A72',
+    teal: '#2DD4BF',
+    tealDark: '#14B8A6',
+    lime: '#D7F95B',
+    amber: '#F3B64A',
+    danger: '#FF7568',
+    white: '#FFFFFF',
+};
+
+// Dark-only live meeting components keep using the established static palette.
+export const COLORS = LIGHT_COLORS;
 
 export const FONT = {
     regular: Platform.select({ ios: 'Avenir Next', android: 'sans-serif', default: 'sans-serif' }),

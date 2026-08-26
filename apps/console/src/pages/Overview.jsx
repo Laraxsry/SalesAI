@@ -33,7 +33,7 @@ function NewProductModal({ onClose, onCreated }) {
 
     return (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-[#071713]/65 p-4 backdrop-blur-sm">
-            <div className="w-full max-w-lg rounded-[24px] border border-white/80 bg-white p-7 shadow-[0_32px_100px_-35px_rgba(7,23,19,0.6)]">
+            <div className="w-full max-w-lg rounded-[24px] border border-border bg-surface p-7 shadow-[0_32px_100px_-35px_rgba(7,23,19,0.6)]">
                 <div className="mb-6 flex items-center justify-between">
                     <div>
                         <p className="mb-1 text-[10px] font-bold uppercase tracking-[0.18em] text-brand">Yeni çalışma alanı</p>
@@ -128,21 +128,21 @@ export function Overview() {
             </section>
 
             <div className="mb-7 grid grid-cols-1 gap-3 sm:grid-cols-3">
-                <div className="rounded-2xl border border-border/80 bg-white/75 p-4 shadow-sm backdrop-blur">
+                <div className="rounded-2xl border border-border/80 bg-surface/75 p-4 shadow-sm backdrop-blur">
                     <div className="flex items-center justify-between">
                         <span className="text-xs font-semibold text-text-muted">Toplam ürün</span>
                         <Layers3 size={16} className="text-brand" />
                     </div>
                     <p className="mt-3 text-2xl font-bold text-text">{products?.length ?? '—'}</p>
                 </div>
-                <div className="rounded-2xl border border-border/80 bg-white/75 p-4 shadow-sm backdrop-blur">
+                <div className="rounded-2xl border border-border/80 bg-surface/75 p-4 shadow-sm backdrop-blur">
                     <div className="flex items-center justify-between">
                         <span className="text-xs font-semibold text-text-muted">Operasyon durumu</span>
                         <Activity size={16} className="text-emerald-600" />
                     </div>
                     <p className="mt-3 text-sm font-bold text-text">Yönetim merkezi hazır</p>
                 </div>
-                <div className="rounded-2xl border border-border/80 bg-white/75 p-4 shadow-sm backdrop-blur">
+                <div className="rounded-2xl border border-border/80 bg-surface/75 p-4 shadow-sm backdrop-blur">
                     <div className="flex items-center justify-between">
                         <span className="text-xs font-semibold text-text-muted">Veri güvenliği</span>
                         <ShieldCheck size={16} className="text-amber-600" />
@@ -160,13 +160,13 @@ export function Overview() {
 
             {isLoading && (
                 <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-3">
-                    {[0, 1, 2].map((item) => <div key={item} className="h-48 animate-pulse rounded-[22px] border border-border bg-white/70" />)}
+                    {[0, 1, 2].map((item) => <div key={item} className="h-48 animate-pulse rounded-[22px] border border-border bg-surface/70" />)}
                 </div>
             )}
             {error && <div className="rounded-2xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">{error.message}</div>}
 
             {products?.length === 0 && (
-                <div className="flex flex-col items-center justify-center rounded-[24px] border border-dashed border-brand/30 bg-white/60 px-6 py-16 text-center">
+                <div className="flex flex-col items-center justify-center rounded-[24px] border border-dashed border-brand/30 bg-surface/60 px-6 py-16 text-center">
                     <span className="mb-4 flex h-14 w-14 items-center justify-center rounded-2xl bg-brand/10 text-brand"><Package size={24} /></span>
                     <h3 className="text-lg font-semibold text-text">İlk ürününüzü ekleyin</h3>
                     <p className="mt-1 max-w-sm text-sm leading-6 text-text-muted">Bilgi kaynaklarını bağlamak ve AI temsilcinizi hazırlamak için bir ürün çalışma alanı oluşturun.</p>
@@ -182,7 +182,7 @@ export function Overview() {
                         <Link
                             key={p.id}
                             to={`/products/${p.id}`}
-                            className="card-lift group relative overflow-hidden rounded-[22px] border border-border/90 bg-white p-5 hover:border-brand/35"
+                            className="card-lift group relative overflow-hidden rounded-[22px] border border-border/90 bg-surface p-5 hover:border-brand/35"
                         >
                             <div className="absolute right-5 top-5 text-[11px] font-bold tracking-[0.16em] text-text-muted/45">{String(index + 1).padStart(2, '0')}</div>
                             <div className="mb-8 flex h-11 w-11 items-center justify-center rounded-2xl bg-[#0d2923] text-[#d7f95b] shadow-[0_10px_25px_-14px_rgba(13,41,35,0.7)]">

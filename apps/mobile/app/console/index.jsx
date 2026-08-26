@@ -3,11 +3,12 @@ import { Text, TouchableOpacity } from 'react-native';
 import { useRouter } from 'expo-router';
 import { useAuth } from './_layout';
 import { CONFIG } from '../../config';
-import { SellerAuthButton, SellerAuthField, SellerAuthShell, sellerAuthStyles as styles } from '../../src/components/SellerAuthShell';
+import { SellerAuthButton, SellerAuthField, SellerAuthShell, useSellerAuthStyles } from '../../src/components/SellerAuthShell';
 
 export default function LoginScreen() {
     const router = useRouter();
     const { token, login } = useAuth();
+    const styles = useSellerAuthStyles();
 
     const [email, setEmail] = useState('');
     const [password, setPassword] = useState('');

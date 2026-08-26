@@ -2,6 +2,7 @@
 @import '@repo/tailwind-config/css';
 
 :root {
+    color-scheme: light;
     --color-brand: #0f766e;
     --color-brand-light: #14b8a6;
     --color-brand-dark: #0b5f59;
@@ -15,12 +16,26 @@
     --radius-input: 12px;
 }
 
+:root[data-theme='dark'] {
+    color-scheme: dark;
+    --color-brand: #2dd4bf;
+    --color-brand-light: #5eead4;
+    --color-brand-dark: #14b8a6;
+    --color-bg: #07110f;
+    --color-surface: #0d1f1b;
+    --color-surface-raised: #163029;
+    --color-border: #25443b;
+    --color-text: #edf5f1;
+    --color-text-muted: #91a59d;
+}
+
 * {
     box-sizing: border-box;
 }
 
 html {
     min-width: 320px;
+    scroll-behavior: smooth;
     -webkit-font-smoothing: antialiased;
     -moz-osx-font-smoothing: grayscale;
 }
@@ -32,6 +47,12 @@ body {
         linear-gradient(180deg, #f8faf7 0%, var(--color-bg) 32rem);
     color: var(--color-text);
     font-family: 'Manrope', sans-serif;
+}
+
+:root[data-theme='dark'] body {
+    background:
+        radial-gradient(circle at 76% -12%, rgb(45 212 191 / 12%), transparent 30rem),
+        linear-gradient(180deg, #091713 0%, var(--color-bg) 32rem);
 }
 
 h1,
@@ -70,6 +91,12 @@ a {
     mask-image: linear-gradient(to bottom, black, transparent 82%);
 }
 
+:root[data-theme='dark'] .console-grid {
+    background-image:
+        linear-gradient(rgb(94 234 212 / 5%) 1px, transparent 1px),
+        linear-gradient(90deg, rgb(94 234 212 / 5%) 1px, transparent 1px);
+}
+
 .sidebar-glow::after {
     position: absolute;
     right: -7rem;
@@ -87,6 +114,66 @@ a {
     animation: page-enter 420ms cubic-bezier(0.2, 0.75, 0.25, 1) both;
 }
 
+.landing-hero::before {
+    position: absolute;
+    inset: 0;
+    content: '';
+    background-image:
+        linear-gradient(rgb(15 118 110 / 5%) 1px, transparent 1px),
+        linear-gradient(90deg, rgb(15 118 110 / 5%) 1px, transparent 1px);
+    background-size: 44px 44px;
+    mask-image: linear-gradient(to bottom, black, transparent 84%);
+    pointer-events: none;
+}
+
+:root[data-theme='dark'] .landing-hero::before {
+    background-image:
+        linear-gradient(rgb(94 234 212 / 5%) 1px, transparent 1px),
+        linear-gradient(90deg, rgb(94 234 212 / 5%) 1px, transparent 1px);
+}
+
+.landing-preview-grid {
+    background:
+        radial-gradient(circle at 50% 46%, rgb(215 249 91 / 8%), transparent 42%),
+        linear-gradient(rgb(255 255 255 / 3%) 1px, transparent 1px),
+        linear-gradient(90deg, rgb(255 255 255 / 3%) 1px, transparent 1px);
+    background-size: auto, 32px 32px, 32px 32px;
+    mask-image: linear-gradient(to bottom, black, transparent);
+}
+
+.landing-product-frame::after {
+    position: absolute;
+    inset: 0;
+    content: '';
+    border-radius: inherit;
+    box-shadow: inset 0 1px 0 rgb(255 255 255 / 10%);
+    pointer-events: none;
+}
+
+.landing-signal span {
+    width: 4px;
+    height: var(--signal-height);
+    border-radius: 999px;
+    background: #d7f95b;
+    animation: landing-signal 900ms ease-in-out var(--signal-delay) infinite alternate;
+}
+
+.landing-orbit {
+    animation: landing-orbit 14s linear infinite;
+}
+
+.landing-reveal {
+    animation: landing-reveal 680ms cubic-bezier(0.2, 0.75, 0.25, 1) both;
+}
+
+.landing-reveal-delay {
+    animation-delay: 140ms;
+}
+
+.landing-float {
+    animation: landing-float 7s ease-in-out 900ms infinite;
+}
+
 .card-lift {
     transition: transform 180ms ease, box-shadow 180ms ease, border-color 180ms ease;
 }
@@ -94,6 +181,10 @@ a {
 .card-lift:hover {
     transform: translateY(-2px);
     box-shadow: 0 18px 44px -30px rgb(13 45 38 / 42%);
+}
+
+:root[data-theme='dark'] .card-lift:hover {
+    box-shadow: 0 18px 44px -30px rgb(0 0 0 / 85%);
 }
 
 @keyframes page-enter {
@@ -104,6 +195,44 @@ a {
     to {
         opacity: 1;
         transform: translateY(0);
+    }
+}
+
+@keyframes landing-reveal {
+    from {
+        opacity: 0;
+        transform: translateY(16px);
+    }
+    to {
+        opacity: 1;
+        transform: translateY(0);
+    }
+}
+
+@keyframes landing-signal {
+    from {
+        transform: scaleY(0.45);
+        opacity: 0.55;
+    }
+    to {
+        transform: scaleY(1);
+        opacity: 1;
+    }
+}
+
+@keyframes landing-orbit {
+    to {
+        transform: rotate(360deg);
+    }
+}
+
+@keyframes landing-float {
+    0%,
+    100% {
+        transform: translateY(0);
+    }
+    50% {
+        transform: translateY(-7px);
     }
 }
 

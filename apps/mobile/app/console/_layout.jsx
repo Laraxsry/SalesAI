@@ -3,7 +3,7 @@ import { Stack } from 'expo-router';
 import { View, ActivityIndicator, StyleSheet } from 'react-native';
 import * as SecureStore from 'expo-secure-store';
 import { CONFIG } from '../../config';
-import { COLORS } from '../../src/theme';
+import { useAppTheme } from '../../src/theme-context';
 
 const AuthContext = createContext();
 
@@ -12,6 +12,8 @@ export const useAuth = () => useContext(AuthContext);
 const STORAGE_KEY = 'salesai-console-auth';
 
 export default function ConsoleLayout() {
+    const { colors } = useAppTheme();
+    const styles = createStyles(colors);
     const [token, setToken] = useState(null);
     const [refreshToken, setRefreshToken] = useState(null);
     const [user, setUser] = useState(null);
@@ -127,7 +129,7 @@ export default function ConsoleLayout() {
     if (restoring) {
         return (
             <View style={styles.splash}>
-                <ActivityIndicator size="large" color={COLORS.lime} />
+                <ActivityIndicator size="large" color={colors.lime} />
             </View>
         );
     }
@@ -137,17 +139,17 @@ export default function ConsoleLayout() {
             <Stack
                 screenOptions={{
                     headerShown: false,
-                    contentStyle: { backgroundColor: COLORS.ink },
+                    contentStyle: { backgroundColor: colors.canvas },
                 }}
             />
         </AuthContext.Provider>
     );
 }
 
-const styles = StyleSheet.create({
+const createStyles = (colors) => StyleSheet.create({
     splash: {
         flex: 1,
-        backgroundColor: COLORS.ink,
+        backgroundColor: colors.canvas,
         alignItems: 'center',
         justifyContent: 'center',
     },

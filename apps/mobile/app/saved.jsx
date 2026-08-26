@@ -5,6 +5,7 @@ import { StatusBar } from 'expo-status-bar';
 import { getSavedConversations, removeSavedConversation } from '../src/savedConversations';
 import { requestPushPermission, getNotificationPref, setNotificationPref } from '../src/push';
 import { getVisitorAuth, requestMagicLink, verifyMagicLink } from '../src/visitorIdentity';
+import { useAppTheme } from '../src/theme-context';
 
 function formatDate(iso) {
     const d = new Date(iso);
@@ -13,6 +14,8 @@ function formatDate(iso) {
 
 export default function SavedScreen() {
     const router = useRouter();
+    const { colors, isDark } = useAppTheme();
+    const styles = createStyles(colors);
     const [conversations, setConversations] = useState([]);
     const [notificationsOn, setNotificationsOn] = useState(false);
     const [syncedEmail, setSyncedEmail] = useState(null);
@@ -83,7 +86,7 @@ export default function SavedScreen() {
 
     return (
         <View style={styles.container}>
-            <StatusBar style="light" />
+            <StatusBar style={isDark ? 'light' : 'dark'} />
 
             <View style={styles.header}>
                 <TouchableOpacity onPress={() => router.back()} hitSlop={12}>
@@ -101,8 +104,8 @@ export default function SavedScreen() {
                 <Switch
                     value={notificationsOn}
                     onValueChange={onToggleNotifications}
-                    trackColor={{ false: '#2d2d44', true: '#6d5efc' }}
-                    thumbColor="#ffffff"
+                    trackColor={{ false: colors.line, true: colors.tealDark }}
+                    thumbColor={colors.white}
                 />
             </View>
 
@@ -120,14 +123,14 @@ export default function SavedScreen() {
                                 <TextInput
                                     style={styles.syncInput}
                                     placeholder="ornek@eposta.com"
-                                    placeholderTextColor="#6c727f"
+                                    placeholderTextColor={colors.soft}
                                     value={emailInput}
                                     onChangeText={setEmailInput}
                                     autoCapitalize="none"
                                     keyboardType="email-address"
                                 />
                                 <TouchableOpacity style={styles.syncButton} onPress={onRequestLink} disabled={syncBusy}>
-                                    {syncBusy ? <ActivityIndicator size="small" color="#ffffff" /> : <Text style={styles.syncButtonText}>Gönder</Text>}
+                                    {syncBusy ? <ActivityIndicator size="small" color={colors.white} /> : <Text style={styles.syncButtonText}>Gönder</Text>}
                                 </TouchableOpacity>
                             </View>
 
@@ -136,13 +139,13 @@ export default function SavedScreen() {
                                     <TextInput
                                         style={styles.syncInput}
                                         placeholder="Bağlantıdaki kodu yapıştır"
-                                        placeholderTextColor="#6c727f"
+                                        placeholderTextColor={colors.soft}
                                         value={tokenInput}
                                         onChangeText={setTokenInput}
                                         autoCapitalize="none"
                                     />
                                     <TouchableOpacity style={styles.syncButton} onPress={onVerifyToken} disabled={syncBusy}>
-                                        {syncBusy ? <ActivityIndicator size="small" color="#ffffff" /> : <Text style={styles.syncButtonText}>Doğrula</Text>}
+                                        {syncBusy ? <ActivityIndicator size="small" color={colors.white} /> : <Text style={styles.syncButtonText}>Doğrula</Text>}
                                     </TouchableOpacity>
                                 </View>
                             )}
@@ -185,8 +188,8 @@ export default function SavedScreen() {
     );
 }
 
-const styles = StyleSheet.create({
-    container: { flex: 1, backgroundColor: '#0b0b12' },
+const createStyles = (colors) => StyleSheet.create({
+    container: { flex: 1, backgroundColor: colors.canvas },
     header: {
         flexDirection: 'row',
         alignItems: 'center',
@@ -195,66 +198,66 @@ const styles = StyleSheet.create({
         paddingTop: 60,
         paddingBottom: 16
     },
-    backArrow: { color: '#ffffff', fontSize: 32, fontWeight: '300', lineHeight: 32 },
-    title: { color: '#ffffff', fontSize: 18, fontWeight: '700' },
+    backArrow: { color: colors.text, fontSize: 32, fontWeight: '300', lineHeight: 32 },
+    title: { color: colors.text, fontSize: 18, fontWeight: '700' },
     notifCard: {
         flexDirection: 'row',
         alignItems: 'center',
-        backgroundColor: '#13131e',
+        backgroundColor: colors.surface,
         borderRadius: 16,
         borderWidth: 1,
-        borderColor: '#242436',
+        borderColor: colors.line,
         marginHorizontal: 20,
         padding: 16,
         marginBottom: 8
     },
-    notifTitle: { color: '#ffffff', fontSize: 15, fontWeight: '600', marginBottom: 2 },
-    notifDesc: { color: '#9ba1b0', fontSize: 12, lineHeight: 16 },
+    notifTitle: { color: colors.text, fontSize: 15, fontWeight: '600', marginBottom: 2 },
+    notifDesc: { color: colors.muted, fontSize: 12, lineHeight: 16 },
     syncRow: { flexDirection: 'row', gap: 8, marginTop: 10 },
     syncInput: {
         flex: 1,
-        backgroundColor: '#1b1b2a',
+        backgroundColor: colors.surfaceMuted,
         borderRadius: 10,
         borderWidth: 1,
-        borderColor: '#2d2d44',
-        color: '#ffffff',
+        borderColor: colors.line,
+        color: colors.text,
         fontSize: 13,
         paddingHorizontal: 12,
         paddingVertical: 10,
     },
     syncButton: {
-        backgroundColor: '#6d5efc',
+        backgroundColor: colors.tealDark,
         borderRadius: 10,
         paddingHorizontal: 16,
         alignItems: 'center',
         justifyContent: 'center',
     },
-    syncButtonText: { color: '#ffffff', fontSize: 13, fontWeight: '600' },
-    syncError: { color: '#f87171', fontSize: 12, marginTop: 8 },
+    syncButtonText: { color: colors.white, fontSize: 13, fontWeight: '600' },
+    syncError: { color: colors.danger, fontSize: 12, marginTop: 8 },
     listContent: { padding: 20, paddingBottom: 40 },
     empty: { alignItems: 'center', marginTop: 60 },
-    emptyTitle: { color: '#ffffff', fontSize: 16, fontWeight: '600', marginBottom: 6 },
-    emptyDesc: { color: '#6c727f', fontSize: 13, textAlign: 'center' },
+    emptyTitle: { color: colors.text, fontSize: 16, fontWeight: '600', marginBottom: 6 },
+    emptyDesc: { color: colors.muted, fontSize: 13, textAlign: 'center' },
     card: {
         flexDirection: 'row',
         alignItems: 'center',
-        backgroundColor: '#13131e',
+        backgroundColor: colors.surface,
         borderRadius: 14,
         borderWidth: 1,
-        borderColor: '#242436',
+        borderColor: colors.line,
         padding: 14,
         marginBottom: 10
     },
-    cardTitle: { color: '#ffffff', fontSize: 15, fontWeight: '600' },
-    cardDate: { color: '#6c727f', fontSize: 12, marginTop: 2 },
+    cardTitle: { color: colors.text, fontSize: 15, fontWeight: '600' },
+    cardDate: { color: colors.muted, fontSize: 12, marginTop: 2 },
     resumeButton: {
-        backgroundColor: '#6d5efc',
+        backgroundColor: colors.tealDark,
         borderRadius: 10,
         paddingVertical: 8,
         paddingHorizontal: 14,
         marginRight: 8
     },
-    resumeText: { color: '#ffffff', fontSize: 13, fontWeight: '600' },
+    resumeText: { color: colors.white, fontSize: 13, fontWeight: '600' },
     removeButton: { padding: 4 },
-    removeText: { color: '#6c727f', fontSize: 16 }
+    removeText: { color: colors.muted, fontSize: 16 }
 });

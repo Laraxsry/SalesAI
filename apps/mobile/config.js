@@ -1,7 +1,5 @@
 import { Platform } from 'react-native';
 
-/* global __DEV__ */
-
 // In development:
 // - iOS Simulator can use localhost (127.0.0.1)
 // - Android Emulator must use 10.0.2.2 to access the host's localhost

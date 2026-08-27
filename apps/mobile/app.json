@@ -5,9 +5,10 @@
     "scheme": "salesai",
     "version": "0.1.0",
     "orientation": "portrait",
-    "userInterfaceStyle": "dark",
+    "userInterfaceStyle": "automatic",
     "plugins": [
       "expo-router",
+      "expo-dev-client",
       "expo-secure-store",
       "expo-notifications",
       "@livekit/react-native-expo-plugin",
@@ -15,19 +16,23 @@
     ],
     "ios": {
       "supportsTablet": true,
-      "bundleIdentifier": "com.salesai.app",
+      "bundleIdentifier": "com.bkrvrl.salesai",
       "associatedDomains": [
         "applinks:app.salesai.com"
       ],
       "infoPlist": {
-        "NSMicrophoneUsageDescription": "SalesAI needs access to your microphone to converse with the agent.",
+        "NSMicrophoneUsageDescription": "SalesAI temsilciyle konuşabilmek için mikrofonunuza erişir.",
+        "NSLocalNetworkUsageDescription": "SalesAI geliştirme sunucusuna bağlanmak için yerel ağınıza erişir.",
+        "NSBonjourServices": [
+          "_expo._tcp"
+        ],
         "UIBackgroundModes": [
           "audio"
         ]
       }
     },
     "android": {
-      "package": "com.salesai.app",
+      "package": "com.bkrvrl.salesai",
       "permissions": [
         "RECORD_AUDIO",
         "FOREGROUND_SERVICE",

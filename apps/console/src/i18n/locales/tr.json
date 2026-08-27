@@ -1,17 +1,17 @@
 {
     "nav": {
-        "overview": "Overview",
-        "knowledge": "Knowledge",
-        "agents": "Agents",
-        "analytics": "Analytics",
-        "leads": "Leads",
-        "settings": "Settings",
+        "overview": "Genel Bakış",
+        "knowledge": "Bilgi Merkezi",
+        "agents": "Temsilciler",
+        "analytics": "Analitik",
+        "leads": "Potansiyel Müşteriler",
+        "settings": "Ayarlar",
         "logout": "Çıkış yap"
     },
     "auth": {
         "loginTitle": "Tekrar hoş geldin",
         "loginSubtitle": "Devam etmek için hesabına giriş yap.",
-        "email": "Email",
+        "email": "E-posta",
         "password": "Şifre",
         "loginButton": "Giriş yap",
         "loggingIn": "Giriş yapılıyor…",

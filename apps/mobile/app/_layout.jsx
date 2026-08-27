@@ -3,6 +3,7 @@ import { useEffect } from 'react';
 import { LogBox, Platform } from 'react-native';
 import * as Notifications from 'expo-notifications';
 import { getNotificationRoute } from '../src/notificationRoute';
+import { AppThemeProvider, useAppTheme } from '../src/theme-context';
 
 // Intercept global fetch to bypass localtunnel reminder pages automatically
 if (typeof global.fetch === 'function') {
@@ -29,7 +30,16 @@ LogBox.ignoreLogs([
 ]);
 
 export default function RootLayout() {
+    return (
+        <AppThemeProvider>
+            <RootNavigator />
+        </AppThemeProvider>
+    );
+}
+
+function RootNavigator() {
     const router = useRouter();
+    const { colors } = useAppTheme();
 
     useEffect(() => {
         if (Platform.OS === 'web') return undefined;
@@ -48,7 +58,7 @@ export default function RootLayout() {
         <Stack
             screenOptions={{
                 headerShown: false,
-                contentStyle: { backgroundColor: '#0b0b12' },
+                contentStyle: { backgroundColor: colors.canvas },
             }}
         />
     );

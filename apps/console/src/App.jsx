@@ -1,13 +1,15 @@
 import { Suspense, lazy, useState } from 'react';
-import { Routes, Route, NavLink, useNavigate } from 'react-router-dom';
+import { Routes, Route, NavLink, Navigate, useNavigate } from 'react-router-dom';
 import { Logo, cn } from '@repo/ui';
 import { useTranslation } from 'react-i18next';
-import { LayoutDashboard, BookOpen, Bot, Users, BarChart3, Settings as SettingsIcon, LogOut, Menu, X } from 'lucide-react';
+import { LayoutDashboard, BookOpen, Bot, Users, BarChart3, Settings as SettingsIcon, LogOut, Menu, X, ChevronDown, Sparkles, Moon, Sun } from 'lucide-react';
 import { Login } from './pages/Login.jsx';
 import { Register } from './pages/Register.jsx';
 import { AcceptInvite } from './pages/AcceptInvite.jsx';
+import { Landing } from './pages/Landing.jsx';
 import { RequireAuth } from './lib/RequireAuth.jsx';
 import { useAuthStore } from './store/auth.js';
+import { useTheme } from './lib/ThemeProvider.jsx';
 
 const Overview = lazy(() => import('./pages/Overview.jsx').then((m) => ({ default: m.Overview })));
 const ProductDetail = lazy(() => import('./pages/ProductDetail.jsx').then((m) => ({ default: m.ProductDetail })));
@@ -63,9 +65,11 @@ function PageSkeleton() {
 function Shell({ children }) {
     const { t } = useTranslation();
     const user = useAuthStore((s) => s.user);
+    const workspace = useAuthStore((s) => s.workspace);
     const logout = useAuthStore((s) => s.logout);
     const navigate = useNavigate();
     const [mobileNavOpen, setMobileNavOpen] = useState(false);
+    const { isDark, toggleTheme } = useTheme();
 
     function onLogout() {
         logout();
@@ -73,29 +77,33 @@ function Shell({ children }) {
     }
 
     return (
-        <div className="flex min-h-screen bg-bg">
+        <div className="relative flex min-h-screen bg-bg">
+            <div className="console-grid pointer-events-none fixed inset-0" aria-hidden="true" />
             {mobileNavOpen && (
                 <button
                     type="button"
                     aria-label="Menüyü kapat"
-                    className="fixed inset-0 z-30 bg-black/60 md:hidden"
+                    className="fixed inset-0 z-30 bg-[#071713]/70 backdrop-blur-sm md:hidden"
                     onClick={() => setMobileNavOpen(false)}
                 />
             )}
             <aside
                 aria-label="Ana menü"
-                className={`fixed inset-y-0 left-0 z-40 flex w-64 shrink-0 flex-col border-r border-border bg-surface px-4 py-6 transition-transform md:sticky md:top-0 md:h-screen md:translate-x-0 ${mobileNavOpen ? 'translate-x-0' : '-translate-x-full'}`}
+                className={`sidebar-glow fixed inset-y-0 left-0 z-40 flex w-[280px] shrink-0 flex-col overflow-hidden border-r border-white/8 bg-[#0b1f1b] px-4 py-5 text-white shadow-2xl shadow-black/10 transition-transform md:sticky md:top-0 md:h-screen md:translate-x-0 ${mobileNavOpen ? 'translate-x-0' : '-translate-x-full'}`}
             >
-                <div className="mb-8 px-2">
+                <div className="relative z-10 mb-7 px-2">
                     <div className="flex items-center justify-between">
-                        <Logo />
-                        <button type="button" onClick={() => setMobileNavOpen(false)} aria-label="Menüyü kapat" className="flex h-9 w-9 items-center justify-center rounded-lg text-text-muted hover:bg-surface-raised md:hidden">
+                        <div className="flex items-center gap-3">
+                            <Logo className="[&_span]:text-white [&_span_span]:text-[#d7f95b]" />
+                        </div>
+                        <button type="button" onClick={() => setMobileNavOpen(false)} aria-label="Menüyü kapat" className="flex h-9 w-9 items-center justify-center rounded-xl text-white/60 hover:bg-white/8 hover:text-white md:hidden">
                             <X size={18} aria-hidden="true" />
                         </button>
                     </div>
                 </div>
 
-                <nav className="flex flex-1 flex-col gap-1" aria-label="Ana navigasyon">
+                <div className="relative z-10 mb-3 px-3 text-[10px] font-bold uppercase tracking-[0.18em] text-white/35">Çalışma Alanı</div>
+                <nav className="relative z-10 flex flex-1 flex-col gap-1" aria-label="Ana navigasyon">
                     {NAV_ITEMS.map(({ to, key, icon: Icon, end }) => (
                         <NavLink
                             key={to}
@@ -104,53 +112,77 @@ function Shell({ children }) {
                             onClick={() => setMobileNavOpen(false)}
                             className={({ isActive }) =>
                                 cn(
-                                    'flex items-center gap-3 rounded-[var(--radius-input)] px-3 py-2.5 text-sm font-medium transition-colors',
+                                    'group flex items-center gap-3 rounded-xl px-3 py-2.5 text-[13px] font-semibold transition-all',
                                     isActive
-                                        ? 'bg-brand/15 text-brand-light'
-                                        : 'text-text-muted hover:bg-surface-raised hover:text-text'
+                                        ? 'bg-white/10 text-white shadow-[0_1px_0_rgba(255,255,255,0.06)_inset]'
+                                        : 'text-white/55 hover:bg-white/6 hover:text-white'
                                 )
                             }
                         >
-                            <Icon size={17} strokeWidth={2} aria-hidden="true" />
+                            <span className="flex h-8 w-8 items-center justify-center rounded-lg bg-white/[0.04] text-white/70 transition-colors group-hover:text-[#d7f95b]">
+                                <Icon size={16} strokeWidth={2} aria-hidden="true" />
+                            </span>
                             {t(`nav.${key}`)}
                         </NavLink>
                     ))}
                 </nav>
 
-                <div className="mt-auto flex items-center gap-3 rounded-[var(--radius-card)] border border-border bg-surface-raised px-3 py-3">
-                    <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-brand/20 text-xs font-bold text-brand-light">
+                <div className="relative z-10 mt-auto flex items-center gap-3 rounded-2xl border border-white/8 bg-white/[0.05] px-3 py-3 backdrop-blur">
+                    <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-[#d7f95b] text-xs font-extrabold text-[#0b1f1b]">
                         {initials(user?.name || user?.email)}
                     </span>
                     <div className="min-w-0 flex-1">
-                        <p className="truncate text-sm font-medium text-text">{user?.name || 'Kullanıcı'}</p>
-                        <p className="truncate text-xs text-text-muted">{user?.email}</p>
+                        <p className="truncate text-sm font-semibold text-white">{user?.name || 'Kullanıcı'}</p>
+                        <p className="truncate text-[11px] text-white/45">{user?.email}</p>
                     </div>
                     <button
                         onClick={onLogout}
                         title={t('nav.logout')}
                         aria-label={t('nav.logout')}
-                        className="flex h-8 w-8 shrink-0 items-center justify-center rounded-[var(--radius-input)] text-text-muted transition-colors hover:bg-bg hover:text-red-400"
+                        className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg text-white/45 transition-colors hover:bg-white/8 hover:text-[#ff8a80]"
                     >
                         <LogOut size={16} aria-hidden="true" />
                     </button>
                 </div>
             </aside>
 
-            <div className="min-w-0 flex-1">
-                <header className="sticky top-0 z-20 flex h-16 items-center justify-between border-b border-border bg-surface/95 px-4 backdrop-blur md:hidden">
-                    <Logo />
-                    <button
-                        type="button"
-                        onClick={() => setMobileNavOpen(true)}
-                        aria-label="Menüyü aç"
-                        aria-expanded={mobileNavOpen}
-                        className="flex h-10 w-10 items-center justify-center rounded-[var(--radius-input)] border border-border text-text hover:bg-surface-raised"
-                    >
-                        <Menu size={19} aria-hidden="true" />
-                    </button>
+            <div className="relative z-10 min-w-0 flex-1">
+                <header className="sticky top-0 z-20 flex h-[72px] items-center justify-between border-b border-border/80 bg-surface/85 px-4 backdrop-blur-xl md:px-7">
+                    <div className="flex items-center gap-3 md:hidden">
+                        <Logo />
+                    </div>
+                    <div className="hidden items-center gap-3 md:flex">
+                        <span className="flex h-9 w-9 items-center justify-center rounded-xl bg-brand/10 text-brand"><Sparkles size={17} /></span>
+                        <div>
+                            <p className="text-[10px] font-bold uppercase tracking-[0.14em] text-text-muted">Aktif çalışma alanı</p>
+                            <button type="button" className="mt-0.5 flex items-center gap-1 text-sm font-bold text-text">
+                                {workspace?.name || 'SalesAI Workspace'} <ChevronDown size={14} className="text-text-muted" />
+                            </button>
+                        </div>
+                    </div>
+                    <div className="flex items-center gap-2">
+                        <button
+                            type="button"
+                            onClick={toggleTheme}
+                            title={isDark ? 'Açık temaya geç' : 'Koyu temaya geç'}
+                            aria-label={isDark ? 'Açık temaya geç' : 'Koyu temaya geç'}
+                            className="flex h-10 w-10 items-center justify-center rounded-xl border border-border bg-surface text-text shadow-sm transition-colors hover:bg-surface-raised"
+                        >
+                            {isDark ? <Sun size={18} aria-hidden="true" /> : <Moon size={18} aria-hidden="true" />}
+                        </button>
+                        <button
+                            type="button"
+                            onClick={() => setMobileNavOpen(true)}
+                            aria-label="Menüyü aç"
+                            aria-expanded={mobileNavOpen}
+                            className="flex h-10 w-10 items-center justify-center rounded-xl border border-border bg-surface text-text shadow-sm hover:bg-surface-raised md:hidden"
+                        >
+                            <Menu size={19} aria-hidden="true" />
+                        </button>
+                    </div>
                 </header>
-                <main className="overflow-y-auto p-4 sm:p-6 md:p-8">
-                    <Suspense fallback={<PageSkeleton />}>{children}</Suspense>
+                <main className="mx-auto w-full max-w-[1480px] overflow-y-auto p-4 sm:p-6 md:p-8 lg:p-10">
+                    <div className="page-enter"><Suspense fallback={<PageSkeleton />}>{children}</Suspense></div>
                 </main>
             </div>
         </div>
@@ -158,8 +190,24 @@ function Shell({ children }) {
 }
 
 export function App() {
+    const accessToken = useAuthStore((state) => state.accessToken);
+
     return (
         <Routes>
+            <Route
+                path="/"
+                element={
+                    accessToken ? (
+                        <RequireAuth>
+                            <Shell><Overview /></Shell>
+                        </RequireAuth>
+                    ) : (
+                        <Landing />
+                    )
+                }
+            />
+            <Route path="/mainpage" element={<Landing />} />
+            <Route path="/home" element={<Navigate to="/mainpage" replace />} />
             <Route path="/login" element={<Login />} />
             <Route path="/register" element={<Register />} />
             <Route path="/invite/:token" element={<AcceptInvite />} />
@@ -169,7 +217,6 @@ export function App() {
                     <RequireAuth>
                         <Shell>
                             <Routes>
-                                <Route path="/" element={<Overview />} />
                                 <Route path="/products/:id" element={<ProductDetail />} />
                                 <Route path="/knowledge" element={<Knowledge />} />
                                 <Route path="/knowledge/gaps" element={<KnowledgeGaps />} />

@@ -1,16 +1,27 @@
 import { useCallback, useState } from 'react';
-import { View, Text, StyleSheet, TextInput, TouchableOpacity, KeyboardAvoidingView, Platform, ScrollView } from 'react-native';
+import {
+    View,
+    Text,
+    StyleSheet,
+    TextInput,
+    TouchableOpacity,
+    KeyboardAvoidingView,
+    Platform,
+    ScrollView,
+} from 'react-native';
 import { StatusBar } from 'expo-status-bar';
 import { useRouter, useFocusEffect } from 'expo-router';
+import { Ionicons } from '@expo/vector-icons';
 import { getSavedConversations } from '../src/savedConversations';
+import { FONT, SHADOWS } from '../src/theme';
+import { useAppTheme } from '../src/theme-context';
 
-/**
- * Mobile visitor landing. The user enters an agent token or share link 
- * to connect to their AI sales representative.
- */
+/** Mobile visitor landing. Users join with an agent token or share link. */
 export default function Home() {
     const router = useRouter();
-    const [input, setInput] = useState('test-token-5686');
+    const { colors, isDark, toggleTheme } = useAppTheme();
+    const styles = createStyles(colors, isDark);
+    const [input, setInput] = useState('');
     const [error, setError] = useState('');
     const [savedCount, setSavedCount] = useState(0);
 
@@ -23,203 +34,271 @@ export default function Home() {
     const handleConnect = (overrideToken) => {
         let token = (typeof overrideToken === 'string' ? overrideToken : input).trim();
         if (!token) {
-            token = 'test-token-5686';
+            setError('Paylaşım bağlantısını veya erişim kodunu girin.');
+            return;
         }
 
         setError('');
-
-        // If the user inputs a full link (universal link or deep link), extract the token
-        // e.g. salesai://v/some-token or http://.../v/some-token
         const tokenMatch = token.match(/(?:v\/|v=)([a-zA-Z0-9_-]+)/) || token.match(/\/v\/([a-zA-Z0-9_-]+)/);
-        if (tokenMatch && tokenMatch[1]) {
-            token = tokenMatch[1];
-        }
+        if (tokenMatch?.[1]) token = tokenMatch[1];
 
         if (!/^[a-zA-Z0-9_-]+$/.test(token)) {
             setError('Paylaşım bağlantısı veya erişim kodu formatı geçersiz.');
             return;
         }
 
-        // Navigate to the video call screen with the token
         router.push(`/v/${encodeURIComponent(token)}`);
     };
 
     return (
-        <KeyboardAvoidingView
-            behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
-            style={styles.keyboardContainer}
-        >
+        <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : 'height'} style={styles.screen}>
             <StatusBar style="light" />
-            <ScrollView contentContainerStyle={styles.scrollContainer} keyboardShouldPersistTaps="handled">
-                <View style={styles.header}>
-                    <Text style={styles.brand}>SalesAI</Text>
-                    <Text style={styles.tagline}>AI satış temsilcinizle görüşün</Text>
+            <ScrollView
+                contentContainerStyle={styles.scrollContent}
+                keyboardShouldPersistTaps="handled"
+                showsVerticalScrollIndicator={false}
+            >
+                <View style={styles.hero}>
+                    <View style={styles.orbitOne} />
+                    <View style={styles.orbitTwo} />
+
+                    <View style={styles.brandRow}>
+                        <Text style={styles.brand}>Sales<Text style={styles.brandAccent}>AI</Text></Text>
+                        <View style={styles.headerActions}>
+                            <TouchableOpacity
+                                style={styles.themeButton}
+                                onPress={toggleTheme}
+                                accessibilityRole="button"
+                                accessibilityLabel={isDark ? 'Açık temaya geç' : 'Koyu temaya geç'}
+                            >
+                                <Ionicons name={isDark ? 'sunny-outline' : 'moon-outline'} size={16} color={colors.white} />
+                            </TouchableOpacity>
+                            <View style={styles.securePill}>
+                                <View style={styles.liveDot} />
+                                <Text style={styles.secureText}>GÜVENLİ</Text>
+                            </View>
+                        </View>
+                    </View>
+
+                    <View style={styles.heroCopy}>
+                        <Text style={styles.eyebrow}>YAPAY ZEKA İLE CANLI GÖRÜŞME</Text>
+                        <Text style={styles.heroTitle}>Doğru cevaba,{`\n`}daha hızlı ulaşın.</Text>
+                        <Text style={styles.heroDescription}>
+                            Sorularınızı sorun, ürünü canlı görün ve ihtiyacınız olan desteği anında alın.
+                        </Text>
+                    </View>
                 </View>
 
-                <View style={styles.card}>
-                    <Text style={styles.cardTitle}>AI Görüşmesine Katılın</Text>
-                    <Text style={styles.cardDesc}>Sesli ve görüntülü görüşmeyi başlatmak için temsilcinizin paylaşım bağlantısını veya erişim kodunu girin.</Text>
+                <View style={styles.joinCard}>
+                    <View style={styles.cardHeadingRow}>
+                        <View style={styles.cardIcon}>
+                            <Ionicons name="sparkles-outline" size={19} color={colors.tealDark} />
+                        </View>
+                        <View style={styles.cardHeadingCopy}>
+                            <Text style={styles.cardTitle}>Görüşmeye katılın</Text>
+                            <Text style={styles.cardSubtitle}>Davet bağlantınızı veya erişim kodunuzu kullanın.</Text>
+                        </View>
+                    </View>
 
-                    <TextInput
-                        style={[styles.input, error ? styles.inputError : null]}
-                        placeholder="Örn. test-token-5686"
-                        placeholderTextColor="#6c727f"
-                        value={input}
-                        onChangeText={(text) => {
-                            setInput(text);
-                            if (error) setError('');
-                        }}
-                        autoCapitalize="none"
-                        autoCorrect={false}
-                    />
-
+                    <Text style={styles.inputLabel}>ERİŞİM KODU</Text>
+                    <View style={[styles.inputShell, error ? styles.inputShellError : null]}>
+                        <Ionicons name="link-outline" size={19} color={colors.muted} />
+                        <TextInput
+                            style={styles.input}
+                            placeholder="Bağlantı veya kod"
+                            placeholderTextColor={colors.soft}
+                            value={input}
+                            onChangeText={(text) => {
+                                setInput(text);
+                                if (error) setError('');
+                            }}
+                            autoCapitalize="none"
+                            autoCorrect={false}
+                            returnKeyType="go"
+                            onSubmitEditing={() => handleConnect()}
+                        />
+                    </View>
                     {error ? <Text style={styles.errorText}>{error}</Text> : null}
 
-                    <TouchableOpacity style={styles.button} onPress={() => handleConnect()} activeOpacity={0.8}>
-                        <Text style={styles.buttonText}>Temsilciye Bağlan</Text>
+                    <TouchableOpacity style={styles.primaryButton} onPress={() => handleConnect()} activeOpacity={0.88}>
+                        <Text style={styles.primaryButtonText}>Temsilciye bağlan</Text>
+                        <View style={styles.primaryButtonIcon}>
+                            <Ionicons name="arrow-forward" size={17} color={colors.ink} />
+                        </View>
                     </TouchableOpacity>
 
+                    <View style={styles.assuranceRow}>
+                        <View style={styles.assuranceItem}>
+                            <Ionicons name="mic-outline" size={15} color={colors.tealDark} />
+                            <Text style={styles.assuranceText}>Sesli görüşme</Text>
+                        </View>
+                        <View style={styles.assuranceDivider} />
+                        <View style={styles.assuranceItem}>
+                            <Ionicons name="shield-checkmark-outline" size={15} color={colors.tealDark} />
+                            <Text style={styles.assuranceText}>Şifreli bağlantı</Text>
+                        </View>
+                    </View>
                 </View>
 
-                {savedCount > 0 && (
-                    <TouchableOpacity style={styles.savedLink} onPress={() => router.push('/saved')}>
-                        <Text style={styles.savedLinkText}>Kayıtlı Görüşmeler ({savedCount})</Text>
+                <View style={styles.quickActions}>
+                    {savedCount > 0 && (
+                        <TouchableOpacity style={styles.secondaryAction} onPress={() => router.push('/saved')} activeOpacity={0.75}>
+                            <View style={styles.secondaryActionIcon}>
+                                <Ionicons name="time-outline" size={19} color={colors.text} />
+                            </View>
+                            <View style={styles.secondaryActionCopy}>
+                                <Text style={styles.secondaryActionTitle}>Geçmiş görüşmeler</Text>
+                                <Text style={styles.secondaryActionText}>{savedCount} kayıtlı görüşme</Text>
+                            </View>
+                            <Ionicons name="chevron-forward" size={18} color={colors.soft} />
+                        </TouchableOpacity>
+                    )}
+
+                    <TouchableOpacity style={styles.sellerLink} onPress={() => router.push('/console')} activeOpacity={0.75}>
+                        <Ionicons name="business-outline" size={16} color={colors.muted} />
+                        <Text style={styles.sellerLinkText}>Satıcı mısınız? Yönetim konsoluna girin</Text>
+                        <Ionicons name="arrow-forward" size={15} color={colors.muted} />
                     </TouchableOpacity>
-                )}
-
-                <TouchableOpacity style={styles.consoleLink} onPress={() => router.push('/console')} activeOpacity={0.7}>
-                    <Text style={styles.consoleLinkText}>Satıcı Konsoluna Gir</Text>
-                </TouchableOpacity>
-
-                <View style={styles.footer}>
-                    <Text style={styles.footerText}>LiveKit WebRTC ve SalesAI altyapısıyla</Text>
                 </View>
+
+                <Text style={styles.footer}>SalesAI · Akıllı satış görüşmeleri</Text>
             </ScrollView>
         </KeyboardAvoidingView>
     );
 }
 
-const styles = StyleSheet.create({
-    keyboardContainer: {
-        flex: 1,
-        backgroundColor: '#0b0b12',
+const createStyles = (colors, isDark) => StyleSheet.create({
+    screen: { flex: 1, backgroundColor: colors.canvas },
+    scrollContent: { flexGrow: 1, paddingBottom: 28 },
+    hero: {
+        minHeight: 392,
+        overflow: 'hidden',
+        backgroundColor: colors.ink,
+        paddingTop: Platform.OS === 'ios' ? 64 : 38,
+        paddingHorizontal: 22,
+        paddingBottom: 92,
     },
-    scrollContainer: {
-        flexGrow: 1,
+    orbitOne: {
+        position: 'absolute',
+        width: 280,
+        height: 280,
+        borderRadius: 140,
+        borderWidth: 42,
+        borderColor: 'rgba(215,249,91,0.055)',
+        right: -118,
+        top: 86,
+    },
+    orbitTwo: {
+        position: 'absolute',
+        width: 190,
+        height: 190,
+        borderRadius: 95,
+        backgroundColor: 'rgba(20,184,166,0.08)',
+        left: -110,
+        top: -68,
+    },
+    brandRow: { flexDirection: 'row', alignItems: 'center' },
+    brand: { color: colors.white, fontFamily: FONT.bold, fontSize: 19, letterSpacing: -0.5 },
+    brandAccent: { color: colors.lime },
+    headerActions: { marginLeft: 'auto', flexDirection: 'row', alignItems: 'center', gap: 8 },
+    themeButton: {
+        width: 34,
+        height: 34,
+        alignItems: 'center',
         justifyContent: 'center',
-        padding: 24,
+        borderRadius: 17,
+        borderWidth: 1,
+        borderColor: 'rgba(255,255,255,0.1)',
+        backgroundColor: 'rgba(255,255,255,0.05)',
     },
-    header: {
+    securePill: {
+        flexDirection: 'row',
         alignItems: 'center',
-        marginBottom: 48,
-    },
-    brand: {
-        color: '#6d5efc',
-        fontSize: 40,
-        fontWeight: '800',
-        letterSpacing: 1,
-        textShadowColor: 'rgba(109, 94, 252, 0.3)',
-        textShadowOffset: { width: 0, height: 4 },
-        textShadowRadius: 10,
-    },
-    tagline: {
-        color: '#9ba1b0',
-        fontSize: 16,
-        marginTop: 12,
-        textAlign: 'center',
-    },
-    card: {
-        backgroundColor: '#13131e',
+        gap: 6,
         borderRadius: 20,
-        padding: 24,
         borderWidth: 1,
-        borderColor: '#242436',
-        shadowColor: '#000',
-        shadowOffset: { width: 0, height: 10 },
-        shadowOpacity: 0.3,
-        shadowRadius: 20,
-        elevation: 8,
+        borderColor: 'rgba(255,255,255,0.1)',
+        backgroundColor: 'rgba(255,255,255,0.05)',
+        paddingHorizontal: 10,
+        paddingVertical: 7,
     },
-    cardTitle: {
-        color: '#ffffff',
-        fontSize: 20,
-        fontWeight: '700',
-        marginBottom: 8,
-    },
-    cardDesc: {
-        color: '#9ba1b0',
-        fontSize: 14,
-        lineHeight: 20,
-        marginBottom: 24,
-    },
-    input: {
-        backgroundColor: '#1b1b2a',
-        borderRadius: 12,
+    liveDot: { width: 6, height: 6, borderRadius: 3, backgroundColor: colors.lime },
+    secureText: { color: 'rgba(255,255,255,0.65)', fontFamily: FONT.bold, fontSize: 9, letterSpacing: 1 },
+    heroCopy: { marginTop: 62, maxWidth: 340 },
+    eyebrow: { color: colors.lime, fontFamily: FONT.bold, fontSize: 10, letterSpacing: 1.7 },
+    heroTitle: { marginTop: 13, color: colors.white, fontFamily: FONT.bold, fontSize: 38, lineHeight: 43, letterSpacing: -1.6 },
+    heroDescription: { marginTop: 15, maxWidth: 315, color: 'rgba(255,255,255,0.58)', fontFamily: FONT.regular, fontSize: 15, lineHeight: 23 },
+    joinCard: {
+        marginTop: -58,
+        marginHorizontal: 18,
+        borderRadius: 25,
+        backgroundColor: colors.surface,
+        padding: 20,
         borderWidth: 1,
-        borderColor: '#2d2d44',
-        color: '#ffffff',
-        fontSize: 16,
-        paddingHorizontal: 16,
-        paddingVertical: 14,
-        marginBottom: 16,
+        borderColor: isDark ? colors.line : 'rgba(255,255,255,0.9)',
+        ...SHADOWS.card,
     },
-    inputError: {
-        borderColor: '#f87171',
+    cardHeadingRow: { flexDirection: 'row', alignItems: 'center', marginBottom: 23 },
+    cardIcon: { width: 42, height: 42, borderRadius: 14, alignItems: 'center', justifyContent: 'center', backgroundColor: isDark ? colors.surfaceMuted : '#E5F6F2' },
+    cardHeadingCopy: { flex: 1, marginLeft: 12 },
+    cardTitle: { color: colors.text, fontFamily: FONT.bold, fontSize: 18, letterSpacing: -0.35 },
+    cardSubtitle: { marginTop: 3, color: colors.muted, fontFamily: FONT.regular, fontSize: 12.5, lineHeight: 18 },
+    inputLabel: { marginBottom: 8, color: colors.muted, fontFamily: FONT.bold, fontSize: 9, letterSpacing: 1.5 },
+    inputShell: {
+        minHeight: 54,
+        flexDirection: 'row',
+        alignItems: 'center',
+        gap: 10,
+        borderRadius: 15,
+        borderWidth: 1,
+        borderColor: colors.line,
+        backgroundColor: isDark ? colors.surfaceMuted : '#F7F9F7',
+        paddingHorizontal: 15,
     },
-    errorText: {
-        color: '#f87171',
-        fontSize: 14,
-        marginBottom: 16,
-        marginTop: -8,
-        paddingLeft: 4,
+    inputShellError: { borderColor: colors.danger, backgroundColor: isDark ? '#321D1B' : '#FFF8F7' },
+    input: { flex: 1, color: colors.text, fontFamily: FONT.medium, fontSize: 15, paddingVertical: 14 },
+    errorText: { marginTop: 8, color: colors.danger, fontFamily: FONT.medium, fontSize: 12, lineHeight: 17 },
+    primaryButton: {
+        minHeight: 55,
+        marginTop: 14,
+        flexDirection: 'row',
+        alignItems: 'center',
+        justifyContent: 'center',
+        borderRadius: 16,
+        backgroundColor: isDark ? colors.tealDark : colors.ink,
+        paddingHorizontal: 8,
+        ...SHADOWS.button,
     },
-    button: {
-        backgroundColor: '#6d5efc',
+    primaryButtonText: { color: colors.white, fontFamily: FONT.bold, fontSize: 15 },
+    primaryButtonIcon: {
+        position: 'absolute',
+        right: 8,
+        width: 39,
+        height: 39,
+        alignItems: 'center',
+        justifyContent: 'center',
         borderRadius: 12,
-        paddingVertical: 16,
+        backgroundColor: colors.lime,
+    },
+    assuranceRow: { marginTop: 18, flexDirection: 'row', alignItems: 'center', justifyContent: 'center' },
+    assuranceItem: { flexDirection: 'row', alignItems: 'center', gap: 5 },
+    assuranceText: { color: colors.muted, fontFamily: FONT.medium, fontSize: 10.5 },
+    assuranceDivider: { width: 1, height: 14, marginHorizontal: 13, backgroundColor: colors.line },
+    quickActions: { marginHorizontal: 18, marginTop: 18 },
+    secondaryAction: {
+        flexDirection: 'row',
         alignItems: 'center',
-        shadowColor: '#6d5efc',
-        shadowOffset: { width: 0, height: 4 },
-        shadowOpacity: 0.3,
-        shadowRadius: 10,
-        elevation: 4,
+        borderRadius: 18,
+        borderWidth: 1,
+        borderColor: colors.line,
+        backgroundColor: isDark ? colors.surface : 'rgba(255,255,255,0.68)',
+        padding: 14,
     },
-    buttonText: {
-        color: '#ffffff',
-        fontSize: 16,
-        fontWeight: '600',
-    },
-    savedLink: {
-        marginTop: 24,
-        alignItems: 'center',
-        alignSelf: 'center',
-        paddingVertical: 8,
-        paddingHorizontal: 16,
-    },
-    savedLinkText: {
-        color: '#6d5efc',
-        fontSize: 14,
-        fontWeight: '600',
-    },
-    consoleLink: {
-        marginTop: 12,
-        alignItems: 'center',
-        alignSelf: 'center',
-        paddingVertical: 8,
-        paddingHorizontal: 16,
-    },
-    consoleLinkText: {
-        color: '#9ba1b0',
-        fontSize: 14,
-        fontWeight: '600',
-        textDecorationLine: 'underline',
-    },
-    footer: {
-        marginTop: 48,
-        alignItems: 'center',
-    },
-    footerText: {
-        color: '#4e5564',
-        fontSize: 12,
-    },
+    secondaryActionIcon: { width: 39, height: 39, alignItems: 'center', justifyContent: 'center', borderRadius: 13, backgroundColor: colors.surfaceMuted },
+    secondaryActionCopy: { flex: 1, marginLeft: 11 },
+    secondaryActionTitle: { color: colors.text, fontFamily: FONT.bold, fontSize: 13 },
+    secondaryActionText: { marginTop: 2, color: colors.muted, fontFamily: FONT.regular, fontSize: 11 },
+    sellerLink: { marginTop: 10, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 7, paddingVertical: 12 },
+    sellerLinkText: { color: colors.muted, fontFamily: FONT.medium, fontSize: 11.5 },
+    footer: { marginTop: 'auto', paddingTop: 20, textAlign: 'center', color: colors.soft, fontFamily: FONT.medium, fontSize: 10.5 },
 });

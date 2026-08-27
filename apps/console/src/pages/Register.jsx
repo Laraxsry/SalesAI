@@ -35,14 +35,15 @@ export function Register() {
 
     return (
         <AuthLayout>
-            <div className="mb-8 flex justify-center lg:hidden">
+            <div className="mb-8 flex items-center gap-3 lg:hidden">
                 <Logo />
             </div>
 
-            <h1 className="text-2xl font-bold tracking-tight text-text">{t('auth.registerTitle')}</h1>
-            <p className="mt-1.5 text-sm text-text-muted">{t('auth.registerSubtitle')}</p>
+            <p className="mb-2 text-[10px] font-bold uppercase tracking-[0.18em] text-brand">Yeni çalışma alanı</p>
+            <h1 className="text-3xl font-semibold tracking-[-0.035em] text-text">{t('auth.registerTitle')}</h1>
+            <p className="mt-2 text-sm leading-6 text-text-muted">{t('auth.registerSubtitle')}</p>
 
-            <form onSubmit={onSubmit} className="mt-8">
+            <form onSubmit={onSubmit} className="mt-7">
                 <Input
                     id="name"
                     label={t('auth.name')}

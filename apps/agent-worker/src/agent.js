@@ -215,55 +215,67 @@ async function runSession(ctx) {
                     console.error('Could not publish tour track to LiveKit:', e);
                 }
 
+                // Capture a frame and push it to the LiveKit VideoSource.
+                const captureAndPublishTourFrame = async () => {
+                    if (!isTourActive || !tourVideoSource) return false;
+                    tourCaptureInFlight = true;
+                    try {
+                        const pngBuffer = await tour.screenshot();
+                        // Convert PNG → raw ARGB buffer via sharp
+                        const { data, info } = await sharp(pngBuffer)
+                            .resize({ width: 1280, height: 720, fit: 'contain', background: '#000' })
+                            .ensureAlpha()
+                            .raw()
+                            .toBuffer({ resolveWithObject: true });
+
+                        // *** CRASH WARNING — re-check right before touching the
+                        // native track. stopScreenShare() may have unpublished
+                        // it while we were awaiting the screenshot/resize above;
+                        // calling captureFrame() on a source whose track is
+                        // concurrently being unpublished is a native Rust panic
+                        // in livekit-ffi (unwrap() on Err), which kills the whole
+                        // agent-worker process — not a catchable JS error. ***
+                        if (!isTourActive || !tourVideoSource) return false;
+
+                        // Push to LiveKit VideoSource
+                        const frame = new VideoFrame(data, info.width, info.height, VideoBufferType.RGBA);
+                        const timestampUs = BigInt(Date.now()) * 1000n;
+                        tourVideoSource.captureFrame(frame, timestampUs);
+
+                        // Also keep a downscaled JPEG copy for read_tour_screen —
+                        // cheap (just re-encoding the same PNG we already have),
+                        // the actual vision-model cost only happens when the
+                        // tool is called.
+                        const jpegBuffer = await sharp(pngBuffer)
+                            .resize({ width: 1024, withoutEnlargement: true })
+                            .jpeg({ quality: 80 })
+                            .toBuffer();
+                        latestTourFrameBase64 = `data:image/jpeg;base64,${jpegBuffer.toString('base64')}`;
+                        return true;
+                    } catch (frameErr) {
+                        // Non-fatal: log and skip this frame
+                        log.warn('Tour frame capture failed', { error: frameErr.message });
+                        return false;
+                    } finally {
+                        tourCaptureInFlight = false;
+                    }
+                };
+
                 // Schedule the next capture only after the current one finishes.
                 // Overlapping Playwright/sharp work can starve LiveKit heartbeats.
-                const scheduleTourFrame = () => {
+                const scheduleTourFrame = (delayMs = 800) => {
+                    if (tourPublishTimer) clearTimeout(tourPublishTimer);
                     tourPublishTimer = setTimeout(async () => {
                         tourPublishTimer = null;
                         if (!isTourActive || !tourVideoSource) return;
-                        tourCaptureInFlight = true;
-                        try {
-                            const pngBuffer = await tour.screenshot();
-                            // Convert PNG → raw ARGB buffer via sharp
-                            const { data, info } = await sharp(pngBuffer)
-                                .resize({ width: 1280, height: 720, fit: 'contain', background: '#000' })
-                                .ensureAlpha()
-                                .raw()
-                                .toBuffer({ resolveWithObject: true });
-
-                            // *** CRASH WARNING — re-check right before touching the
-                            // native track. stopScreenShare() may have unpublished
-                            // it while we were awaiting the screenshot/resize above;
-                            // calling captureFrame() on a source whose track is
-                            // concurrently being unpublished is a native Rust panic
-                            // in livekit-ffi (unwrap() on Err), which kills the whole
-                            // agent-worker process — not a catchable JS error. ***
-                            if (!isTourActive || !tourVideoSource) return;
-
-                            // Push to LiveKit VideoSource
-                            const frame = new VideoFrame(data, info.width, info.height, VideoBufferType.RGBA);
-                            const timestampUs = BigInt(Date.now()) * 1000n;
-                            tourVideoSource.captureFrame(frame, timestampUs);
-
-                            // Also keep a downscaled JPEG copy for read_tour_screen —
-                            // cheap (just re-encoding the same PNG we already have),
-                            // the actual vision-model cost only happens when the
-                            // tool is called.
-                            const jpegBuffer = await sharp(pngBuffer)
-                                .resize({ width: 1024, withoutEnlargement: true })
-                                .jpeg({ quality: 80 })
-                                .toBuffer();
-                            latestTourFrameBase64 = `data:image/jpeg;base64,${jpegBuffer.toString('base64')}`;
-                        } catch (frameErr) {
-                            // Non-fatal: log and skip this frame
-                            log.warn('Tour frame capture failed', { error: frameErr.message });
-                        } finally {
-                            tourCaptureInFlight = false;
-                            if (isTourActive && tourVideoSource) scheduleTourFrame();
-                        }
-                    }, 1500);
+                        await captureAndPublishTourFrame();
+                        if (isTourActive && tourVideoSource) scheduleTourFrame(800);
+                    }, delayMs);
                 };
                 scheduleTourFrame();
+
+                // Capture initial frame immediately
+                await captureAndPublishTourFrame();
 
                 // Log screen action to messages meta
                 await Message.create({
@@ -286,6 +298,8 @@ async function runSession(ctx) {
             if (!isTourActive) return { ok: false, error: 'Tour not active. Call start_guided_tour first.' };
             try {
                 await tour.goto(url);
+                await captureAndPublishTourFrame();
+                scheduleTourFrame(800);
                 await Message.create({
                     sessionId: session._id,
                     role: 'system',
@@ -302,6 +316,8 @@ async function runSession(ctx) {
             if (!isTourActive) return { ok: false, error: 'Tour not active.' };
             try {
                 await tour.highlight(selector);
+                await captureAndPublishTourFrame();
+                scheduleTourFrame(800);
                 await Message.create({
                     sessionId: session._id,
                     role: 'system',
@@ -318,6 +334,8 @@ async function runSession(ctx) {
             if (!isTourActive) return { ok: false, error: 'Tour not active.' };
             try {
                 await tour.click(selector);
+                await captureAndPublishTourFrame();
+                scheduleTourFrame(800);
                 await Message.create({
                     sessionId: session._id,
                     role: 'system',
@@ -330,18 +348,21 @@ async function runSession(ctx) {
                 return { ok: false, error: e.message };
             }
         },
-        scroll: async (direction, amount) => {
+        scroll: async (direction, amount, target) => {
             if (!isTourActive) return { ok: false, error: 'Tour not active. Call start_guided_tour first.' };
             try {
-                const position = await tour.scroll(direction, amount);
+                const position = await tour.scroll(direction, amount, target);
+                // Immediately capture and push the new scrolled frame before returning to LLM!
+                await captureAndPublishTourFrame();
+                scheduleTourFrame(800);
+
                 await Message.create({
                     sessionId: session._id,
                     role: 'system',
-                    text: `[screen:scroll_page] direction=${direction}`,
-                    meta: { action: 'scroll_page', direction, amount }
+                    text: `[screen:scroll_page] direction=${direction}${target ? ` target=${target}` : ''}`,
+                    meta: { action: 'scroll_page', direction, amount, target }
                 }).catch(() => {});
-                // atTop/atBottom go back to the model so it knows whether
-                // there is anything left to scroll to.
+                // atTop/atBottom + visibleHeadings go back to the model so it knows what is in view.
                 return { ok: true, ...position };
             } catch (e) {
                 log.error('GuidedTour scroll failed', { error: e.message });

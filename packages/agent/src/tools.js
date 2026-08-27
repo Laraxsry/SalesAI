@@ -68,23 +68,26 @@ export function buildTools({ productId, tour, screen, stopScreenShare, saveConta
         {
             name: 'scroll_page',
             description:
-                'Scroll the shown dashboard to reveal content above or below the fold. Use this when the answer is further down the page, when the customer asks what else is there, or before reading the screen again. Returns whether the page is now at the top or the bottom.',
+                'Scroll the shown dashboard to reveal content above or below the fold. Use this when the answer is further down the page, when the customer asks what else is there, or before reading the screen again. You can also provide a target section name or heading to scroll directly to it. Returns visible headings and whether the page is at the top or bottom.',
             parameters: {
                 type: 'object',
                 properties: {
                     direction: {
                         type: 'string',
                         enum: ['down', 'up', 'top', 'bottom'],
-                        description: "'down'/'up' move by screens; 'top'/'bottom' jump to either end."
+                        description: "'down'/'up' move by screens; 'top'/'bottom' jump to either end. Defaults to 'down'."
                     },
                     amount: {
                         type: 'number',
                         description: "How many screens to move for 'down'/'up'. Defaults to 1."
+                    },
+                    target: {
+                        type: 'string',
+                        description: "Optional section heading, topic, or selector to scroll into view (e.g. 'pricing', 'features', 'text=Fiyatlandırma')."
                     }
-                },
-                required: ['direction']
+                }
             },
-            handler: async ({ direction, amount }) => tour?.scroll?.(direction, amount) ?? { ok: false }
+            handler: async ({ direction, amount, target }) => tour?.scroll?.(direction, amount, target) ?? { ok: false }
         },
         {
             name: 'read_customer_screen',

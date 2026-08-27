@@ -359,9 +359,32 @@ describe('GuidedTour#scroll', () => {
     });
 
     it('reports neither end mid-page, so the agent knows there is more to show', async () => {
-        const { page } = makeScrollablePage({ scrollTop: 1200, scrollHeight: 4000, clientHeight: 1000 });
+        const { page } = makeScrollablePage({ scrollTop: 1200, scrollHeight: 4000, clientHeight: 1000, visibleHeadings: ['Features', 'Pricing'] });
         const tour = makeTour(page);
 
-        expect(await tour.scroll('down')).toMatchObject({ atTop: false, atBottom: false, scrollTop: 1200 });
+        expect(await tour.scroll('down')).toMatchObject({
+            atTop: false,
+            atBottom: false,
+            scrollTop: 1200,
+            visibleHeadings: ['Features', 'Pricing']
+        });
+    });
+
+    it('supports targeted scrolling to a selector or heading element', async () => {
+        const { page } = makeScrollablePage({ scrollTop: 2500, scrollHeight: 4000, clientHeight: 1000 });
+        const targetEl = { scrollIntoView: vi.fn() };
+        const locator = {
+            first: () => locator,
+            count: vi.fn().mockResolvedValue(1),
+            evaluate: vi.fn().mockImplementation(async (fn) => fn(targetEl))
+        };
+        page.locator = vi.fn().mockReturnValue(locator);
+        const tour = makeTour(page);
+
+        const result = await tour.scroll({ target: 'pricing' });
+
+        expect(page.locator).toHaveBeenCalledWith('text=pricing');
+        expect(locator.evaluate).toHaveBeenCalled();
+        expect(result.targetFound).toBe(true);
     });
 });

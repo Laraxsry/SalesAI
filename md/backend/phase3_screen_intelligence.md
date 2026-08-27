@@ -51,6 +51,11 @@
    - [x] Pool/limit concurrent tour browsers (global `activeBrowsers` Set ile max 3 tarayıcı limiti, `MAX_TOUR_BROWSERS` env var ile ayarlanabilir).
    - [x] Downscale frames before vision calls (müşteri ekranı 1024px wide JPEG'e indirgeniyor, tur kareleri 1280x720 normalize ediliyor).
 
+5. **Screen & Audio Synchronization (Scroll & Action Sync)**
+   - [x] **Olay Güdümlü Anlık Kare İletimi (`captureAndPublishTourFrame`)**: `scroll_page`, `goto`, `click`, `highlight` aksiyonları bittiği anda arka plan 1.5s timer'ı beklenmeden LiveKit video kaynağına yeni ekran görüntüsü anında basılıyor; LLM konuşmaya başlamadan önce ziyaretçi ekranı hazır hale getiriliyor.
+   - [x] **Hedefe Yönelik Kaydırma Desteği (`target` / `selector`)**: `scroll_page` tool'u artık belirli bir başlık/bölüm adı (`target: 'pricing'` veya CSS selector) ile çağrılabiliyor ve doğrudan ilgili öğeye odaklanıyor (`scrollIntoView`).
+   - [x] **Viewport Landmarks (`visibleHeadings`)**: Kaydırma tamamlandığında ekranda o an görünür olan başlıklar tespit edilip tool çıktısı olarak dönülüyor; LLM'in persona yönergeleri ile ekrandaki içerikle birebir senkron konuşması sağlanıyor.
+
 ---
 
 ## Acceptance criteria

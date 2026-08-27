@@ -418,63 +418,128 @@ export class GuidedTour {
      * still preferred whenever it is itself scrollable, so ordinary pages
      * behave the ordinary way.
      *
-     * Scrolling cannot leave the page, so unlike goto()/click() there is no
-     * trust re-check to do here.
+     * Supports directional scrolling ('down', 'up', 'top', 'bottom') by screen amounts,
+     * as well as targeted scrolling to a specific section, heading, or element selector.
      *
-     * @param {'down'|'up'|'top'|'bottom'} [direction]
+     * @param {'down'|'up'|'top'|'bottom'|object} [directionOrOptions]
      * @param {number} [amount] screens to move, for 'down'/'up' only (default 1)
-     * @returns {Promise<{scrollTop:number, scrollHeight:number, atTop:boolean, atBottom:boolean}>}
+     * @param {string|null} [target] optional element selector or text heading to scroll into view
+     * @returns {Promise<{scrollTop:number, scrollHeight:number, atTop:boolean, atBottom:boolean, targetFound?:boolean, visibleHeadings?:string[]}>}
      *   where the page ended up, so the agent can tell whether more content
      *   is left instead of scrolling into a dead end and narrating nothing.
      */
-    async scroll(direction = 'down', amount = 1) {
+    async scroll(directionOrOptions = 'down', amount = 1, target = null) {
+        let direction = 'down';
+        let amt = 1;
+        let tgt = null;
+
+        if (typeof directionOrOptions === 'object' && directionOrOptions !== null) {
+            direction = directionOrOptions.direction || 'down';
+            amt = directionOrOptions.amount ?? 1;
+            tgt = directionOrOptions.target || null;
+        } else {
+            direction = directionOrOptions || 'down';
+            amt = amount ?? 1;
+            tgt = target || null;
+        }
+
         if (!['down', 'up', 'top', 'bottom'].includes(direction)) {
             throw new Error(`[GuidedTour] Unsupported scroll direction: ${direction}`);
         }
 
-        await this.page.evaluate(
-            ({ direction: dir, amount: n }) => {
-                const doc = document.scrollingElement || document.documentElement;
-                const overflows = (el) => el.scrollHeight - el.clientHeight > 4;
-
-                let target = doc;
-                if (!overflows(doc)) {
-                    // Largest visible element that owns its own vertical overflow —
-                    // the main content panel, not a tiny scrollable dropdown.
-                    const panels = Array.from(document.querySelectorAll('div, main, section, article'))
-                        .filter((el) => overflows(el) && ['auto', 'scroll'].includes(getComputedStyle(el).overflowY))
-                        .sort((a, b) => b.clientHeight * b.clientWidth - a.clientHeight * a.clientWidth);
-                    if (panels.length > 0) target = panels[0];
+        let targetFound = false;
+        if (tgt && typeof tgt === 'string' && tgt.trim().length > 0) {
+            const cleanTarget = tgt.trim();
+            try {
+                const locator = this.page.locator(
+                    cleanTarget.startsWith('text=') || cleanTarget.startsWith('#') || cleanTarget.startsWith('.')
+                        ? cleanTarget
+                        : `text=${cleanTarget}`
+                ).first();
+                const count = await locator.count().catch(() => 0);
+                if (count > 0) {
+                    await locator.evaluate((el) => {
+                        el.scrollIntoView({ behavior: 'smooth', block: 'center' });
+                        window.__tourScrollTarget = el;
+                    }).catch(() => {});
+                    targetFound = true;
                 }
+            } catch {
+                // Ignore locator error, will fall back to directional scroll
+            }
+        }
 
-                // Less than a full screen per step, so the customer keeps a
-                // strip of the previous content as a visual anchor.
-                const step = target.clientHeight * 0.8 * (n > 0 ? n : 1);
-                if (dir === 'top') target.scrollTo({ top: 0, behavior: 'smooth' });
-                else if (dir === 'bottom') target.scrollTo({ top: target.scrollHeight, behavior: 'smooth' });
-                else target.scrollBy({ top: dir === 'up' ? -step : step, behavior: 'smooth' });
+        if (!targetFound) {
+            await this.page.evaluate(
+                ({ direction: dir, amount: n }) => {
+                    const doc = document.scrollingElement || document.documentElement;
+                    const overflows = (el) => el.scrollHeight - el.clientHeight > 4;
 
-                // Read back only after the animation has run — see below.
-                window.__tourScrollTarget = target;
-            },
-            { direction, amount }
-        );
+                    let target = doc;
+                    if (!overflows(doc)) {
+                        // Largest visible element that owns its own vertical overflow —
+                        // the main content panel, not a tiny scrollable dropdown.
+                        const panels = Array.from(document.querySelectorAll('div, main, section, article'))
+                            .filter((el) => overflows(el) && ['auto', 'scroll'].includes(getComputedStyle(el).overflowY))
+                            .sort((a, b) => b.clientHeight * b.clientWidth - a.clientHeight * a.clientWidth);
+                        if (panels.length > 0) target = panels[0];
+                    }
+
+                    // Less than a full screen per step, so the customer keeps a
+                    // strip of the previous content as a visual anchor.
+                    const step = target.clientHeight * 0.8 * (n > 0 ? n : 1);
+                    if (dir === 'top') target.scrollTo({ top: 0, behavior: 'smooth' });
+                    else if (dir === 'bottom') target.scrollTo({ top: target.scrollHeight, behavior: 'smooth' });
+                    else target.scrollBy({ top: dir === 'up' ? -step : step, behavior: 'smooth' });
+
+                    // Read back only after the animation has run — see below.
+                    window.__tourScrollTarget = target;
+                },
+                { direction, amount: amt }
+            );
+        }
 
         // Smooth scrolling is animated and lazy-loaded rows render as they
         // enter the viewport; without this the published video frame (and any
         // read_tour_screen right after) would still show the pre-scroll page —
         // and scrollTop would still read its pre-scroll value.
-        await this.page.waitForTimeout(1200);
+        await this.page.waitForTimeout(600);
 
-        const { scrollTop, scrollHeight, clientHeight } = await this.page.evaluate(() => {
+        const result = await this.page.evaluate(() => {
             const target = window.__tourScrollTarget || document.scrollingElement || document.documentElement;
-            return { scrollTop: target.scrollTop, scrollHeight: target.scrollHeight, clientHeight: target.clientHeight };
+            const scrollTop = target?.scrollTop ?? 0;
+            const scrollHeight = target?.scrollHeight ?? 0;
+            const clientHeight = target?.clientHeight ?? 0;
+
+            const headings = Array.from(document.querySelectorAll('h1, h2, h3, h4, [role="heading"], section header, [data-section]'))
+                .filter((el) => {
+                    const rect = el.getBoundingClientRect();
+                    return rect.top >= -50 && rect.bottom <= (window.innerHeight || document.documentElement.clientHeight) + 100 && rect.height > 0 && rect.width > 0;
+                })
+                .map((el) => (el.innerText || el.textContent || '').trim().replace(/\s+/g, ' '))
+                .filter((t) => t.length > 0 && t.length < 80)
+                .slice(0, 5);
+
+            return {
+                scrollTop,
+                scrollHeight,
+                clientHeight,
+                visibleHeadings: headings
+            };
         });
+
+        const scrollTop = result?.scrollTop ?? 0;
+        const scrollHeight = result?.scrollHeight ?? 0;
+        const clientHeight = result?.clientHeight ?? 0;
+        const visibleHeadings = result?.visibleHeadings ?? [];
+
         return {
             scrollTop,
             scrollHeight,
             atTop: scrollTop <= 4,
-            atBottom: scrollTop + clientHeight >= scrollHeight - 4
+            atBottom: scrollTop + clientHeight >= scrollHeight - 4,
+            ...(tgt ? { targetFound } : {}),
+            visibleHeadings
         };
     }
 

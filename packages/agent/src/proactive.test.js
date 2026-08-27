@@ -1,5 +1,10 @@
 import { describe, it, expect } from 'vitest';
-import { buildIdleNudgeInstructions, wrapDirective } from './proactive.js';
+import {
+    buildIdleNudgeInstructions,
+    wrapDirective,
+    buildLookupBridgeInstructions,
+    buildGreetingInstructions
+} from './proactive.js';
 
 describe('buildIdleNudgeInstructions', () => {
     it('hands the model the turn without scripting a line for it', () => {
@@ -87,5 +92,102 @@ describe('wrapDirective', () => {
         const resumed = wrapDirective(node, { resuming: true }).toLowerCase();
         expect(resumed).toContain('do not start over');
         expect(wrapDirective(node).toLowerCase()).not.toContain('do not start over');
+    });
+});
+
+describe('proactive builders — quoting back what was already said', () => {
+    // Regression lock on the additive signature: every existing caller that
+    // passes no referent must get byte-identical output.
+    it('an idle nudge with no referent is unchanged from the blind form', () => {
+        expect(buildIdleNudgeInstructions({ consecutive: 1 })).toContain('Do not repeat your previous message');
+        expect(buildIdleNudgeInstructions({ consecutive: 2 })).toContain('Do not repeat what you already said');
+    });
+
+    it('quotes the actual sentence when one is supplied', () => {
+        const text = buildIdleNudgeInstructions({
+            consecutive: 1,
+            lastUtterance: 'Kurumsal pakette SSO bulunuyor.'
+        });
+
+        expect(text).toContain('Kurumsal pakette SSO bulunuyor.');
+        // The blind wording is replaced, not stacked on top of the quote.
+        expect(text).not.toContain('Do not repeat your previous message');
+        // Existing invariant still holds (proactive.test.js above).
+        expect(text.toLowerCase()).toContain('do not remark on the silence');
+    });
+
+    it('ignores an empty or whitespace referent rather than quoting nothing', () => {
+        expect(buildIdleNudgeInstructions({ consecutive: 1, lastUtterance: '   ' })).toContain(
+            'Do not repeat your previous message'
+        );
+    });
+
+    it('truncates a very long referent instead of burying the instruction', () => {
+        const long = 'A'.repeat(500);
+        const text = buildIdleNudgeInstructions({ consecutive: 1, lastUtterance: long });
+
+        expect(text).toContain('…');
+        expect(text).not.toContain(long);
+    });
+
+    it('wrapDirective quotes the cut-off text only while resuming', () => {
+        const node = { directive: 'Fiyatları anlat', attach: null, url: null };
+
+        const resumed = wrapDirective(node, { resuming: true, spokenSoFar: 'YARIM_KALAN' });
+        expect(resumed).toContain('YARIM_KALAN');
+        expect(resumed).toContain('do not start over');
+
+        // Outside a resume the referent is meaningless — the node is new.
+        expect(wrapDirective(node, { spokenSoFar: 'YARIM_KALAN' })).not.toContain('YARIM_KALAN');
+    });
+
+    it('never leaks the existence of a plan through the new branches', () => {
+        const node = { directive: 'Fiyatları anlat', attach: null, url: null };
+        const texts = [
+            buildIdleNudgeInstructions({ consecutive: 1, lastUtterance: 'bir şey' }),
+            wrapDirective(node, { resuming: true, spokenSoFar: 'bir şey' }),
+            buildLookupBridgeInstructions({ step: 0 }),
+            buildLookupBridgeInstructions({ step: 1 }),
+            buildGreetingInstructions()
+        ];
+
+        for (const text of texts) {
+            const lower = text.toLowerCase();
+            expect(lower).not.toContain('playbook');
+            expect(lower).not.toContain('step');
+            expect(lower).not.toContain('next topic');
+        }
+    });
+});
+
+describe('buildLookupBridgeInstructions', () => {
+    it('offers a first, shortest bridge', () => {
+        const text = buildLookupBridgeInstructions({ step: 0 });
+        expect(text).toContain('Do not call any tools');
+        expect(text.toLowerCase()).toContain('do not begin the answer yet');
+    });
+
+    it('asks for different words the second time', () => {
+        const first = buildLookupBridgeInstructions({ step: 0 });
+        const second = buildLookupBridgeInstructions({ step: 1 });
+        expect(second).not.toBe(first);
+        expect(second.toLowerCase()).toContain('different words');
+    });
+
+    // Past two, more talking reads as stalling; silence is the better answer.
+    it('goes quiet rather than stalling a third time', () => {
+        expect(buildLookupBridgeInstructions({ step: 2 })).toBeNull();
+        expect(buildLookupBridgeInstructions({ step: 7 })).toBeNull();
+    });
+
+    it('defaults to the first bridge', () => {
+        expect(buildLookupBridgeInstructions()).toBe(buildLookupBridgeInstructions({ step: 0 }));
+    });
+
+    // The bridge must never describe the machinery it is covering for — that
+    // is the exact failure it exists to replace.
+    it('forbids narrating the lookup itself', () => {
+        const lower = buildLookupBridgeInstructions({ step: 0 }).toLowerCase();
+        expect(lower).toContain('do not describe what you are doing');
     });
 });

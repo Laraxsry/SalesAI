@@ -440,7 +440,7 @@ describe('createPlaybookRuntime — failure handling', () => {
         await flush();
 
         expect(h.speak).toHaveBeenCalledTimes(1);
-        expect(onNodeEvent).toHaveBeenCalledWith('a' && expect.objectContaining({ id: 'a' }), 'failed', expect.any(Object));
+        expect(onNodeEvent).toHaveBeenCalledWith(expect.objectContaining({ id: 'a' }), 'failed', expect.any(Object));
     });
 
     it('speak() throwing is caught, reported via onError, and stops the runtime', async () => {
@@ -519,5 +519,94 @@ describe('createPlaybookRuntime — busy', () => {
 
         await h.finishSpeaking();
         expect(runtime.busy).toBe(false);
+    });
+});
+
+describe('createPlaybookRuntime — what a redelivery quotes back', () => {
+    it('hands the redelivered node the text that was actually cut off', async () => {
+        const h = makeHarness();
+        const cursor = createPlaybookCursor([node('a', 1, { mode: 'important' })]);
+        const runtime = createPlaybookRuntime({
+            cursor,
+            screen: h.screen,
+            speak: h.speak,
+            lastSpoken: () => ({ text: 'Kurumsal pakette SSO ve özel avatar', interrupted: true })
+        });
+
+        runtime.start();
+        await flush();
+        await h.finishSpeaking({ interrupted: true });
+        runtime.signal('silence');
+        await flush();
+
+        const redelivery = h.log.filter((l) => l.startsWith('speak:')).at(-1);
+        expect(redelivery).toContain('Kurumsal pakette SSO ve özel avatar');
+        expect(redelivery).toContain('do not start over');
+    });
+
+    // The whole reason the text is captured at interruption time. A visitor
+    // interrupts to ask something; redelivery only fires on the next silence,
+    // by which point the newest utterance is the ANSWER to that aside.
+    // Quoting THAT back as "you already said this" would make it worse.
+    it('quotes the cut-off narration, not whatever was said answering the aside', async () => {
+        const h = makeHarness();
+        const cursor = createPlaybookCursor([node('a', 1, { mode: 'important' })]);
+        let spoken = { text: 'KESILEN_ANLATIM', interrupted: true };
+        const runtime = createPlaybookRuntime({
+            cursor,
+            screen: h.screen,
+            speak: h.speak,
+            lastSpoken: () => spoken
+        });
+
+        runtime.start();
+        await flush();
+        await h.finishSpeaking({ interrupted: true });
+
+        // The agent answers the visitor's aside before the silence arrives.
+        spoken = { text: 'ARADAKI_CEVAP', interrupted: false };
+
+        runtime.signal('silence');
+        await flush();
+
+        const redelivery = h.log.filter((l) => l.startsWith('speak:')).at(-1);
+        expect(redelivery).toContain('KESILEN_ANLATIM');
+        expect(redelivery).not.toContain('ARADAKI_CEVAP');
+    });
+
+    it('says nothing about prior text when nothing was captured', async () => {
+        const h = makeHarness();
+        const cursor = createPlaybookCursor([node('a', 1, { mode: 'important' })]);
+        const runtime = createPlaybookRuntime({ cursor, screen: h.screen, speak: h.speak });
+
+        runtime.start();
+        await flush();
+        await h.finishSpeaking({ interrupted: true });
+        runtime.signal('silence');
+        await flush();
+
+        const redelivery = h.log.filter((l) => l.startsWith('speak:')).at(-1);
+        expect(redelivery).toContain('do not start over');
+        expect(redelivery).not.toContain('You already said this');
+    });
+
+    it('forgets the cut-off text once the node is narrated cleanly', async () => {
+        const h = makeHarness();
+        const cursor = createPlaybookCursor([node('a', 1, { mode: 'important' })]);
+        const runtime = createPlaybookRuntime({
+            cursor,
+            screen: h.screen,
+            speak: h.speak,
+            lastSpoken: () => ({ text: 'ILK_DENEME', interrupted: true })
+        });
+
+        runtime.start();
+        await flush();
+        await h.finishSpeaking({ interrupted: true });
+        runtime.signal('silence');
+        await flush();
+        await h.finishSpeaking({ interrupted: false }); // redelivery lands cleanly
+
+        expect(h.log.filter((l) => l.startsWith('speak:'))).toHaveLength(2);
     });
 });

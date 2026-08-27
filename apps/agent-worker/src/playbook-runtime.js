@@ -57,6 +57,10 @@ export function createPlaybookRuntime({
     cursor,
     screen,
     speak,
+    /** What the agent last said out loud, for quoting back on a redelivery.
+     *  Defaults to "nothing known", which reproduces the previous wording
+     *  exactly — see utterance-memory.js. */
+    lastSpoken = () => null,
     onNodeEvent = () => { },
     onCompleted = () => { },
     onError = () => { }
@@ -81,6 +85,15 @@ export function createPlaybookRuntime({
      *  is not filtered here yet — that needs the empirical check in the
      *  playbook plan (risk 7.5) before it's worth the added surface. */
     const interruptedIds = new Set();
+    /** Node id -> the text that actually made it out before the cut-off.
+     *
+     *  Captured HERE, at interruption time, and not read from the utterance
+     *  memory at redelivery time. A visitor interrupts to ask something; the
+     *  redelivery only fires on the next silence, ≥12s later, by which point
+     *  the most recent utterance is the ANSWER to that aside. Quoting that
+     *  back as "you already said this, continue from there" would make the
+     *  repetition worse, not better. */
+    const interruptedText = new Map();
 
     async function pump() {
         if (stopped || dispatching) {
@@ -133,19 +146,27 @@ export function createPlaybookRuntime({
                 url: screenVisible ? lastShownUrl : null
             });
 
-            const handle = speak(wrapDirective(node, { screenVisible, resuming }));
+            const handle = speak(
+                wrapDirective(node, {
+                    screenVisible,
+                    resuming,
+                    spokenSoFar: resuming ? interruptedText.get(node.id) ?? null : null
+                })
+            );
             await handle.waitForPlayout();
             if (stopped || generation !== epoch) return;
 
             delivered.add(node.id);
             if (handle.interrupted) {
                 interruptedIds.add(node.id);
+                interruptedText.set(node.id, lastSpoken()?.text ?? null);
                 // Do not mark satisfied and do not redispatch now — talking
                 // over whatever the visitor just interrupted for would be
                 // worse than the silence it replaced. The next signal()
                 // decides what happens (see the 'silence' branch below).
             } else {
                 interruptedIds.delete(node.id);
+                interruptedText.delete(node.id);
             }
         } catch (err) {
             onError(err.message, { nodeId: cursor.current()?.id });

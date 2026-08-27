@@ -22,6 +22,21 @@ const KnowledgeChunkSchema = new Schema(
         modality: { type: String, enum: ['text', 'image', 'video', 'web'], default: 'text' },
         // auto-classified during ingestion; used to bias retrieval toward the visitor's depth preference
         audience: { type: String, enum: ['general', 'technical'], default: 'general', index: true },
+        // Knowledge audit (curation layer). Only 'active' chunks are retrievable.
+        // A curated chunk replacing a duplicate/contradictory group is written as
+        // a new chunk; the originals become 'superseded' rather than being
+        // deleted, so an audit is always reversible and the raw ingestion output
+        // stays the single source of truth on disk.
+        status: {
+            type: String,
+            enum: ['active', 'superseded', 'excluded'],
+            default: 'active',
+            index: true
+        },
+        // the curated chunk that replaced this one (set on 'superseded' chunks)
+        supersededBy: { type: Schema.Types.ObjectId, ref: 'KnowledgeChunk' },
+        // the chunks a curated chunk was distilled from (provenance, for the UI)
+        curatedFrom: { type: [Schema.Types.ObjectId], default: undefined },
         metadata: { type: Schema.Types.Mixed }
     },
     { timestamps: true }

@@ -1,5 +1,8 @@
 import Anthropic from '@anthropic-ai/sdk';
 
+/** @see OPENAI_MODEL in openai.provider.js — same reasoning, other side of the chain. */
+const ANTHROPIC_MODEL = /^claude-/;
+
 export class AnthropicProvider {
     constructor() {
         this.client = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
@@ -7,11 +10,12 @@ export class AnthropicProvider {
     }
 
     /**
-     * @param {{ system?: string, messages: Array<{role:string,content:string}>, tools?: any[] }} input
+     * @param {{ system?: string, messages: Array<{role:string,content:string}>, tools?: any[], model?: string }} input
+     *   `model` is a hint; ignored when it isn't an Anthropic model id.
      */
-    async complete({ system, messages, tools }) {
+    async complete({ system, messages, tools, model }) {
         const res = await this.client.messages.create({
-            model: this.model,
+            model: model && ANTHROPIC_MODEL.test(model) ? model : this.model,
             max_tokens: 1024,
             system,
             messages: messages.map((m) => ({ role: m.role, content: m.content })),

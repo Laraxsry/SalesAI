@@ -9,7 +9,13 @@ import {
 } from '@livekit/rtc-node';
 import sharp from 'sharp';
 import { connectDB, Agent, Product, Session, Message, Playbook } from '@repo/database';
-import { buildSystemPrompt, buildTools, buildIdleNudgeInstructions } from '@repo/agent';
+import {
+    buildSystemPrompt,
+    buildTools,
+    buildIdleNudgeInstructions,
+    buildLookupBridgeInstructions,
+    buildGreetingInstructions
+} from '@repo/agent';
 import { startAvatarWithFallback } from '@repo/avatar';
 import { roomService } from '@repo/livekit';
 import { GuidedTour, analyzeFrame } from '@repo/screen';
@@ -24,6 +30,8 @@ import { createSilenceDriver } from './silence-driver.js';
 import { createPlaybookCursor } from './playbook-cursor.js';
 import { createPlaybookRuntime } from './playbook-runtime.js';
 import { withPlaybookProgress } from './playbook-progress.js';
+import { withToolBridge } from './tool-bridge.js';
+import { createUtteranceMemory } from './utterance-memory.js';
 
 /**
  * Runs the session with the trace context extracted from the LiveKit dispatch
@@ -564,8 +572,13 @@ async function runSession(ctx) {
         return { ok: true };
     };
 
-    const { llm } = await import('@livekit/agents');
-    const tools = withToolCallMetrics(
+    // What the agent actually said out loud, so "do not repeat yourself" has a
+    // referent instead of being a blind instruction — see utterance-memory.js.
+    const utterances = createUtteranceMemory();
+    // Bridge is the OUTERMOST decorator: the filler must wrap the whole call,
+    // while withToolCallMetrics still has to time only the real handler.
+    const tools = withToolBridge(
+        withToolCallMetrics(
         withPlaybookProgress(
             buildTools({
                 productId: String(product._id),
@@ -589,7 +602,25 @@ async function runSession(ctx) {
                 currentNode: () => playbookCursor?.current() ?? null,
                 onGoalReached: () => playbookRuntime?.signal('tool')
             }
-        )
+            )
+        ),
+        {
+            // Lookups only. A bridge on click_element/scroll_page would fire
+            // mid-narration, which is the agent narrating its own machinery.
+            slowTools: ['search_knowledge', 'read_tour_screen', 'read_customer_screen'],
+            buildInstructions: buildLookupBridgeInstructions,
+            // Same forward-reference-in-a-closure situation as advanceStep
+            // above: agentSession is constructed just below, and this only runs
+            // once the model can actually call a tool.
+            speak: (instructions) => agentSession.generateReply({ instructions, toolChoice: 'none' }),
+            // Long enough that a retrieve() cache hit never triggers it — only
+            // a real wait does. Tune against SESSION_METRICS.TOOL_CALL_MS.
+            delayMs: Number(process.env.AGENT_TOOL_BRIDGE_MS ?? 1200),
+            intervalMs: Number(process.env.AGENT_TOOL_BRIDGE_INTERVAL_MS ?? 6000),
+            maxSteps: 2,
+            onBridge: ({ tool: toolName, step }) => log.info('tool bridge spoken', { tool: toolName, step }),
+            onError: (error, meta) => log.warn('tool bridge skipped', { error, ...meta })
+        }
     ).map(t => tool({
         name: t.name,
         description: t.description,
@@ -626,6 +657,7 @@ async function runSession(ctx) {
     if (playbookActive) {
         playbookRuntime = createPlaybookRuntime({
             cursor: playbookCursor,
+            lastSpoken: () => utterances.last(),
             screen: {
                 // Timed and logged on both sides: the pump awaits this before
                 // it can speak, so a slow navigation is indistinguishable from
@@ -739,6 +771,16 @@ async function runSession(ctx) {
                 else if (part.type === 'text') text += part.text;
             }
 
+            // Recorded synchronously, before the first await below: the
+            // playbook pump's waitForPlayout() resolves off this same emit, so
+            // recording after an await would race whoever reads the memory.
+            // For an interrupted speech the SDK reports only the transcript
+            // that actually played — which is exactly the referent a resumed
+            // step needs.
+            if (item.role === 'assistant' && text.trim()) {
+                utterances.record(text, { interrupted: item.interrupted === true });
+            }
+
             if (text || item.role === 'tool') {
                 const msg = await Message.create({
                     sessionId: session._id,
@@ -791,7 +833,10 @@ async function runSession(ctx) {
             }
             try {
                 agentSession.generateReply({
-                    instructions: buildIdleNudgeInstructions({ consecutive })
+                    instructions: buildIdleNudgeInstructions({
+                        consecutive,
+                        lastUtterance: utterances.last()?.text
+                    })
                 });
                 log.info('idle nudge sent', { consecutive });
             } catch (err) {
@@ -878,7 +923,18 @@ async function runSession(ctx) {
                 });
             }
         } else {
-     // The only thing that actually spends money is `agentSession.start()` —
+            log.warn('skipping usage flush: product has no workspaceId', { productId: String(product._id) });
+        }
+
+        publishMetric(SESSION_METRICS.SESSION_COST_USD, totalCostUsd);
+    }
+
+    agentSession.on(
+        voice.AgentSessionEventTypes.Close,
+        otelContext.bind(parentContext, () => endSession('agent-session-close'))
+    );
+
+    // The only thing that actually spends money is `agentSession.start()` —
     // it opens a persistent websocket to the OpenAI Realtime API. See
     // realtime-gate.js for why this is gated on real visitor audio (COST
     // WARNING documented there) instead of firing as soon as we join the room.
@@ -899,7 +955,7 @@ async function runSession(ctx) {
                 } else {
                     log.info('no playbook; sending plain greeting');
                     agentSession.generateReply({
-                        instructions: 'Greet the visitor warmly in one short sentence and ask how you can help. Do not call any tools.',
+                        instructions: buildGreetingInstructions(),
                         toolChoice: 'none'
                     });
                 }

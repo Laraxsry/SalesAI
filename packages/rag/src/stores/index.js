@@ -21,12 +21,15 @@ function getStoreInstance(name) {
  * in order (default: the configured store, then the other one), with
  * timeout + jittered retry + circuit breaker via `@repo/resilience`.
  *
- * `upsert`/`deleteBySource`/`keywordQuery` deliberately do NOT fall back:
- * they always target the primary (`VECTOR_STORE`) store only. Falling a
- * write back to a different store would silently split product knowledge
- * between two databases with no path to reconcile them later — a write
- * failure should surface (it already does, via the existing KnowledgeSource
- * `status: 'failed'` + BullMQ retry from Phase 1), not be papered over.
+ * `upsert`/`deleteBySource`/`keywordQuery`/`listByProduct`/`setStatus`
+ * deliberately do NOT fall back: they always target the primary
+ * (`VECTOR_STORE`) store only. Falling a write back to a different store
+ * would silently split product knowledge between two databases with no path
+ * to reconcile them later — a write failure should surface (it already does,
+ * via the existing KnowledgeSource `status: 'failed'` + BullMQ retry from
+ * Phase 1), not be papered over. The same reasoning covers the knowledge
+ * audit's reads: curating the *fallback* store's copy of the knowledge would
+ * retire chunks nobody is actually retrieving.
  */
 export function getVectorStore() {
     const primaryName = process.env.VECTOR_STORE || 'mongodb';
@@ -51,6 +54,10 @@ export function getVectorStore() {
         // that read back to a different store than the one the ids actually
         // live in would just return the wrong (or no) chunks.
         listBySource: (sourceId) => primary.listBySource(sourceId),
-        deleteByIds: (ids) => primary.deleteByIds(ids)
+        deleteByIds: (ids) => primary.deleteByIds(ids),
+        // The knowledge audit's read (listByProduct) and write (setStatus) path
+        // — see @repo/rag audit/index.js.
+        listByProduct: (args) => primary.listByProduct(args),
+        setStatus: (args) => primary.setStatus(args)
     };
 }

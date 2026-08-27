@@ -61,3 +61,39 @@ describe('buildSystemPrompt — navigation ownership', () => {
         expect(withPlaybook).not.toContain('For `navigate_to` specifically');
     });
 });
+
+describe('buildSystemPrompt — how the agent sounds', () => {
+    // The complaint this whole block exists for: asked a question, the agent
+    // said the equivalent of "let me check whether that exists in my database"
+    // — narrating its own machinery, which is the single loudest "this is a
+    // bot" signal a visitor gets.
+    it('forbids the model from narrating its own machinery', () => {
+        const prompt = buildSystemPrompt(baseCfg);
+        expect(prompt).toContain('NEVER mention or hint at how you work');
+        expect(prompt).toContain('no databases');
+        expect(prompt).toContain('never hear you describe your own process');
+    });
+
+    it('asks for a human beat instead of silence, without letting it become a tic', () => {
+        const prompt = buildSystemPrompt(baseCfg);
+        expect(prompt).toContain('never the same words twice in a row');
+    });
+
+    it('bans the sales-training register that made it sound like a brochure', () => {
+        const prompt = buildSystemPrompt(baseCfg);
+        expect(prompt).not.toContain('surface relevant features');
+        expect(prompt).not.toContain('handle objections');
+        expect(prompt).toContain('not a rundown of everything the product can do');
+    });
+
+    it('rules out repeating itself and stacking benefits', () => {
+        const prompt = buildSystemPrompt(baseCfg);
+        expect(prompt).toContain('Never say something you have already said');
+        expect(prompt).toContain('One idea per turn');
+    });
+
+    it('still never leaks that a plan exists, with the new block in place', () => {
+        const prompt = buildSystemPrompt({ ...baseCfg, playbookActive: true }).toLowerCase();
+        expect(prompt).not.toContain('playbook');
+    });
+});

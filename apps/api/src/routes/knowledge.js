@@ -1,7 +1,7 @@
 import { Router } from 'express';
 import { validate } from '@repo/validation';
 import { KnowledgeSourceInput, KnowledgeSourceUpdateInput } from '@repo/contracts';
-import { KnowledgeSource, KnowledgeChunk, KnowledgeGapReport, Product, Membership } from '@repo/database';
+import { KnowledgeSource, KnowledgeChunk, KnowledgeGapReport, KnowledgeAudit, Product, Membership } from '@repo/database';
 import { enqueueIngestion } from '../lib/ingestion.js';
 import { requireAuth } from '@repo/auth';
 import { can } from '@repo/access';
@@ -449,6 +449,166 @@ knowledgeRouter.delete('/:id', requireAuth, async (req, res, next) => {
         }
 
         res.json({ ok: true, message: 'Knowledge source and its chunks deleted successfully' });
+    } catch (err) {
+        next(err);
+    }
+});
+
+/* ── Knowledge audit ──────────────────────────────────────────────────────
+ * Different from gap-analysis above: gap-analysis finds questions the agent
+ * COULDN'T answer; this reviews the knowledge base for redundancy,
+ * contradictions and junk among what it already has. The run only ever
+ * writes *proposals* — nothing reaches the vector store until an operator
+ * approves specific findings via the apply endpoint.
+ */
+
+/**
+ * POST /knowledge/:productId/audit
+ *
+ * Queues an audit run. Returns immediately with the audit document — the scan
+ * itself walks every chunk and makes a batch of LLM calls, far too slow for a
+ * request/response cycle.
+ */
+knowledgeRouter.post('/:productId/audit', requireAuth, async (req, res, next) => {
+    try {
+        const { product, membership } = await loadOwnedProduct(req.params.productId, req.user.sub);
+        if (!product) return res.status(404).json({ error: 'Product not found' });
+        if (!membership) return res.status(403).json({ error: 'Not a member of this workspace' });
+        if (!can(membership.role, 'knowledge:analyze')) {
+            return res.status(403).json({ error: 'Forbidden', required: 'knowledge:analyze' });
+        }
+
+        // One run at a time per product: a second concurrent scan would spend
+        // the same LLM budget to produce the same findings, and applying two
+        // overlapping proposal sets could supersede the same chunks twice.
+        const inFlight = await KnowledgeAudit.findOne({
+            productId: product._id,
+            status: { $in: ['queued', 'running'] }
+        });
+        if (inFlight) {
+            return res.status(409).json({
+                error: 'An audit is already running for this product',
+                auditId: String(inFlight._id)
+            });
+        }
+
+        const audit = await KnowledgeAudit.create({ productId: product._id, status: 'queued' });
+        await enqueue(QUEUES.GENERAL, 'audit-knowledge', {
+            productId: String(product._id),
+            auditId: String(audit._id)
+        });
+
+        res.status(202).json({ id: String(audit._id), status: audit.status });
+    } catch (err) {
+        next(err);
+    }
+});
+
+/**
+ * GET /knowledge/:productId/audits
+ *
+ * Recent runs for a product, newest first. Findings are omitted — the list is
+ * for picking a run, and a full findings array is large.
+ */
+knowledgeRouter.get('/:productId/audits', requireAuth, async (req, res, next) => {
+    try {
+        const { product, membership } = await loadOwnedProduct(req.params.productId, req.user.sub);
+        if (!product) return res.status(404).json({ error: 'Product not found' });
+        if (!membership) return res.status(403).json({ error: 'Not a member of this workspace' });
+
+        const audits = await KnowledgeAudit.find({ productId: product._id })
+            .select('-findings')
+            .sort({ createdAt: -1 })
+            .limit(20)
+            .lean();
+
+        res.json(audits.map((a) => ({ ...a, id: String(a._id) })));
+    } catch (err) {
+        next(err);
+    }
+});
+
+/**
+ * GET /knowledge/audit/:auditId
+ *
+ * One run with its findings, each carrying the text of every chunk involved
+ * so the console can show the evidence next to the proposal — approving a
+ * change without seeing what it removes is exactly what this flow exists to
+ * prevent.
+ */
+knowledgeRouter.get('/audit/:auditId', requireAuth, async (req, res, next) => {
+    try {
+        const audit = await KnowledgeAudit.findById(req.params.auditId).lean();
+        if (!audit) return res.status(404).json({ error: 'Audit not found' });
+        const { product, membership } = await loadOwnedProduct(String(audit.productId), req.user.sub);
+        if (!product) return res.status(404).json({ error: 'Product not found' });
+        if (!membership) return res.status(403).json({ error: 'Not a member of this workspace' });
+
+        const chunkIds = [...new Set(audit.findings.flatMap((f) => f.chunkIds.map(String)))];
+        const chunks = await KnowledgeChunk.find({ _id: { $in: chunkIds } })
+            .select('text sourceId status')
+            .lean();
+        const sources = await KnowledgeSource.find({ productId: audit.productId })
+            .select('title type')
+            .lean();
+        const sourceById = new Map(sources.map((s) => [String(s._id), s]));
+        const chunkById = new Map(
+            chunks.map((c) => [
+                String(c._id),
+                {
+                    id: String(c._id),
+                    text: c.text,
+                    status: c.status || 'active',
+                    sourceTitle: sourceById.get(String(c.sourceId))?.title || sourceById.get(String(c.sourceId))?.type
+                }
+            ])
+        );
+
+        res.json({
+            ...audit,
+            id: String(audit._id),
+            findings: audit.findings.map((f) => ({
+                ...f,
+                chunks: f.chunkIds.map((id) => chunkById.get(String(id))).filter(Boolean)
+            }))
+        });
+    } catch (err) {
+        next(err);
+    }
+});
+
+/**
+ * POST /knowledge/audit/:auditId/apply
+ *
+ * Applies the operator's decisions. Body: { approvedKeys: [], rejectedKeys: [] }
+ */
+knowledgeRouter.post('/audit/:auditId/apply', requireAuth, async (req, res, next) => {
+    try {
+        const audit = await KnowledgeAudit.findById(req.params.auditId).select('productId status').lean();
+        if (!audit) return res.status(404).json({ error: 'Audit not found' });
+        const { product, membership } = await loadOwnedProduct(String(audit.productId), req.user.sub);
+        if (!product) return res.status(404).json({ error: 'Product not found' });
+        if (!membership) return res.status(403).json({ error: 'Not a member of this workspace' });
+        if (!can(membership.role, 'knowledge:analyze')) {
+            return res.status(403).json({ error: 'Forbidden', required: 'knowledge:analyze' });
+        }
+        if (audit.status === 'queued' || audit.status === 'running') {
+            return res.status(409).json({ error: 'Audit is still running' });
+        }
+
+        const { approvedKeys = [], rejectedKeys = [] } = req.body || {};
+        if (!Array.isArray(approvedKeys) || !Array.isArray(rejectedKeys)) {
+            return res.status(400).json({ error: 'approvedKeys and rejectedKeys must be arrays' });
+        }
+
+        const { applyAuditFindings } = await import('@repo/rag');
+        const result = await applyAuditFindings({
+            auditId: req.params.auditId,
+            approvedKeys,
+            rejectedKeys
+        });
+
+        res.json(result);
     } catch (err) {
         next(err);
     }

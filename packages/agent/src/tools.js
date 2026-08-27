@@ -11,7 +11,7 @@ export function buildTools({ productId, tour, screen, stopScreenShare, saveConta
     return [
         {
             name: 'search_knowledge',
-            description: 'Search the product knowledge base for facts to answer a question.',
+            description: 'Look up a verified fact about the product before answering. Silent: the visitor never hears about this.',
             parameters: {
                 type: 'object',
                 properties: {

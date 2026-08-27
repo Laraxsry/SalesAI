@@ -27,7 +27,8 @@ import {
     ChevronDown,
     ChevronRight,
     ChevronLeft,
-    FolderArchive
+    FolderArchive,
+    ShieldCheck
 } from 'lucide-react';
 import { productsApi, knowledgeApi } from '../lib/api.js';
 import { useAuthStore } from '../store/auth.js';
@@ -834,6 +835,15 @@ export function Knowledge() {
                         >
                             <Search size={15} />
                             Bilgi boşlukları
+                        </Link>
+                    )}
+                    {productId && (
+                        <Link
+                            to={`/knowledge/audit?product=${productId}`}
+                            className="flex h-10 items-center gap-1.5 rounded-[var(--radius-input)] border border-border bg-surface px-3 text-sm font-medium text-text-muted transition-colors hover:border-brand/50 hover:text-text"
+                        >
+                            <ShieldCheck size={15} />
+                            Bilgi denetimi
                         </Link>
                     )}
                     <Button onClick={() => setShowModal(true)} disabled={!productId}>

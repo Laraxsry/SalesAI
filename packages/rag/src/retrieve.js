@@ -16,6 +16,39 @@ function getRedis() {
 }
 
 /**
+ * Drops every cached answer for a product.
+ *
+ * Retrieval results are cached per (product, query) for a day, so knowledge
+ * that changed underneath — a knowledge audit retiring a wrong price, a source
+ * being deleted — would otherwise keep being served from cache for up to 24
+ * more hours. The agent would go on quoting the retired figure with no sign
+ * anything was wrong.
+ *
+ * `scanStream` rather than `KEYS`: this runs against the same Redis the queues
+ * and realtime events use, and KEYS blocks the whole server while it walks the
+ * keyspace.
+ *
+ * @param {string} productId
+ * @returns {Promise<number>} how many cached entries were dropped
+ */
+export async function invalidateProductCache(productId) {
+    const redis = getRedis();
+    let removed = 0;
+    try {
+        const stream = redis.scanStream({ match: `rag:cache:${productId}:*`, count: 200 });
+        for await (const keys of stream) {
+            if (!keys.length) continue;
+            await redis.del(...keys);
+            removed += keys.length;
+        }
+    } catch {
+        // A cache we could not clear is a staleness problem, not a correctness
+        // one — entries expire on their own. Never fail the caller for it.
+    }
+    return removed;
+}
+
+/**
  * Normalizes a query for caching (removes extra spaces, makes lowercase).
  */
 function normalizeQuery(query) {

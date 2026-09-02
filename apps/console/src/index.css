@@ -3,30 +3,40 @@
 
 :root {
     color-scheme: light;
-    --color-brand: #0f766e;
-    --color-brand-light: #14b8a6;
-    --color-brand-dark: #0b5f59;
-    --color-bg: #f3f5f2;
+    --color-brand: #2563eb;
+    --color-brand-light: #3b82f6;
+    --color-brand-dark: #1d4ed8;
+    --color-bg: #eef2fb;
     --color-surface: #ffffff;
-    --color-surface-raised: #eaf0eb;
-    --color-border: #d9e2dc;
-    --color-text: #13231f;
-    --color-text-muted: #67766f;
+    --color-surface-raised: #e6edfa;
+    --color-border: #d3def1;
+    --color-text: #0c1a33;
+    --color-text-muted: #5a6b88;
+    --color-shell: #071426;
+    --color-accent: #38bdf8;
+    --color-accent-hover: #0ea5e9;
+    --color-brand-glow: rgb(37 99 235 / 9%);
+    --color-auth-gradient: radial-gradient(520px circle at 15% 10%, rgba(37,99,235,0.22), transparent 64%), radial-gradient(500px circle at 90% 85%, rgba(56,189,248,0.12), transparent 60%);
+    --color-overview-dots: radial-gradient(circle, #38bdf8 1.2px, transparent 1.2px);
     --radius-card: 20px;
     --radius-input: 12px;
 }
 
 :root[data-theme='dark'] {
     color-scheme: dark;
-    --color-brand: #2dd4bf;
-    --color-brand-light: #5eead4;
-    --color-brand-dark: #14b8a6;
-    --color-bg: #07110f;
-    --color-surface: #0d1f1b;
-    --color-surface-raised: #163029;
-    --color-border: #25443b;
-    --color-text: #edf5f1;
-    --color-text-muted: #91a59d;
+    --color-brand: #67e8f9;
+    --color-brand-light: #93effb;
+    --color-brand-dark: #4d7cff;
+    --color-bg: #050c18;
+    --color-surface: #0b1830;
+    --color-surface-raised: #10284b;
+    --color-border: #25466f;
+    --color-text: #f3f6ff;
+    --color-text-muted: #94a8c5;
+    --color-shell: #071426;
+    --color-accent: #67e8f9;
+    --color-accent-hover: #8ceefa;
+    --color-brand-glow: rgb(77 124 255 / 14%);
 }
 
 * {
@@ -43,16 +53,16 @@ html {
 body {
     margin: 0;
     background:
-        radial-gradient(circle at 76% -12%, rgb(20 184 166 / 9%), transparent 28rem),
-        linear-gradient(180deg, #f8faf7 0%, var(--color-bg) 32rem);
+        radial-gradient(circle at 76% -12%, var(--color-brand-glow), transparent 28rem),
+        linear-gradient(180deg, #f6f8fe 0%, var(--color-bg) 32rem);
     color: var(--color-text);
     font-family: 'Manrope', sans-serif;
 }
 
 :root[data-theme='dark'] body {
     background:
-        radial-gradient(circle at 76% -12%, rgb(45 212 191 / 12%), transparent 30rem),
-        linear-gradient(180deg, #091713 0%, var(--color-bg) 32rem);
+        radial-gradient(circle at 76% -12%, var(--color-brand-glow), transparent 30rem),
+        linear-gradient(180deg, var(--color-shell) 0%, var(--color-bg) 32rem);
 }
 
 h1,
@@ -75,7 +85,7 @@ a {
 }
 
 ::selection {
-    background: rgb(20 184 166 / 24%);
+    background: rgb(56 189 248 / 26%);
 }
 
 :focus-visible {
@@ -85,16 +95,16 @@ a {
 
 .console-grid {
     background-image:
-        linear-gradient(rgb(15 118 110 / 4%) 1px, transparent 1px),
-        linear-gradient(90deg, rgb(15 118 110 / 4%) 1px, transparent 1px);
+        linear-gradient(rgb(37 99 235 / 4%) 1px, transparent 1px),
+        linear-gradient(90deg, rgb(37 99 235 / 4%) 1px, transparent 1px);
     background-size: 28px 28px;
     mask-image: linear-gradient(to bottom, black, transparent 82%);
 }
 
 :root[data-theme='dark'] .console-grid {
     background-image:
-        linear-gradient(rgb(94 234 212 / 5%) 1px, transparent 1px),
-        linear-gradient(90deg, rgb(94 234 212 / 5%) 1px, transparent 1px);
+        linear-gradient(rgb(103 232 249 / 6%) 1px, transparent 1px),
+        linear-gradient(90deg, rgb(103 232 249 / 6%) 1px, transparent 1px);
 }
 
 .sidebar-glow::after {
@@ -105,7 +115,7 @@ a {
     height: 15rem;
     content: '';
     border-radius: 999px;
-    background: rgb(20 184 166 / 14%);
+    background: rgb(77 124 255 / 16%);
     filter: blur(56px);
     pointer-events: none;
 }
@@ -140,7 +150,7 @@ a {
 }
 
 .wow-float-card .wow-wave {
-    color: #d7f95b;
+    color: var(--color-accent);
 }
 
 .wow-wave span {
@@ -196,7 +206,7 @@ a {
 
 .wow-stage-grid {
     background:
-        radial-gradient(circle at 50% 40%, rgb(215 249 91 / 10%), transparent 33%),
+        radial-gradient(circle at 50% 40%, rgb(103 232 249 / 10%), transparent 33%),
         linear-gradient(rgb(255 255 255 / 3%) 1px, transparent 1px),
         linear-gradient(90deg, rgb(255 255 255 / 3%) 1px, transparent 1px);
     background-size: auto, 34px 34px, 34px 34px;
@@ -304,10 +314,10 @@ a {
 @keyframes wow-listening {
     0%,
     100% {
-        box-shadow: 0 18px 50px -30px rgb(215 249 91 / 20%);
+        box-shadow: 0 18px 50px -30px rgb(103 232 249 / 20%);
     }
     50% {
-        box-shadow: 0 18px 65px -24px rgb(215 249 91 / 45%);
+        box-shadow: 0 18px 65px -24px rgb(103 232 249 / 45%);
     }
 }
 

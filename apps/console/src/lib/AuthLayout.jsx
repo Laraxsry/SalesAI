@@ -23,21 +23,20 @@ export function AuthLayout({ children }) {
             >
                 {isDark ? <Sun size={18} aria-hidden="true" /> : <Moon size={18} aria-hidden="true" />}
             </button>
-            <div className="relative hidden flex-col justify-between overflow-hidden bg-[#0b1f1b] p-10 text-white lg:flex xl:p-14">
+            <div className="relative hidden flex-col justify-between overflow-hidden bg-[var(--color-shell)] p-10 text-white lg:flex xl:p-14">
                 <div
                     className="pointer-events-none absolute inset-0"
                     style={{
-                        background:
-                            'radial-gradient(520px circle at 15% 10%, rgba(20,184,166,0.22), transparent 64%), radial-gradient(500px circle at 90% 85%, rgba(215,249,91,0.12), transparent 60%)'
+                        background: 'var(--color-auth-gradient)'
                     }}
                 />
 
                 <div className="relative z-10 flex items-center gap-3">
-                    <Logo className="[&_span]:text-white [&_span_span]:text-[#d7f95b]" />
+                    <Logo className="[&_span]:text-white [&_span_span]:text-[var(--color-accent)]" />
                 </div>
 
                 <div className="relative z-10 max-w-xl">
-                    <span className="mb-6 inline-flex items-center gap-2 rounded-full border border-white/10 bg-white/[0.06] px-3 py-1.5 text-xs font-bold text-[#d7f95b] backdrop-blur">
+                    <span className="mb-6 inline-flex items-center gap-2 rounded-full border border-white/10 bg-white/[0.06] px-3 py-1.5 text-xs font-bold text-[var(--color-accent)] backdrop-blur">
                         <Sparkles size={12} />
                         Yapay zeka destekli satış operasyonu
                     </span>
@@ -51,7 +50,7 @@ export function AuthLayout({ children }) {
                     <ul className="mt-9 grid gap-3 sm:grid-cols-3">
                         {FEATURES.map(({ icon: Icon, text }) => (
                             <li key={text} className="rounded-2xl border border-white/8 bg-white/[0.045] p-4 text-xs leading-5 text-white/70 backdrop-blur">
-                                <span className="mb-4 flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-[#d7f95b]/10 text-[#d7f95b]">
+                                <span className="mb-4 flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-[color-mix(in_srgb,var(--color-accent)_10%,transparent)] text-[var(--color-accent)]">
                                     <Icon size={15} />
                                 </span>
                                 {text}

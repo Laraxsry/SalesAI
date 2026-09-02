@@ -107,12 +107,12 @@ export function Overview() {
 
     return (
         <div>
-            <section className="relative mb-7 overflow-hidden rounded-[28px] bg-[#0d2923] px-6 py-7 text-white shadow-[0_24px_70px_-42px_rgba(7,23,19,0.65)] sm:px-8 sm:py-9">
-                <div className="pointer-events-none absolute -right-20 -top-28 h-72 w-72 rounded-full border-[48px] border-[#d7f95b]/[0.07]" />
-                <div className="pointer-events-none absolute bottom-0 right-24 h-28 w-44 bg-[radial-gradient(circle,#d7f95b_1.2px,transparent_1.2px)] bg-[size:13px_13px] opacity-15" />
+            <section className="relative mb-7 overflow-hidden rounded-[28px] bg-[var(--color-shell)] px-6 py-7 text-white shadow-[0_24px_70px_-42px_rgba(7,23,19,0.65)] sm:px-8 sm:py-9">
+                <div className="pointer-events-none absolute -right-20 -top-28 h-72 w-72 rounded-full border-[48px] border-[color-mix(in_srgb,var(--color-accent)_7%,transparent)]" />
+                <div className="pointer-events-none absolute bottom-0 right-24 h-28 w-44 bg-[image:var(--color-overview-dots)] bg-[size:13px_13px] opacity-15" />
                 <div className="relative flex flex-col justify-between gap-7 md:flex-row md:items-end">
                     <div className="max-w-2xl">
-                        <span className="mb-4 inline-flex items-center gap-2 rounded-full border border-white/10 bg-white/[0.06] px-3 py-1.5 text-[11px] font-bold text-[#d7f95b]">
+                        <span className="mb-4 inline-flex items-center gap-2 rounded-full border border-white/10 bg-white/[0.06] px-3 py-1.5 text-[11px] font-bold text-[var(--color-accent)]">
                             <Activity size={13} /> Satış operasyon merkezi
                         </span>
                         <h1 className="text-3xl font-semibold tracking-[-0.035em] text-white sm:text-4xl">Ürünlerinizi satışa hazırlayın.</h1>
@@ -120,7 +120,7 @@ export function Overview() {
                             Bilgi kaynaklarını, AI temsilcileri ve görüşme performansını her ürün için tek yerden yönetin.
                         </p>
                     </div>
-                    <Button onClick={() => setShowModal(true)} className="shrink-0 !bg-[#d7f95b] !text-[#0b1f1b] !shadow-none hover:!bg-[#c8ed43]">
+                    <Button onClick={() => setShowModal(true)} className="shrink-0 !bg-[var(--color-accent)] !text-[var(--color-shell)] !shadow-none hover:!bg-[var(--color-accent-hover)]">
                         <Plus size={16} />
                         Yeni ürün
                     </Button>
@@ -185,7 +185,7 @@ export function Overview() {
                             className="card-lift group relative overflow-hidden rounded-[22px] border border-border/90 bg-surface p-5 hover:border-brand/35"
                         >
                             <div className="absolute right-5 top-5 text-[11px] font-bold tracking-[0.16em] text-text-muted/45">{String(index + 1).padStart(2, '0')}</div>
-                            <div className="mb-8 flex h-11 w-11 items-center justify-center rounded-2xl bg-[#0d2923] text-[#d7f95b] shadow-[0_10px_25px_-14px_rgba(13,41,35,0.7)]">
+                            <div className="mb-8 flex h-11 w-11 items-center justify-center rounded-2xl bg-[var(--color-shell)] text-[var(--color-accent)] shadow-[0_10px_25px_-14px_rgba(13,41,35,0.7)]">
                                 <Package size={18} />
                             </div>
                             <h3 className="text-lg font-semibold text-text transition-colors group-hover:text-brand">{p.name}</h3>

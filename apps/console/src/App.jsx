@@ -83,18 +83,18 @@ function Shell({ children }) {
                 <button
                     type="button"
                     aria-label="Menüyü kapat"
-                    className="fixed inset-0 z-30 bg-[#071713]/70 backdrop-blur-sm md:hidden"
+                    className="fixed inset-0 z-30 bg-[color-mix(in_srgb,var(--color-shell)_70%,transparent)] backdrop-blur-sm md:hidden"
                     onClick={() => setMobileNavOpen(false)}
                 />
             )}
             <aside
                 aria-label="Ana menü"
-                className={`sidebar-glow fixed inset-y-0 left-0 z-40 flex w-[280px] shrink-0 flex-col overflow-hidden border-r border-white/8 bg-[#0b1f1b] px-4 py-5 text-white shadow-2xl shadow-black/10 transition-transform md:sticky md:top-0 md:h-screen md:translate-x-0 ${mobileNavOpen ? 'translate-x-0' : '-translate-x-full'}`}
+                className={`sidebar-glow fixed inset-y-0 left-0 z-40 flex w-[280px] shrink-0 flex-col overflow-hidden border-r border-white/8 bg-[var(--color-shell)] px-4 py-5 text-white shadow-2xl shadow-black/10 transition-transform md:sticky md:top-0 md:h-screen md:translate-x-0 ${mobileNavOpen ? 'translate-x-0' : '-translate-x-full'}`}
             >
                 <div className="relative z-10 mb-7 px-2">
                     <div className="flex items-center justify-between">
                         <div className="flex items-center gap-3">
-                            <Logo className="[&_span]:text-white [&_span_span]:text-[#d7f95b]" />
+                            <Logo className="[&_span]:text-white [&_span_span]:text-[var(--color-accent)]" />
                         </div>
                         <button type="button" onClick={() => setMobileNavOpen(false)} aria-label="Menüyü kapat" className="flex h-9 w-9 items-center justify-center rounded-xl text-white/60 hover:bg-white/8 hover:text-white md:hidden">
                             <X size={18} aria-hidden="true" />
@@ -119,7 +119,7 @@ function Shell({ children }) {
                                 )
                             }
                         >
-                            <span className="flex h-8 w-8 items-center justify-center rounded-lg bg-white/[0.04] text-white/70 transition-colors group-hover:text-[#d7f95b]">
+                            <span className="flex h-8 w-8 items-center justify-center rounded-lg bg-white/[0.04] text-white/70 transition-colors group-hover:text-[var(--color-accent)]">
                                 <Icon size={16} strokeWidth={2} aria-hidden="true" />
                             </span>
                             {t(`nav.${key}`)}
@@ -128,7 +128,7 @@ function Shell({ children }) {
                 </nav>
 
                 <div className="relative z-10 mt-auto flex items-center gap-3 rounded-2xl border border-white/8 bg-white/[0.05] px-3 py-3 backdrop-blur">
-                    <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-[#d7f95b] text-xs font-extrabold text-[#0b1f1b]">
+                    <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-[var(--color-accent)] text-xs font-extrabold text-[var(--color-shell)]">
                         {initials(user?.name || user?.email)}
                     </span>
                     <div className="min-w-0 flex-1">

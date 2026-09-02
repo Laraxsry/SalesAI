@@ -118,7 +118,7 @@ const createStyles = (colors, isDark) => StyleSheet.create({
         width: 280,
         height: 280,
         borderRadius: 140,
-        backgroundColor: 'rgba(20,184,166,0.11)',
+        backgroundColor: 'rgba(37,99,235,0.12)',
         right: -130,
         top: -86,
     },

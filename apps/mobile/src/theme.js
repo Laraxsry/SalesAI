@@ -1,42 +1,45 @@
 import { Platform } from 'react-native';
 
-export const LIGHT_COLORS = {
-    ink: '#071713',
-    inkSoft: '#0D2923',
-    inkRaised: '#15372F',
-    canvas: '#F3F6F2',
+const BASE_LIGHT_COLORS = {
+    ink: '#071426',
+    inkSoft: '#0F2547',
+    inkRaised: '#193B69',
+    canvas: '#EEF2FB',
     surface: '#FFFFFF',
-    surfaceMuted: '#EAF0EB',
-    line: '#D9E3DC',
-    text: '#13231F',
-    muted: '#6B7973',
-    soft: '#97A39D',
-    teal: '#14B8A6',
-    tealDark: '#0F766E',
-    lime: '#D7F95B',
+    surfaceMuted: '#E6EDFA',
+    line: '#D3DEF1',
+    text: '#0C1A33',
+    muted: '#5A6B88',
+    soft: '#8A99B5',
+    teal: '#2563EB',
+    tealDark: '#1D4ED8',
+    lime: '#38BDF8',
     amber: '#F3B64A',
     danger: '#E7584A',
     white: '#FFFFFF',
 };
 
-export const DARK_COLORS = {
-    ink: '#071713',
-    inkSoft: '#0D2923',
-    inkRaised: '#15372F',
-    canvas: '#07110F',
-    surface: '#0D1F1B',
-    surfaceMuted: '#163029',
-    line: '#25443B',
-    text: '#EDF5F1',
-    muted: '#91A59D',
-    soft: '#657A72',
-    teal: '#2DD4BF',
-    tealDark: '#14B8A6',
-    lime: '#D7F95B',
-    amber: '#F3B64A',
+const BASE_DARK_COLORS = {
+    ink: '#071426',
+    inkSoft: '#0F2547',
+    inkRaised: '#193B69',
+    canvas: '#050C18',
+    surface: '#0B1830',
+    surfaceMuted: '#10284B',
+    line: '#25466F',
+    text: '#F3F6FF',
+    muted: '#94A8C5',
+    soft: '#60789B',
+    teal: '#67E8F9',
+    tealDark: '#4D7CFF',
+    lime: '#67E8F9',
+    amber: '#FFD166',
     danger: '#FF7568',
     white: '#FFFFFF',
 };
+
+export const LIGHT_COLORS = BASE_LIGHT_COLORS;
+export const DARK_COLORS = BASE_DARK_COLORS;
 
 // Dark-only live meeting components keep using the established static palette.
 export const COLORS = LIGHT_COLORS;

@@ -982,7 +982,7 @@ const createStyles = (colors, isDark) => StyleSheet.create({
     floatingTabBar: {
         flexDirection: 'row',
         height: 72,
-        backgroundColor: 'rgba(13,41,35,0.97)',
+        backgroundColor: colors.inkSoft,
         borderRadius: 24,
         paddingHorizontal: 7,
         borderWidth: 1,

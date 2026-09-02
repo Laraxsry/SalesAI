@@ -148,6 +148,7 @@ export const agentsApi = {
     list: (productId) => apiFetch(`/agents?productId=${productId}`),
     get: (id) => apiFetch(`/agents/${id}`),
     create: (payload) => apiFetch('/agents', { method: 'POST', body: payload }),
+    update: (id, payload) => apiFetch(`/agents/${id}`, { method: 'PATCH', body: payload }),
     activate: (id) => apiFetch(`/agents/${id}/activate`, { method: 'POST' }),
     pause: (id) => apiFetch(`/agents/${id}/pause`, { method: 'POST' }),
     remove: (id) => apiFetch(`/agents/${id}`, { method: 'DELETE' }),

@@ -125,20 +125,47 @@ unreachable**, see the facade-completeness test in `stores/index.test.js`.
 `persona { tone, language, goals[], guardrails[] }`,
 `avatarProvider` ∈ `voice-only|tavus|simli|heygen|did`,
 `screenModes[]` ⊆ `none|guided-tour|customer-share`,
-`toolAccess { enabled, baseUrl, openApiUrl, mcpUrl }`.
+`toolAccess { enabled, baseUrl, openApiUrl, mcpUrl }`,
+`maxParticipants` (default `1`, capped at `MAX_ROOM_PARTICIPANTS` in
+`@repo/contracts`) — how many visitors this agent presents to at once, the
+agent itself NOT counted. `1` keeps the original one-visitor-per-room flow
+end to end; `>1` turns on the multi-participant meeting (see Phase 2 and
+`02_ai_realtime_avatar_screen.md`).
+`preCallSurveyEnabled` (default `false`, 1-on-1 only) — start the call with an
+AI-generated adaptive questionnaire that produces a per-visitor tour plan
+(§2.6 of `02_ai_realtime_avatar_screen.md`).
 
 ### ShareLink
 `agentId`, `token` (unique), `active`, `expiresAt`, `maxSessions`,
 `sessionCount`.
 
 ### Session
-`agentId`, `shareLinkId`, `roomName` (LiveKit), `visitorName`,
-`status` ∈ `live|ended|failed`, `screenMode`, `startedAt`, `endedAt`,
-`lastActivityAt` (agent-worker heartbeat, updated every 60s while the room
-connection is alive — lets a dead session be told apart from a genuinely
-long call, see Phase 2), `confirmedContact { name, email, phone }` (written
-live, once the visitor confirms a value the agent read back to them — see
-`save_contact_info` tool, Phase 2), `summary`.
+`agentId`, `shareLinkId`, `roomName` (LiveKit), `visitorName` (the PRIMARY /
+first participant — analytics + lead extraction read this),
+`status` ∈ `waiting|live|ended|failed` (`waiting` = multi-participant only:
+the agent has joined the room but the presentation hasn't started yet;
+single-participant sessions go straight to `live`), `screenMode`,
+`startedAt`, `endedAt`, `lastActivityAt` (agent-worker heartbeat, updated
+every 60s while the room connection is alive — lets a dead session be told
+apart from a genuinely long call, see Phase 2),
+`participants[] { identity, name, visitorKey, joinedAt, leftAt }` (`visitorKey`
+is a stable id the visitor keeps in localStorage so a reconnect is recognised
+as the same person; full roster for a
+group meeting; `leftAt` stamped on disconnect, entries kept not spliced),
+`maxParticipants` (pinned from `Agent.maxParticipants` at mint — a mid-meeting
+config change never alters an in-progress room),
+`preCallIntent` / `generatedPlan` (pre-call survey result — the LLM's read of
+what the visitor wants + the per-visitor tour plan; pinned at mint from a
+server-stashed `planToken`, the plan runs instead of any static `Playbook`),
+`confirmedContact { name, email, phone }` (written live, once the visitor
+confirms a value the agent read back to them — see `save_contact_info` tool,
+Phase 2), `summary`.
+
+A second visitor opening the SAME share link for a `maxParticipants > 1`
+agent JOINs the existing room (no new `Session`, no extra agent dispatch,
+`ShareLink.sessionCount` not incremented) as long as there's a free seat —
+`pickSessionForJoin()` in `apps/api/src/services/share-link-sessions.js`. The
+LiveKit room is pre-created with a hard cap of `maxParticipants + 1`.
 
 ### Message
 `sessionId`, `role` ∈ `user|assistant|tool|system`, `text`, `meta`
@@ -224,7 +251,10 @@ POST   /api/v1/agents/:id/activate        # -> share link + embed snippet
 POST   /api/v1/agents/:id/pause
 
 # Sessions (public)
-POST   /api/v1/sessions                   # { shareToken } -> { roomName, token, livekitUrl }
+GET    /api/v1/prejoin/:shareToken            # { agentName, maxParticipants, surveyEnabled }
+POST   /api/v1/prejoin/:shareToken/survey     # { answers[] } -> next LLM question | { done }
+POST   /api/v1/prejoin/:shareToken/finalize   # { answers[] } -> { planToken, preview[], stepCount }
+POST   /api/v1/sessions                   # { shareToken, visitorName?, visitorKey?, planToken? } -> { roomName, token, livekitUrl }
 GET    /api/v1/sessions/:id/transcript
 
 # Analytics (Phase 4)

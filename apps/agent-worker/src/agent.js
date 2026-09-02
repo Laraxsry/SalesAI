@@ -14,7 +14,14 @@ import {
     buildTools,
     buildIdleNudgeInstructions,
     buildLookupBridgeInstructions,
-    buildGreetingInstructions
+    buildGreetingInstructions,
+    classifyStartIntent,
+    shouldStartMeeting,
+    buildWaitingRoomPrompt,
+    buildRosterNote,
+    buildTurnResponseInstruction,
+    resolveSpeaker,
+    planToPlaybookNodes
 } from '@repo/agent';
 import { startAvatarWithFallback } from '@repo/avatar';
 import { roomService } from '@repo/livekit';
@@ -32,6 +39,10 @@ import { createPlaybookRuntime } from './playbook-runtime.js';
 import { withPlaybookProgress } from './playbook-progress.js';
 import { withToolBridge } from './tool-bridge.js';
 import { createUtteranceMemory } from './utterance-memory.js';
+import { createQuestionQueue } from './question-queue.js';
+import { createHandQueue } from './hand-queue.js';
+import { matchReturningParticipant } from './returning-participant.js';
+import { pickActiveSpeaker, chooseAttribution } from './active-speaker.js';
 
 /**
  * Runs the session with the trace context extracted from the LiveKit dispatch
@@ -89,6 +100,111 @@ async function runSession(ctx) {
     // in this session carries both identifiers.
     log = log.child({ sessionId: String(session._id) });
 
+    // Görev #1 — multi-participant meeting. Pinned on the session at mint
+    // (Agent.maxParticipants, agent NOT counted). 1 = the original
+    // single-visitor path, unchanged end to end. >1 turns on the waiting gate
+    // (agent joins, waits for the room to fill or a "shall we start?" answer)
+    // and active-speaker following.
+    const maxParticipants = Math.max(1, Number(session.maxParticipants) || 1);
+    const isMultiParty = maxParticipants > 1;
+    const MEETING_MAX_WAIT_MS = Number(process.env.AGENT_MEETING_MAX_WAIT_MS ?? 600_000);
+    let presentationStarted = false;
+    let meetingJoinedAt = 0;
+    let meetingWaitInterval = null;
+    let meetingSafetyTimer = null;
+    let lastStartIntent = null;
+    // Identity of the visitor the realtime model is currently listening to
+    // (RoomIO links one participant at a time); updated on ActiveSpeakersChanged.
+    let currentSpeakerIdentity = null;
+    // Group-session state (Görev #11): the raised-hand queue, whose "turn" it
+    // is (floor), who the agent last addressed, and the buffer of things said
+    // while the agent was talking.
+    const questionQueue = createQuestionQueue();
+    const handQueue = createHandQueue();
+    let currentFloorIdentity = null;
+    let lastAddressedIdentity = null;
+    let meetingPhase = 'waiting';
+    // In-memory roster history — seeded from the session doc, kept current on
+    // connect/disconnect, used to recognise a returning visitor and to resolve
+    // identities to names for the broadcast.
+    const rosterHistory = (session?.participants || []).map((p) => ({
+        identity: p.identity,
+        name: p.name || null,
+        visitorKey: p.visitorKey || null,
+        leftAt: p.leftAt || null
+    }));
+    const nameOfIdentity = (id) => rosterHistory.find((r) => r.identity === id)?.name || null;
+
+    /** Broadcast the full meeting state to the room (visitor UI reads this). */
+    function broadcastMeetingState() {
+        if (!isMultiParty) return;
+        const toEntry = (id) => ({ identity: id, name: nameOfIdentity(id) });
+        const payload = new TextEncoder().encode(
+            JSON.stringify({
+                type: 'salesai:meeting',
+                phase: meetingPhase,
+                visitorCount: countVisitors(),
+                maxParticipants,
+                floor: currentFloorIdentity ? toEntry(currentFloorIdentity) : null,
+                hands: handQueue.list().map(toEntry)
+            })
+        );
+        ctx.room.localParticipant
+            .publishData(payload, { reliable: true, topic: 'salesai' })
+            .catch(() => {});
+    }
+
+    /** `next_participant` tool handler — hand the floor to the next raised hand. */
+    function advanceToNextParticipant() {
+        const next = handQueue.shift();
+        currentFloorIdentity = next || null;
+        broadcastMeetingState();
+        return { ok: true, next: next ? nameOfIdentity(next) : null };
+    }
+
+    function countVisitors() {
+        let n = 0;
+        for (const p of ctx.room.remoteParticipants.values()) {
+            if (p.identity?.startsWith('visitor_')) n++;
+        }
+        return n;
+    }
+
+    /** Whether a participant has an unmuted microphone track published. */
+    function micOn(participant) {
+        if (!participant?.trackPublications) return false;
+        for (const pub of participant.trackPublications.values()) {
+            if (pub?.source === TrackSource.SOURCE_MICROPHONE) return pub.muted === false;
+        }
+        return false;
+    }
+
+    /** Current in-room roster as {identity, name} for name resolution. */
+    function rosterList() {
+        const out = [];
+        for (const p of ctx.room.remoteParticipants.values()) {
+            if (p.identity?.startsWith('visitor_')) out.push({ identity: p.identity, name: p.name });
+        }
+        return out;
+    }
+
+    function flushQuestionQueue() {
+        if (questionQueue.isEmpty()) return;
+        const items = questionQueue.flush();
+        const turn = buildTurnResponseInstruction({
+            floor: currentFloorIdentity
+                ? { identity: currentFloorIdentity, name: nameOfIdentity(currentFloorIdentity) }
+                : null,
+            items,
+            hands: handQueue.list().map((id) => ({ identity: id, name: nameOfIdentity(id) }))
+        });
+        const instructions = [buildRosterNote(rosterList()), turn].filter(Boolean).join('\n\n');
+        if (!instructions) return;
+        agentSession
+            .generateReply({ instructions, allowInterruptions: false })
+            .catch((err) => log.warn('meeting: queued-questions reply failed', { error: err.message }));
+    }
+
     // Playbook — the presentation route this agent follows, if the marketer
     // configured one (md/backend/agent_flow.md). Snapshotted into a plain
     // array right here and never re-read: that snapshot IS the version pin,
@@ -98,10 +214,22 @@ async function runSession(ctx) {
     // don't exist yet, so it's constructed further down and referenced here
     // only through closures (tools, silence.onIdle) that don't run until
     // well after everything is initialized.
-    const playbookDoc = await Playbook.findOne({ agentId: agentDoc._id });
-    const playbookNodes = (playbookDoc?.enabled ? playbookDoc.nodes : []).map((n) =>
-        typeof n.toObject === 'function' ? n.toObject() : n
-    );
+    // Görev #7 — a pre-call survey plan, when present, IS this session's
+    // playbook (pinned at mint, runs instead of any static Playbook doc).
+    const generatedPlan =
+        session.generatedPlan && Array.isArray(session.generatedPlan.steps)
+            ? session.generatedPlan
+            : null;
+    const preCallIntent = session.preCallIntent && typeof session.preCallIntent === 'object'
+        ? session.preCallIntent
+        : null;
+
+    const playbookDoc = generatedPlan ? null : await Playbook.findOne({ agentId: agentDoc._id });
+    const playbookNodes = generatedPlan
+        ? planToPlaybookNodes(generatedPlan)
+        : (playbookDoc?.enabled ? playbookDoc.nodes : []).map((n) =>
+              typeof n.toObject === 'function' ? n.toObject() : n
+          );
     const playbookActive = playbookNodes.length > 0;
     const playbookCursor = playbookActive ? createPlaybookCursor(playbookNodes) : null;
     /** @type {ReturnType<typeof createPlaybookRuntime>|null} */
@@ -134,7 +262,9 @@ async function runSession(ctx) {
         name: agentDoc.name,
         product: { name: product.name, description: product.description },
         persona: agentDoc.persona,
-        playbookActive
+        playbookActive,
+        multiParticipant: isMultiParty,
+        preCallIntent
     });
 
     // screenModes defined on the agent doc govern which tools are available
@@ -666,6 +796,9 @@ async function runSession(ctx) {
                 saveContactInfo,
                 siteMap,
                 playbookActive,
+                multiParticipant: isMultiParty,
+                // Group session: hand the floor to the next raised hand.
+                nextParticipant: advanceToNextParticipant,
                 // Not yet awaitable at this point in the source (playbookRuntime
                 // is constructed further down, once agentSession exists) — this
                 // closure only reads it, and by the time the model can actually
@@ -997,12 +1130,41 @@ async function runSession(ctx) {
         activeSpeechCount++;
         ev.speechHandle.addDoneCallback(() => {
             activeSpeechCount--;
+            // Group session: the agent just finished a turn — answer anything
+            // that piled up in the room while it was talking.
+            if (activeSpeechCount === 0 && isMultiParty && presentationStarted && !questionQueue.isEmpty()) {
+                flushQuestionQueue();
+            }
         });
     });
     // A completed visitor utterance is the clearest sign someone is still
     // there, so the nudge budget starts over.
     agentSession.on(voice.AgentSessionEventTypes.UserInputTranscribed, (ev) => {
-        if (ev.isFinal) silence.resetConsecutive();
+        if (!ev.isFinal) return;
+        silence.resetConsecutive();
+        // While the multi-party room is still filling, a visitor's answer to
+        // the "shall we start?" check decides whether to begin now.
+        if (isMultiParty && !presentationStarted && ev.transcript) {
+            lastStartIntent = classifyStartIntent(ev.transcript);
+            evaluateMeetingStart('answer');
+            return;
+        }
+        // Group session in progress: queue every question (tagged with who
+        // asked), and answer the whole batch once the agent stops talking.
+        if (isMultiParty && presentationStarted && ev.transcript) {
+            const attributedId = chooseAttribution({
+                eventSpeakerId: ev.speakerId,
+                fallbackIdentity: currentSpeakerIdentity,
+                micOnFor: (id) => {
+                    const p = ctx.room.remoteParticipants.get(id);
+                    return p ? micOn(p) : false;
+                }
+            });
+            if (attributedId) lastAddressedIdentity = attributedId;
+            const speaker = resolveSpeaker(rosterList(), attributedId);
+            questionQueue.enqueue({ speaker, text: ev.transcript });
+            if (activeSpeechCount === 0) flushQuestionQueue();
+        }
     });
 
     // Idempotent — may be triggered by agentSession's own Close event OR
@@ -1023,6 +1185,8 @@ async function runSession(ctx) {
             playbookRuntime?.stop();
             if (tourPublishTimer) clearTimeout(tourPublishTimer);
             if (customerSampleInterval) clearInterval(customerSampleInterval);
+            if (meetingWaitInterval) clearInterval(meetingWaitInterval);
+            if (meetingSafetyTimer) clearTimeout(meetingSafetyTimer);
             clearInterval(heartbeatInterval);
             latestTourFrameBase64 = null;
             try { await tour.close(); } catch { /* best-effort cleanup */ }
@@ -1075,6 +1239,86 @@ async function runSession(ctx) {
         otelContext.bind(parentContext, () => endSession('agent-session-close'))
     );
 
+    // ── Presentation start (shared by the single-party path and the
+    //    multi-party waiting gate) ─────────────────────────────────────────
+    function startPresentation() {
+        if (presentationStarted) return;
+        presentationStarted = true;
+        if (meetingWaitInterval) clearInterval(meetingWaitInterval);
+        if (meetingSafetyTimer) clearTimeout(meetingSafetyTimer);
+        if (isMultiParty) {
+            meetingPhase = 'live';
+            broadcastMeetingState();
+            Session.updateOne({ _id: session._id }, { status: 'live' }).catch((err) =>
+                log.warn('meeting: status->live write failed (non-fatal)', { error: err.message })
+            );
+        }
+        // No synthetic "step 0": the editor seeds a playbook's first row with
+        // the greeting itself (AgentGoals.jsx), so starting the runtime IS the
+        // greeting — the worker holds no special case for it.
+        if (playbookActive && playbookRuntime) {
+            // Görev #7 — warm the browser to the generated plan's first page
+            // now, so it's loaded by the time the runtime narrates step 1
+            // (its own showUrl then just goto()s the same URL, fast).
+            const firstUrl = generatedPlan?.screenMode === 'guided-tour' && playbookNodes[0]?.url;
+            if (firstUrl) tourControls.openAt(firstUrl).catch(() => {});
+            log.info('playbook: starting run', { generated: Boolean(generatedPlan), firstUrl: firstUrl || null });
+            playbookRuntime.start();
+        } else {
+            log.info('no playbook; sending plain greeting');
+            // Identifies itself as an AI demo assistant FOR THE PRODUCT (not a
+            // human name — a customer flagged an invented first name as
+            // off-putting), and not a generic "hi, how can I help" — the
+            // visitor arrives cold via a shared link with no context. No
+            // open-ended question: there's no wait after this turn.
+            agentSession.generateReply({
+                instructions: buildGreetingInstructions({
+                    productName: product.name,
+                    productDescription: product.description
+                }),
+                toolChoice: 'none'
+            });
+        }
+    }
+
+    // ── Multi-party waiting gate ─────────────────────────────────────────
+    function evaluateMeetingStart(via) {
+        if (presentationStarted) return;
+        const visitorCount = countVisitors();
+        const go = shouldStartMeeting({
+            visitorCount,
+            maxParticipants,
+            waitedMs: Date.now() - meetingJoinedAt,
+            maxWaitMs: MEETING_MAX_WAIT_MS,
+            lastIntent: lastStartIntent
+        });
+        log.info('meeting: evaluate start', { via, visitorCount, maxParticipants, lastStartIntent, go });
+        if (go) startPresentation();
+    }
+
+    function enterWaitingRoom() {
+        meetingJoinedAt = Date.now();
+        meetingPhase = 'waiting';
+        broadcastMeetingState();
+        log.info('meeting: entering waiting room', { maxParticipants, visitorCount: countVisitors() });
+        // Ask "shall we start, or wait for more?" once a minute.
+        meetingWaitInterval = setInterval(() => {
+            if (presentationStarted) return;
+            agentSession
+                .generateReply({
+                    instructions: buildWaitingRoomPrompt({
+                        visitorCount: countVisitors(),
+                        maxParticipants
+                    }),
+                    toolChoice: 'none'
+                })
+                .catch((err) => log.warn('meeting: waiting-room prompt failed', { error: err.message }));
+        }, 60_000);
+        // Safety: never wait forever.
+        meetingSafetyTimer = setTimeout(() => evaluateMeetingStart('max-wait'), MEETING_MAX_WAIT_MS);
+        evaluateMeetingStart('enter');
+    }
+
     // The only thing that actually spends money is `agentSession.start()` —
     // it opens a persistent websocket to the OpenAI Realtime API. See
     // realtime-gate.js for why this is gated on real visitor audio (COST
@@ -1084,42 +1328,31 @@ async function runSession(ctx) {
             log.info('realtime gate opened; starting agent session');
             agentSession.start({
                 agent: new voice.Agent({ instructions, tools }),
-                room: ctx.room
+                room: ctx.room,
+                // Multi-party: the linked participant changes constantly
+                // (active-speaker following), so the SDK must NOT end the
+                // session when whoever is currently linked leaves — the
+                // participant-left watchdog below owns "nobody is in the room".
+                ...(isMultiParty ? { inputOptions: { closeOnDisconnect: false } } : {})
             }).then(() => {
                 // Opens the silence driver's eyes — see `greetingSent`'s
                 // declaration above for why this must happen right here,
                 // synchronously, before either branch below issues its own
                 // first generateReply()/playbook start.
                 greetingSent = true;
-                // No synthetic "step 0": the editor seeds a playbook's first
-                // row with the greeting itself (AgentGoals.jsx), so starting
-                // the runtime IS the greeting — the worker holds no special
-                // case for it.
-                if (playbookActive && playbookRuntime) {
-                    log.info('playbook: starting run');
-                    playbookRuntime.start();
+
+                if (isMultiParty) {
+                    // Group session: a question from a non-speaking visitor must
+                    // not barge in — it's queued and answered as a batch when
+                    // the agent finishes (see flushQuestionQueue).
+                    try {
+                        agentSession.updateOptions({ allowInterruptions: false });
+                    } catch (err) {
+                        log.warn('meeting: updateOptions(allowInterruptions) failed', { error: err.message });
+                    }
+                    enterWaitingRoom();
                 } else {
-                    log.info('no playbook; sending plain greeting');
-                    // Identifies itself as an AI demo assistant FOR THE
-                    // PRODUCT, deliberately not "introduce yourself by name"
-                    // — a customer flagged the model stating an invented-
-                    // sounding human first name as off-putting; it doesn't
-                    // need a personal name, just to be clearly an AI acting
-                    // on the product's behalf. Not a generic "hi, how can I
-                    // help" either — the visitor almost always arrives cold
-                    // via a shared link with zero context on what this is or
-                    // whose product it demos. No open-ended question either
-                    // — consistent with the "never ask what to do next" rule
-                    // in persona.js, there's no wait after this turn either,
-                    // so state what you're about to do instead of asking
-                    // permission to do it.
-                    agentSession.generateReply({
-                        instructions: buildGreetingInstructions({
-                            productName: product.name,
-                            productDescription: product.description
-                        }),
-                        toolChoice: 'none'
-                    });
+                    startPresentation();
                 }
             }).catch((err) => log.error('failed to start realtime session', { error: err.message }));
         }
@@ -1145,6 +1378,22 @@ async function runSession(ctx) {
         try {
             const raw = new TextDecoder().decode(payload);
             const data = JSON.parse(raw);
+            if (data.type === 'salesai:hand' && isMultiParty) {
+                const id = participant?.identity;
+                if (id?.startsWith('visitor_')) {
+                    if (data.raised) {
+                        handQueue.raise(id);
+                        // First hand while nobody has the floor: whoever the
+                        // agent was last helping keeps it and this person waits.
+                        currentFloorIdentity = currentFloorIdentity || lastAddressedIdentity || null;
+                    } else {
+                        handQueue.lower(id);
+                    }
+                    log.info('meeting: hand', { identity: id, raised: !!data.raised, queue: handQueue.size });
+                    broadcastMeetingState();
+                }
+                return;
+            }
             if (data.type === 'chat' && data.text) {
                 log.info('Chat message received from visitor', { text: data.text });
                 if (!realtimeGate.started) {
@@ -1241,12 +1490,118 @@ async function runSession(ctx) {
     });
 
     ctx.room.on(RoomEvent.ParticipantConnected, (participant) => {
-        if (participantLeftTimer && participant?.identity?.startsWith('visitor_')) {
+        const identity = participant?.identity;
+        if (!identity?.startsWith('visitor_')) return;
+
+        if (participantLeftTimer) {
             clearTimeout(participantLeftTimer);
             participantLeftTimer = null;
             log.info('visitor reconnected; cancelled pending force-close');
         }
+
+        if (!isMultiParty) return;
+
+        const name = participant?.name || null;
+        let visitorKey = null;
+        try {
+            visitorKey = JSON.parse(participant?.metadata || '{}')?.visitorKey || null;
+        } catch { /* no/invalid metadata */ }
+
+        const returning = matchReturningParticipant(rosterHistory, { visitorKey, name });
+        if (returning) {
+            // Same person, new identity — update the existing roster entry in
+            // place and welcome them back rather than treating them as new.
+            const priorIdentity = returning.identity;
+            returning.identity = identity;
+            returning.name = name || returning.name;
+            returning.leftAt = null;
+            if (currentFloorIdentity === priorIdentity) currentFloorIdentity = identity;
+            if (lastAddressedIdentity === priorIdentity) lastAddressedIdentity = identity;
+            handQueue.lower(priorIdentity);
+            Session.updateOne(
+                { _id: session._id, 'participants.identity': priorIdentity },
+                {
+                    $set: { 'participants.$.identity': identity, 'participants.$.name': returning.name },
+                    $unset: { 'participants.$.leftAt': 1 }
+                }
+            ).catch((err) => log.warn('meeting: roster rejoin write failed (non-fatal)', { error: err.message }));
+            log.info('meeting: participant rejoined', { name: returning.name, priorIdentity, identity });
+            broadcastMeetingState();
+            if (presentationStarted) {
+                agentSession
+                    .generateReply({
+                        instructions: `${returning.name || 'A visitor'} has rejoined this session — you were already talking with them earlier. Say a short "welcome back" by name and continue naturally; do not restart or recap. Do not call any tools.`,
+                        toolChoice: 'none'
+                    })
+                    .catch(() => {});
+            }
+            return;
+        }
+
+        if (!rosterHistory.some((r) => r.identity === identity)) {
+            rosterHistory.push({ identity, name, visitorKey, leftAt: null });
+        }
+        Session.updateOne(
+            { _id: session._id, 'participants.identity': { $ne: identity } },
+            { $push: { participants: { identity, name, visitorKey, joinedAt: new Date() } } }
+        ).catch((err) => log.warn('meeting: roster add failed (non-fatal)', { error: err.message }));
+        broadcastMeetingState();
+
+        if (presentationStarted) {
+            // Latecomer during a live meeting — a short, single welcome line.
+            agentSession
+                .generateReply({
+                    instructions: `A new visitor${name ? ` (${name})` : ''} just joined the ongoing session. Greet them by name in one short line and briefly say what you're currently showing, then carry on — do not restart, do not recap everything, do not call any tools.`,
+                    toolChoice: 'none'
+                })
+                .catch(() => {});
+        } else {
+            evaluateMeetingStart('participant-joined');
+        }
     });
+
+    ctx.room.on(RoomEvent.ParticipantDisconnected, (participant) => {
+        const identity = participant?.identity;
+        if (!isMultiParty || !identity?.startsWith('visitor_')) return;
+        const entry = rosterHistory.find((r) => r.identity === identity);
+        if (entry) entry.leftAt = new Date();
+        handQueue.lower(identity);
+        if (currentFloorIdentity === identity) currentFloorIdentity = null;
+        broadcastMeetingState();
+        Session.updateOne(
+            { _id: session._id, 'participants.identity': identity },
+            { $set: { 'participants.$.leftAt': new Date() } }
+        ).catch((err) => log.warn('meeting: roster leftAt failed (non-fatal)', { error: err.message }));
+    });
+
+    // Active-speaker following: the realtime model (RoomIO) listens to one
+    // participant at a time, so point it at whoever is currently speaking —
+    // but ONLY a visitor whose mic is actually on, so a "unmute → talk → mute"
+    // blip doesn't leave the agent stuck on someone it can no longer hear.
+    ctx.room.on(RoomEvent.ActiveSpeakersChanged, (speakers) => {
+        if (!isMultiParty) return;
+        const id = pickActiveSpeaker(
+            (speakers || []).map((p) => ({ identity: p.identity, micOn: micOn(p) }))
+        );
+        if (!id || id === currentSpeakerIdentity) return;
+        currentSpeakerIdentity = id;
+        try {
+            agentSession._roomIO?.setParticipant(id);
+        } catch (err) {
+            log.warn('meeting: setParticipant failed (non-fatal)', { error: err.message });
+        }
+    });
+
+    // A visitor muting mid-conversation clears them as the "current speaker"
+    // so the next un-attributed utterance isn't pinned to a muted mic.
+    const onMuteChange = (_pub, participant) => {
+        const p = participant || _pub?.participant;
+        if (isMultiParty && p?.identity === currentSpeakerIdentity && !micOn(p)) {
+            currentSpeakerIdentity = null;
+        }
+    };
+    ctx.room.on(RoomEvent.TrackMuted, onMuteChange);
+    ctx.room.on(RoomEvent.TrackUnmuted, onMuteChange);
 
     // REST poll backstop — asks the LiveKit server directly instead of
     // trusting this worker's own local room mirror. Observed in practice:

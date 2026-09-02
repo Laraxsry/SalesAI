@@ -4,12 +4,40 @@ import { LiveKitRoom } from '@livekit/components-react';
 import { Logo } from '@repo/ui';
 import { Loader2, AlertCircle, PhoneOff, X } from 'lucide-react';
 import { VisitRoom } from './VisitRoom.jsx';
+import { PreCallSurvey } from './PreCallSurvey.jsx';
 import { isValidEmbedSession, resolveEmbedParentOrigin } from './embedProtocol.js';
 
 const API = import.meta.env.VITE_API_URL || 'http://localhost:5001';
 const READY_MESSAGE = 'salesai:embed:ready';
 const SESSION_MESSAGE = 'salesai:embed:session';
 const CLOSE_MESSAGE = 'salesai:embed:close';
+
+/** Per-share-link visitor identity kept in localStorage — the last name typed
+ * and a stable random key, so a reconnect to the same meeting is recognised as
+ * the same person (Görev #11). All storage access is best-effort. */
+function readVisitorStore(token) {
+    try {
+        const raw = localStorage.getItem(`salesai:v:${token}`);
+        const parsed = raw ? JSON.parse(raw) : {};
+        return { name: parsed.name || '', key: parsed.key || makeKey() };
+    } catch {
+        return { name: '', key: makeKey() };
+    }
+}
+function writeVisitorStore(token, name, key) {
+    try {
+        localStorage.setItem(`salesai:v:${token}`, JSON.stringify({ name, key }));
+    } catch {
+        /* private mode / storage disabled — non-fatal */
+    }
+}
+function makeKey() {
+    try {
+        return crypto.randomUUID();
+    } catch {
+        return `k_${Math.random().toString(36).slice(2)}${Date.now().toString(36)}`;
+    }
+}
 
 function CenteredMessage({ embed, icon: Icon, loading = false, onClose, children }) {
     return (
@@ -50,6 +78,22 @@ export function Visit() {
     const [debugAuth, setDebugAuth] = useState('');
     const [started, setStarted] = useState(false);
     const isDebug = searchParams.get('debug') === '1';
+    // Every visitor gives a name before joining (Görev #11) — the agent uses
+    // it to address people, and in a group session to say who asked what. The
+    // embed widget takes its name from the host page (or leaves it blank).
+    // A stable per-token key + the last name are kept in localStorage so a
+    // reconnect to the same meeting is recognised as the same person.
+    const stored = readVisitorStore(token);
+    const [nameInput, setNameInput] = useState(stored.name || '');
+    const [visitorName, setVisitorName] = useState(null);
+    const visitorKeyRef = useRef(stored.key);
+    const needsName = !embed && !isDebug && visitorName === null;
+    // Görev #7 — pre-call survey: null = still checking, false = off, true = run it.
+    const [surveyEnabled, setSurveyEnabled] = useState(embed || isDebug ? false : null);
+    const [surveyDone, setSurveyDone] = useState(false);
+    const planTokenRef = useRef(null);
+    const needsSurvey =
+        !embed && !isDebug && surveyEnabled === true && visitorName !== null && !surveyDone;
     // Guards against React 18 StrictMode's dev-only double effect invocation
     // (mount -> cleanup -> mount again). `ignore` below only prevents a stale
     // run from calling setConn — it does nothing to stop the POST /sessions
@@ -60,9 +104,29 @@ export function Visit() {
     // idempotent per token while still re-minting if the token itself changes.
     const startedForTokenRef = useRef(null);
 
+    // Görev #7 — check whether this link runs a pre-call survey.
+    useEffect(() => {
+        if (embed || isDebug) return;
+        let cancelled = false;
+        fetch(`${API}/api/v1/prejoin/${token}`)
+            .then((r) => (r.ok ? r.json() : {}))
+            .then((d) => {
+                if (!cancelled) setSurveyEnabled(Boolean(d?.surveyEnabled));
+            })
+            .catch(() => {
+                if (!cancelled) setSurveyEnabled(false);
+            });
+        return () => {
+            cancelled = true;
+        };
+    }, [token, embed, isDebug]);
+
     useEffect(() => {
         if (embed) return;
         if (isDebug && !started) return;
+        if (needsName) return; // wait for the name-entry screen
+        if (surveyEnabled === null) return; // still checking for a survey
+        if (needsSurvey) return; // wait for the questionnaire
         if (startedForTokenRef.current === token) return;
         startedForTokenRef.current = token;
 
@@ -78,6 +142,9 @@ export function Visit() {
         async function start() {
             try {
                 let body = { shareToken: token };
+                if (visitorName) body.visitorName = visitorName;
+                if (visitorKeyRef.current) body.visitorKey = visitorKeyRef.current;
+                if (planTokenRef.current) body.planToken = planTokenRef.current;
                 if (isDebug && debugAuth) {
                     try {
                         body.transientAuth = JSON.parse(debugAuth);
@@ -93,7 +160,7 @@ export function Visit() {
                     body: JSON.stringify(body)
                 });
                 const data = await res.json();
-                if (!res.ok) throw new Error('Bağlantı geçersiz veya artık aktif değil.');
+                if (!res.ok) throw new Error(data?.error || 'Bağlantı geçersiz veya artık aktif değil.');
                 // conn: { sessionId, roomName, token, livekitUrl }
                 setConn(data);
             } catch (err) {
@@ -103,7 +170,7 @@ export function Visit() {
             }
         }
         start();
-    }, [token, embed, isDebug, started, debugAuth]);
+    }, [token, embed, isDebug, started, debugAuth, needsName, visitorName, surveyEnabled, needsSurvey]);
 
     useEffect(() => {
         if (!embed) return;
@@ -156,6 +223,57 @@ export function Visit() {
     }
 
 
+    if (needsName) {
+        const submit = (e) => {
+            e.preventDefault();
+            const name = nameInput.trim() || 'Ziyaretçi';
+            writeVisitorStore(token, name, visitorKeyRef.current);
+            setVisitorName(name);
+        };
+        return (
+            <div className="visitor-stage relative flex h-full flex-col items-center justify-center overflow-hidden px-6 text-center">
+                <div className="visitor-grid pointer-events-none absolute inset-0 opacity-50" />
+                <form
+                    onSubmit={submit}
+                    className="relative z-10 w-full max-w-sm rounded-[28px] border border-white/10 bg-white/[0.055] p-8 shadow-2xl shadow-black/20 backdrop-blur-xl"
+                >
+                    <div className="mb-7 flex items-center justify-center">
+                        <Logo className="[&_span]:text-white [&_span_span]:text-[#d7f95b]" />
+                    </div>
+                    <p className="mb-4 text-sm font-medium leading-6 text-white/70">
+                        Görüşmeye başlamadan önce, size nasıl hitap edelim?
+                    </p>
+                    <input
+                        autoFocus
+                        value={nameInput}
+                        onChange={(e) => setNameInput(e.target.value)}
+                        maxLength={60}
+                        placeholder="Adınız"
+                        className="mb-4 h-11 w-full rounded-xl border border-white/10 bg-white/[0.06] px-4 text-sm text-white outline-none focus:border-[#d7f95b]"
+                    />
+                    <button
+                        type="submit"
+                        className="w-full rounded-xl bg-[#d7f95b] px-4 py-2.5 text-sm font-bold text-[#071713] hover:bg-[#c9ed45]"
+                    >
+                        {surveyEnabled ? 'Devam' : 'Katıl'}
+                    </button>
+                </form>
+            </div>
+        );
+    }
+
+    if (needsSurvey) {
+        return (
+            <PreCallSurvey
+                token={token}
+                onComplete={(planToken) => {
+                    planTokenRef.current = planToken || null;
+                    setSurveyDone(true);
+                }}
+            />
+        );
+    }
+
     // Checked before `error`: ending the call can make an in-flight LiveKit
     // connect() reject with a "client initiated disconnect" error — once the
     // visitor has intentionally left, that trailing rejection is just noise.
@@ -203,6 +321,7 @@ export function Visit() {
                     embedConfig={embedConfig}
                     sessionId={conn.sessionId}
                     roomName={conn.roomName}
+                    maxParticipants={conn.maxParticipants}
                     onClose={closeEmbed}
                     onEnd={() => setEnded(true)}
                 />

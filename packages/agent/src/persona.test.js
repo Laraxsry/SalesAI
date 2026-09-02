@@ -83,13 +83,39 @@ describe('buildSystemPrompt — how the agent sounds', () => {
         const prompt = buildSystemPrompt(baseCfg);
         expect(prompt).not.toContain('surface relevant features');
         expect(prompt).not.toContain('handle objections');
-        expect(prompt).toContain('not a rundown of everything the product can do');
+        expect(prompt).toContain('a rundown of everything the product can do');
     });
 
     it('rules out repeating itself and stacking benefits', () => {
         const prompt = buildSystemPrompt(baseCfg);
         expect(prompt).toContain('Never say something you have already said');
         expect(prompt).toContain('One idea per turn');
+    });
+
+    it('surfaces the pre-call survey intent near the top when present (Görev #7)', () => {
+        const withoutIntent = buildSystemPrompt(baseCfg);
+        const withIntent = buildSystemPrompt({
+            ...baseCfg,
+            preCallIntent: { summary: 'raporlama otomasyonu istiyor', role: 'Analist' }
+        });
+        expect(withoutIntent).not.toContain('What the visitor already told you');
+        expect(withIntent).toContain('What the visitor already told you');
+        expect(withIntent).toContain('raporlama otomasyonu istiyor');
+        expect(withIntent).toContain('Role: Analist');
+        // near the top — before "Your job:"
+        expect(withIntent.indexOf('What the visitor already told you')).toBeLessThan(
+            withIntent.indexOf('Your job:')
+        );
+    });
+
+    it('demands dense, high-value turns and bans padding (Görev #9)', () => {
+        const prompt = buildSystemPrompt(baseCfg);
+        expect(prompt).toContain('make every turn dense');
+        expect(prompt).toContain('Dense is not shallow');
+        expect(prompt).toContain('answer the actual question in your first sentence');
+        expect(prompt).toContain('Never pad');
+        // must not have leaked into "ask the customer to prioritise" territory
+        expect(prompt).not.toMatch(/what.{0,20}most important to you/i);
     });
 
     it('still never leaks that a plan exists, with the new block in place', () => {
@@ -121,17 +147,27 @@ describe('buildSystemPrompt — conversational behavior rules', () => {
         expect(withPlaybook).not.toContain('NEVER ask the customer what to do next or where to continue');
     });
 
-    it('tells the model never to preview a multi-step agenda out loud when transitioning', () => {
+    it('forbids narrating your own actions/plans, with concrete example phrasings', () => {
         const prompt = buildSystemPrompt(baseCfg);
-        expect(prompt).toContain('Never announce your plan');
+        expect(prompt).toContain('NEVER narrate your own actions, plans, or thinking');
+        expect(prompt.toLowerCase()).toContain('previewing an agenda');
         expect(prompt.toLowerCase()).toContain('first i\'ll show you x, then y');
     });
 
-    it('tells the model to fill slow navigation with a line instead of silence, only outside a playbook', () => {
+    it('gives the plan-talk forbidden examples in the agent\'s own language (Turkish)', () => {
+        const prompt = buildSystemPrompt({ ...baseCfg, persona: { language: 'tr' } });
+        expect(prompt).toContain('şimdi oraya geçiyorum');
+        expect(prompt).toContain('şunu inceleyip döneceğim');
+        expect(prompt).not.toContain('first I\'ll show you X, then Y');
+    });
+
+    it('fills the slow-navigation gap with substance, not navigation narration, only outside a playbook', () => {
         const withoutPlaybook = buildSystemPrompt(baseCfg);
         const withPlaybook = buildSystemPrompt({ ...baseCfg, playbookActive: true });
-        expect(withoutPlaybook).toContain('that must not be silence');
-        expect(withPlaybook).not.toContain('that must not be silence');
+        expect(withoutPlaybook).toContain('NAMES what is about to come up');
+        expect(withoutPlaybook).toContain('never do is narrate the navigation itself');
+        expect(withoutPlaybook.toLowerCase()).toContain('only fall back to a brief silence');
+        expect(withPlaybook).not.toContain('NAMES what is about to come up');
     });
 
     it('tells the model not to call read_tour_screen right after start_guided_tour/navigate_to, and not to retry-loop it, only outside a playbook', () => {
@@ -183,11 +219,12 @@ describe('buildSystemPrompt — conversational behavior rules', () => {
         expect(prompt).toContain("don't just recite the fact from memory over voice");
     });
 
-    it('tells the model never to narrate its own reasoning/planning process out loud, in either mode', () => {
+    it('tells the model never to narrate its own actions/plans out loud, in either mode', () => {
         const withoutPlaybook = buildSystemPrompt(baseCfg);
         const withPlaybook = buildSystemPrompt({ ...baseCfg, playbookActive: true });
         for (const prompt of [withoutPlaybook, withPlaybook]) {
-            expect(prompt).toContain('NEVER narrate your own reasoning or plan of action out loud');
+            expect(prompt).toContain('NEVER narrate your own actions, plans, or thinking');
+            expect(prompt).toContain('Speak only finished thoughts');
         }
     });
 
@@ -210,5 +247,17 @@ describe('buildSystemPrompt — conversational behavior rules', () => {
         const withPlaybook = buildSystemPrompt({ ...baseCfg, playbookActive: true });
         expect(withoutPlaybook).toContain("doesn't mean nothing happened");
         expect(withPlaybook).not.toContain("doesn't mean nothing happened");
+    });
+
+    it('adds group-session floor/hand-raising rules only when multiParticipant is set', () => {
+        const solo = buildSystemPrompt(baseCfg);
+        const group = buildSystemPrompt({ ...baseCfg, multiParticipant: true });
+        expect(solo).not.toContain('This is a group session with more than one visitor');
+        expect(solo).not.toContain('`next_participant`');
+        expect(group).toContain('This is a group session with more than one visitor');
+        expect(group).toContain('Address people by name');
+        expect(group).toContain('One person has the floor at a time');
+        expect(group).toContain('ask them to raise their hand');
+        expect(group).toContain('call `next_participant`');
     });
 });

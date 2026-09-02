@@ -3,6 +3,7 @@ import { useParams, Link, useNavigate } from 'react-router-dom';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { Button } from '@repo/ui';
 import { ArrowLeft, Bot, Rocket, Pause, Copy, Check, ExternalLink, AlertCircle, Trash2, MessageSquare, Code, Target } from 'lucide-react';
+import { MAX_ROOM_PARTICIPANTS } from '@repo/contracts';
 import { agentsApi } from '../lib/api.js';
 
 const STATUS_STYLE = {
@@ -48,6 +49,40 @@ export function AgentDetail() {
         queryKey: ['agent', id],
         queryFn: () => agentsApi.get(id)
     });
+
+    // Inline editor for "how many customers at once" — the only agent field
+    // that needs changing after creation for an existing agent to go multi-
+    // participant (there's otherwise no edit form on this page).
+    const [maxP, setMaxP] = useState('');
+    const currentMaxP = agent?.maxParticipants ?? 1;
+    const maxPDirty = maxP !== '' && Number(maxP) !== currentMaxP;
+
+    async function saveMaxParticipants() {
+        setError('');
+        setBusy(true);
+        try {
+            await agentsApi.update(id, { maxParticipants: Number(maxP) });
+            await queryClient.invalidateQueries({ queryKey: ['agent', id] });
+            setMaxP('');
+        } catch (err) {
+            setError(err.message);
+        } finally {
+            setBusy(false);
+        }
+    }
+
+    async function togglePreCallSurvey() {
+        setError('');
+        setBusy(true);
+        try {
+            await agentsApi.update(id, { preCallSurveyEnabled: !agent.preCallSurveyEnabled });
+            await queryClient.invalidateQueries({ queryKey: ['agent', id] });
+        } catch (err) {
+            setError(err.message);
+        } finally {
+            setBusy(false);
+        }
+    }
 
     async function onDelete() {
         if (!confirm(`"${agent.name}" agent'ını silmek istediğinize emin misiniz? Bu işlem geri alınamaz.`)) return;
@@ -156,6 +191,59 @@ export function AgentDetail() {
                             <dt className="text-text-muted">Ekran modları</dt>
                             <dd className="text-right text-text">{agent.screenModes?.join(', ') || '—'}</dd>
                         </div>
+                        <div className="flex items-start justify-between gap-4">
+                            <dt className="pt-1.5 text-text-muted">Katılımcı</dt>
+                            <dd className="flex flex-col items-end gap-1.5">
+                                <div className="flex items-center gap-2">
+                                    <input
+                                        type="number"
+                                        min={1}
+                                        max={MAX_ROOM_PARTICIPANTS}
+                                        value={maxP === '' ? currentMaxP : maxP}
+                                        onChange={(e) => setMaxP(e.target.value)}
+                                        className="h-8 w-16 rounded-[var(--radius-input)] border border-border bg-bg px-2 text-right text-sm text-text outline-none focus:border-brand"
+                                    />
+                                    <span className="text-xs text-text-muted">müşteri</span>
+                                    {maxPDirty && (
+                                        <button
+                                            type="button"
+                                            onClick={saveMaxParticipants}
+                                            disabled={busy}
+                                            className="rounded-[var(--radius-input)] bg-brand px-2.5 py-1 text-xs font-semibold text-white disabled:opacity-50"
+                                        >
+                                            Kaydet
+                                        </button>
+                                    )}
+                                </div>
+                                <span className="text-[11px] text-text-muted">
+                                    {currentMaxP > 1
+                                        ? 'Grup toplantısı — agent bu sayıya dahil değil'
+                                        : '1 = birebir görüşme'}
+                                </span>
+                            </dd>
+                        </div>
+                        {currentMaxP <= 1 && (
+                            <div className="flex items-start justify-between gap-4">
+                                <dt className="pt-1 text-text-muted">Ön anket</dt>
+                                <dd className="flex flex-col items-end gap-1">
+                                    <button
+                                        type="button"
+                                        onClick={togglePreCallSurvey}
+                                        disabled={busy}
+                                        className={`rounded-[var(--radius-input)] px-2.5 py-1 text-xs font-semibold disabled:opacity-50 ${
+                                            agent.preCallSurveyEnabled
+                                                ? 'bg-brand text-white'
+                                                : 'border border-border text-text-muted'
+                                        }`}
+                                    >
+                                        {agent.preCallSurveyEnabled ? 'Açık' : 'Kapalı'}
+                                    </button>
+                                    <span className="text-[11px] text-text-muted">
+                                        Birebir görüşmede ziyaretçi kısa anket doldurur
+                                    </span>
+                                </dd>
+                            </div>
+                        )}
                     </dl>
                 </div>
             </div>

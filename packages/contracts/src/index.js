@@ -168,6 +168,16 @@ export const KnowledgeTopicUpdateInput = z
     .refine((val) => Object.keys(val).length > 0, { message: 'En az bir alan gerekli' });
 
 // ─── Agent persona / configuration ────────────────────────────
+
+/**
+ * Hard ceiling on how many visitors one agent presents to at once (the agent
+ * itself is not counted). A safety cap against a misconfigured/abusive value
+ * blowing up room + realtime cost; the LiveKit room is created with
+ * maxParticipants = this + 1. Plain constant, not env — this module is bundled
+ * into the browser apps too.
+ */
+export const MAX_ROOM_PARTICIPANTS = 20;
+
 export const AgentConfigInput = z.object({
     productId: z.string(),
     name: z.string().min(1),
@@ -181,6 +191,12 @@ export const AgentConfigInput = z.object({
         .default({}),
     avatarProvider: AvatarProvider.default('voice-only'),
     screenModes: z.array(ScreenMode).default(['guided-tour', 'customer-share']),
+    // How many visitors this agent presents to at once (agent not counted).
+    // 1 = original single-visitor behavior.
+    maxParticipants: z.coerce.number().int().min(1).max(MAX_ROOM_PARTICIPANTS).default(1),
+    // Start 1-on-1 calls with an AI-generated adaptive questionnaire that
+    // produces a per-visitor tour plan.
+    preCallSurveyEnabled: z.boolean().default(false),
     // optional live tool access to the seller's product
     toolAccess: z
         .object({
@@ -208,6 +224,8 @@ export const AgentUpdateInput = z.object({
         .optional(),
     avatarProvider: AvatarProvider.optional(),
     screenModes: z.array(ScreenMode).optional(),
+    maxParticipants: z.coerce.number().int().min(1).max(MAX_ROOM_PARTICIPANTS).optional(),
+    preCallSurveyEnabled: z.boolean().optional(),
     toolAccess: z
         .object({
             enabled: z.boolean().optional(),
@@ -251,7 +269,22 @@ export const CreateSessionInput = z.object({
     visitorName: z.string().optional(),
     transientAuth: AuthMaterial.optional(),
     // Mobile Phase 3: tags the session so it shows up in GET /sessions/mine.
-    visitorId: z.string().optional()
+    visitorId: z.string().optional(),
+    // Görev #11 rejoin: a stable id the visitor keeps in localStorage, so a
+    // reconnect to the same meeting is recognised as the same person.
+    visitorKey: z.string().max(64).optional(),
+    // Görev #7: opaque handle to a server-stashed pre-call survey result
+    // (intent + generated tour plan) produced by POST /prejoin/:token/finalize.
+    planToken: z.string().max(64).optional()
+});
+
+// Görev #7 — pre-call survey rounds: the client re-sends every answer so far
+// each round (stateless, like the chat endpoint).
+export const PreCallSurveyInput = z.object({
+    answers: z
+        .array(z.object({ q: z.string().max(400), a: z.string().max(1200) }))
+        .max(12)
+        .default([])
 });
 
 // ─── Mobile Phase 3: Push & Saved Conversations ───────────────────────────

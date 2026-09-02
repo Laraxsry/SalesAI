@@ -12,11 +12,46 @@ const SessionSchema = new Schema(
         // history across devices without a full account.
         visitorId: { type: Schema.Types.ObjectId, ref: 'Visitor', index: true },
         status: {
+            // 'waiting' — multi-participant only: the agent has joined the room
+            // but the presentation has not started yet (waiting for the room to
+            // fill or for a "shall we start?" answer). Single-participant
+            // sessions go straight to 'live'.
             type: String,
-            enum: ['live', 'ended', 'failed'],
+            enum: ['waiting', 'live', 'ended', 'failed'],
             default: 'live',
             index: true
         },
+        // Everyone who has joined this room. `visitorName`/`visitorId` above
+        // stay as the PRIMARY (first) participant for backward compat with
+        // analytics/lead extraction; this is the full list for multi-participant
+        // meetings. `leftAt` set when they disconnect (kept, not spliced, so the
+        // roster history survives).
+        participants: {
+            type: [
+                {
+                    _id: false,
+                    identity: { type: String, required: true },
+                    name: { type: String },
+                    // Stable per-visitor id from the visitor's own localStorage,
+                    // used to recognise someone who dropped and rejoined the
+                    // same meeting (identity changes on reconnect, this doesn't).
+                    visitorKey: { type: String },
+                    joinedAt: { type: Date, default: Date.now },
+                    leftAt: { type: Date }
+                }
+            ],
+            default: []
+        },
+        // Pinned from Agent.maxParticipants at session creation (same
+        // version-pin idea as the playbook snapshot) so mid-meeting config
+        // changes never alter an in-progress room. 1 = single-visitor.
+        maxParticipants: { type: Number, default: 1 },
+        // Pre-call survey (Agent.preCallSurveyEnabled): the LLM's structured
+        // read of what this visitor wants, and the per-visitor tour plan built
+        // from it. Both pinned at mint from a server-stashed planToken; the
+        // plan runs instead of any static Playbook for this session.
+        preCallIntent: { type: Schema.Types.Mixed },
+        generatedPlan: { type: Schema.Types.Mixed },
         screenMode: {
             type: String,
             enum: ['none', 'guided-tour', 'customer-share'],

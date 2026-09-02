@@ -2,6 +2,7 @@ import { authRouter } from './auth.js';
 import { workspacesRouter } from './workspaces.js';
 import { productsRouter } from './products.js';
 import { sessionsRouter } from './sessions.js';
+import { prejoinRouter } from './prejoin.js';
 import { knowledgeRouter } from './knowledge.js';
 import { agentsRouter } from './agents.js';
 import { analyticsRouter } from './analytics.js';
@@ -39,6 +40,8 @@ export function registerRoutes(app) {
 
     // Phase 1+: Knowledge, Agents, Sessions
     app.use('/api/v1/sessions', sessionsRouter);
+    // Görev #7: public pre-call adaptive survey (own per-route rate limits)
+    app.use('/api/v1/prejoin', prejoinRouter);
     app.use('/api/v1/knowledge', knowledgeRouter);
     app.use('/api/v1/agents', agentsRouter);
     app.use('/api/v1/analytics', analyticsRouter);

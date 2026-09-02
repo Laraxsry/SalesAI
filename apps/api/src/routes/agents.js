@@ -97,6 +97,10 @@ agentsRouter.post('/', requireAuth, validate({ body: AgentConfigInput }), async 
         // earliest-created agent), so this only fires once per product.
         const isFirstAgent = (await Agent.countDocuments({ productId: req.body.productId })) === 0;
 
+        // The pre-call survey is a 1-on-1 feature — never let it ride along
+        // with a group agent.
+        if (Number(req.body.maxParticipants) > 1) req.body.preCallSurveyEnabled = false;
+
         const agent = await Agent.create(req.body);
 
         if (isFirstAgent) {
@@ -194,6 +198,15 @@ agentsRouter.patch('/:id', requireAuth, validate({ body: AgentUpdateInput }), as
         if (req.body.name !== undefined) update.name = req.body.name;
         if (req.body.avatarProvider !== undefined) update.avatarProvider = req.body.avatarProvider;
         if (req.body.screenModes !== undefined) update.screenModes = req.body.screenModes;
+        if (req.body.maxParticipants !== undefined) update.maxParticipants = req.body.maxParticipants;
+        if (req.body.preCallSurveyEnabled !== undefined)
+            update.preCallSurveyEnabled = req.body.preCallSurveyEnabled;
+
+        // 1-on-1 feature only: force the survey off if this save leaves the
+        // agent with more than one participant.
+        const nextMaxP =
+            req.body.maxParticipants !== undefined ? req.body.maxParticipants : agent.maxParticipants;
+        if (Number(nextMaxP) > 1) update.preCallSurveyEnabled = false;
 
         // Merge persona fields individually to avoid overwriting unset keys
         if (req.body.persona) {

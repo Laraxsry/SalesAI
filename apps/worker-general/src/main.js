@@ -53,7 +53,10 @@ async function main() {
                 // no heartbeat for 5 minutes means the worker process died.
                 await Session.updateMany(
                     {
-                        status: 'live',
+                        // 'waiting' too: a multi-participant room whose agent
+                        // process died while still waiting for people to join
+                        // also stops heartbeating and should be reaped.
+                        status: { $in: ['waiting', 'live'] },
                         lastActivityAt: { $lte: new Date(Date.now() - 5 * 60 * 1000) }
                     },
                     { status: 'ended', endedAt: new Date() }

@@ -111,6 +111,75 @@
      çökertiyordu (ses + transcript aynı anda kesiliyordu). Artık doğru `tourVideoTrack.sid`
      gönderiliyor; ayrıca eş zamanlı devam eden bir ekran-görüntüsü-yakalama döngüsüyle
      çakışmayı önlemek için ayrı bir `tourCaptureInFlight` guard'ı da eklendi.
+   - [x] **Sistem promptu yeniden yapılandırıldı** (Görev #10, `packages/agent/src/persona.js`) —
+     bir dil modeli context'in başını ve sonunu en güçlü işler, bu yüzden kimlik + "ne yapmalı"
+     talimatları en başa, tüm katı yasaklar ("Hard rules — never do any of these") tek blok
+     halinde en sona toplandı; mekanik/referans kurallar ortada. İçerik/anlam korundu, sıra
+     değişti. Regresyon kilidi: `backend_tests/unit/system-prompt-structure.mjs`.
+   - [x] **Agent kendi planını/işlemlerini anlatmıyor** (Görev #5) — "let me switch over",
+     "şimdi oraya geçiyorum", "şunu inceleyip döneceğim", "bunu netleştireyim", "önce şunu
+     sonra şunu göstereceğim" tarzı, öznesi "ben bir şey yapıyorum/yapacağım" olan hiçbir
+     cümle. Yasak örnekler agent'ın **kendi dilinde** veriliyor (`persona.js`'te
+     `language === 'tr'` dalı). Başta olumlu çerçeve ("Speak only finished thoughts"),
+     sonda "Hard rules" bloğunda kategori + örnekler. Navigasyon boşluğu kuralı da
+     yeniden yazıldı: "birazdan geleni adıyla söyle" (sesle doldur), sessizlik yalnız
+     söylenecek bir şey yoksa; navigasyonun kendisini ("geçiyorum") anlatmak yasak.
+   - [x] **Her tur dolu ve kişiye özel** (Görev #9) — zaman kısıtı/dürtme YOK (kullanıcı
+     kararı); bunun yerine yoğunluk kuralları: her tur somut bir nokta verir / ekranda
+     bir şey gösterir / hedefe yaklaştırır; girizgah yok, asıl cevap ilk cümlede; müşteri
+     rolünü/sorununu belli ettiği an demo ona göre şekillenir; "Never pad" (sadece bir
+     sonraki cümleyi hazırlayan cümle yok). Regresyon: eski sorunları tetiklememesi için
+     aciliyet-konuşması, "ne yapayım diye sorma", ajanda-anonsu kuralları korundu.
+   - [x] **Çoklu katılımcı toplantısı** (`Agent.maxParticipants > 1`, agent sayıya dahil
+     değil; default `1` = mevcut birebir akış hiç değişmez). Ayrıntı:
+     `md/02_ai_realtime_avatar_screen.md` §2.5. Özet: aynı linke giren 2. kişi var olan
+     odaya JOIN eder (`pickSessionForJoin()`); agent odaya girip bekler (oda dolunca / her
+     60sn "başlayalım mı" / `AGENT_MEETING_MAX_WAIT_MS` sınırı — karar mantığı
+     `@repo/agent`'ın `meeting.js`'inde, saf); `ActiveSpeakersChanged` ile aktif konuşana
+     `roomIO.setParticipant`; `Session.status` `waiting → live`; `Session.participants[]`
+     roster. Testler: `backend_tests/unit/{session-join-or-create,meeting-gate,agent-max-participants-schema}.mjs`,
+     `packages/agent/src/meeting.test.js`.
+   - [x] **İsim + hitap + soru kuyruğu** (Görev #11) — her ziyaretçi katılım ekranında isim
+     verir (`apps/visitor/src/Visit.jsx`), `Session.participants[].name`'e yazılır. Grup
+     modunda sistem promptuna hitap kuralı + roster notu (`buildRosterNote()`); agent
+     konuşurken gelen sorular `allowInterruptions:false` ile bölmez, kuyruğa alınır
+     (`apps/agent-worker/src/question-queue.js`, soran `resolveSpeaker()` ile etiketli) ve
+     agent susunca tek `generateReply` ile toplu cevaplanır
+     (`buildQueuedQuestionsInstruction()`). Testler:
+     `backend_tests/unit/question-queue-roster.mjs`, `packages/agent/src/roster.test.js`.
+   - [x] **Katılımcı paneli + mikrofon-farkında aktif konuşan** — visitor UI'da
+     Teams tarzı, sağdan açılır-kapanır katılımcı paneli (kişi başına mic açık/kapalı
+     ikonu + konuşma halkası; sadece grup görüşmesinde görünür,
+     `apps/visitor/src/ParticipantsPanel.jsx` + saf `participant-rows.js`). agent-worker
+     tarafında aktif konuşan seçimi artık yalnızca **mikrofonu açık** visitor'ı dikkate
+     alıyor (`pickActiveSpeaker`), muted olan `currentSpeakerIdentity`'yi bırakıyor, ve
+     transkript ataması önce SDK `speakerId`'sine güveniyor
+     (`chooseAttribution`, `apps/agent-worker/src/active-speaker.js`). Testler:
+     `backend_tests/unit/{active-speaker,participant-rows}.mjs`.
+   - [x] **Bekleme/söz-sırası durumu · el kaldırma · oda dolu · isim hatırlama**
+     (ayrıntı: `md/02_ai_realtime_avatar_screen.md` §2.5). agent-worker odaya her
+     değişimde `{type:'salesai:meeting', phase, floor, hands, …}` yayınlıyor; visitor
+     bunu orb altında yazıyla gösteriyor (`useMeetingState` + `meeting-status.js`,
+     ayrı UI yok). "El kaldır" butonu → FIFO `createHandQueue`; agent yeni
+     `next_participant` aracıyla söz sırasını yönetiyor (floor sahibini bitir →
+     "başka soru?" → sıradaki el kaldıran). Oda dolunca `pickSessionForJoin` →
+     `{action:'full'}` → 409 "Bu oturum dolu" (link başına tek toplantı). Ziyaretçi
+     `localStorage`'da `visitorKey` tutuyor; reconnect'te `matchReturningParticipant`
+     ile `leftAt`'li kayda eşleşiyor, agent "tekrar hoş geldin" deyip devam ediyor.
+     Testler: `backend_tests/unit/{meeting-status,hand-queue,returning-participant,
+     question-queue-roster,session-join-or-create}.mjs` + `packages/agent` vitest.
+   - [x] **Görüşme öncesi AI anketi → kişiye özel plan** (Görev #7, ayrıntı:
+     `md/02_ai_realtime_avatar_screen.md` §2.6). Tek ürün-sahibi ayarı
+     `Agent.preCallSurveyEnabled` (birebir). Ziyaretçi katılım ekranından sonra
+     LLM-üretimi adaptif anket (`PreCallSurvey.jsx` → `POST /prejoin/:token/survey`,
+     `@repo/ai`'ın `nextSurveyQuestion`'ı, max 7). Bitince `buildTourPlan` →
+     `{url?,coverage,narration}` planı (anlatım metni önceden yazılı);
+     `sanitizeGeneratedPlan` `agent.screenModes`'a saygı duyar (sesli-only →
+     URL yok). Plan Redis'te stash'lenir, `planToken` ile `POST /sessions` →
+     `Session.generatedPlan`/`preCallIntent`. agent-worker'da bu plan oturumun
+     playbook'u (`planToPlaybookNodes`), statik `Playbook` yerine; hazır
+     `narration` `wrapDirective` ile modele verilir; 1. sayfa greeting'te ısıtılır.
+     Testler: `backend_tests/unit/pre-call-helpers.mjs` + `packages/agent` vitest.
 
 ---
 

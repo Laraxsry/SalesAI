@@ -11,7 +11,13 @@
 - [x] Auth (login/register) + workspace context.
 - [x] Product CRUD.
 - [x] Knowledge manager: add text/URL/API, upload docs/images/video, live status.
-- [x] Agent builder: persona, avatar provider, screen modes, tool access.
+- [x] Agent builder: persona, avatar provider, screen modes, tool access,
+  **"Aynı anda kaç müşteriye sunum yapsın?"** (`Agent.maxParticipants`, default
+  1 = birebir; agent bu sayıya dahil değil — `>1` çoklu katılımcı toplantısını
+  açar, bkz. `md/02_ai_realtime_avatar_screen.md` §2.5). Ayrıca **"Görüşmeye ön
+  anketle başla"** onay kutusu (`Agent.preCallSurveyEnabled`, §2.6 — birebir
+  görüşmede ziyaretçi kısa bir yapay zekâ anketi doldurur). İkisi de Agent
+  detay sayfasından sonradan değiştirilebiliyor.
 - [x] Activate -> show share link + embed snippet.
 
 ---

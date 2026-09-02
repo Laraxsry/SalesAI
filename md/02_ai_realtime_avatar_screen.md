@@ -81,6 +81,20 @@ into the visitor's room. The worker:
 
 See [`apps/agent-worker/src/agent.js`](../apps/agent-worker/src/agent.js).
 
+**System-prompt layout** ([`persona.js`](../packages/agent/src/persona.js)'s
+`buildSystemPrompt`) — ordering is deliberate: a model weights the very start and the very end of its
+context most, so identity + what-to-DO comes first, mechanical/reference rules
+sit in the middle, and every prohibition is in one final **"Hard rules — never
+do any of these"** block. Two prompt themes matter for how the agent feels:
+- **No self-narration** — the agent never voices its own actions, plans or
+  thinking ("let me switch over", *"şimdi oraya geçiyorum"*, *"şunu inceleyip
+  döneceğim"*, "first I'll show you X then Y"). Forbidden examples are given in
+  the agent's own language. It acts silently and speaks finished thoughts.
+- **Dense, tailored turns** — every turn must land a concrete point / show
+  something / advance the goal; no warm-up, answer in the first sentence,
+  reshape the demo around what the visitor signalled they care about, "never
+  pad". Regression lock: `backend_tests/unit/system-prompt-structure.mjs`.
+
 ### 2.2 LLM strategy
 
 Two interchangeable modes:
@@ -144,6 +158,112 @@ If the agent's `toolAccess.enabled` is set, the agent can call the seller's real
 product (REST via OpenAPI, or an MCP server) so it answers about **live state**
 ("your current plan is Pro, you have 3 seats left") rather than only static docs.
 The Realtime API supports remote MCP servers directly.
+
+### 2.5 Multi-participant meetings (`Agent.maxParticipants > 1`)
+
+`maxParticipants` (agent NOT counted) turns one room into a group demo. The
+default `1` keeps the original single-visitor path untouched; everything below
+only runs when it's greater than 1.
+
+- **Joining** — a second visitor on the same share link lands in the SAME
+  LiveKit room (`pickSessionForJoin()`, `share-link-sessions.js`); the room is
+  pre-created with a hard cap of `maxParticipants + 1`.
+- **Waiting gate** — the agent joins and waits before presenting. It starts
+  once the room is full, once a visitor answers "yes, start" to the check it
+  voices every 60s, or once `AGENT_MEETING_MAX_WAIT_MS` (default 10 min)
+  elapses. The decision logic is pure — `classifyStartIntent()` /
+  `shouldStartMeeting()` in `@repo/agent`'s `meeting.js`. `Session.status`
+  moves `waiting → live` when it begins.
+- **Room full** — one meeting per share link at a time. When the active
+  meeting is at capacity `pickSessionForJoin()` returns `{action:'full'}`,
+  `mintSession()` throws a 409 and the visitor sees "Bu oturum şu anda dolu".
+  A fresh room is only created when there's no active meeting at all.
+- **Meeting-state broadcast** — the agent-worker publishes the full state
+  (`{type:'salesai:meeting', phase, visitorCount, maxParticipants, floor,
+  hands}`) on the `salesai` data-channel topic on every change. The visitor
+  reads it via `useMeetingState()` and shows a status line UNDER the AI orb
+  (no separate UI) — `buildMeetingStatusText()` in `meeting-status.js`:
+  "N kişi katıldı — bekleniyor" while waiting, "X ile konuşuluyor · Sırada: …"
+  once someone has the floor.
+- **Raise hand & turn order** — a "El kaldır" button in the visitor control
+  bar sends `{type:'salesai:hand', raised}`. The worker keeps a FIFO
+  `createHandQueue()` and exposes a `next_participant` tool: the agent finishes
+  with whoever has the floor, asks if they have anything else, and only then
+  calls `next_participant` to take the next raised hand. Others chiming in
+  without raising a hand are folded into the current answer if on-topic, or
+  told to raise their hand for a new topic (persona rules + the floor-aware
+  `buildTurnResponseInstruction()`).
+- **Active-speaker following** — `@livekit/agents`' `RoomIO` links the realtime
+  model to one participant at a time, so on `ActiveSpeakersChanged` the worker
+  calls `_roomIO.setParticipant(<current speaker>)`. Only a visitor whose mic is
+  actually ON is ever considered (`pickActiveSpeaker()` /
+  `apps/agent-worker/src/active-speaker.js`), and a visitor who mutes clears
+  themselves as the current speaker — so "unmute → talk → mute" can't leave the
+  agent stuck on a mic it can't hear. Utterance attribution trusts the SDK's
+  own `speakerId` first and only falls back to the last active speaker while
+  that mic is still on (`chooseAttribution()`). Two people talking at once means
+  one is missed — acceptable for a sales meeting.
+- **Names & addressing** — every visitor enters a name on the join screen
+  (`Visit.jsx`), persisted to `Session.participants[]`. The system prompt gets
+  a group-session rule (`multiParticipant` flag in `buildSystemPrompt`) and a
+  roster note (`buildRosterNote()`), so the agent addresses people by name.
+- **Rejoin recognition** — the visitor keeps a stable `visitorKey` +
+  last name in `localStorage['salesai:v:<token>']`. On reconnect the worker
+  matches it against a `leftAt` roster entry (`matchReturningParticipant()`,
+  key first, name fallback only when neither side has a key), updates that
+  entry's identity in place, and tells the agent to welcome them back and
+  continue — the realtime context still has the whole conversation.
+- **Participants panel** (`apps/visitor/src/ParticipantsPanel.jsx`) — a
+  Teams-style collapsible pane pinned to the right edge, collapsed by default to
+  a slim rail with a count badge. Lists everyone with a per-person mic on/off
+  icon and a speaking ring (ring only lights when the mic is on). Shown when the
+  session is group-capable (`maxParticipants > 1`, threaded through the
+  `POST /sessions` response so a solo tester still finds it) or 2+ humans are
+  present; a plain 1-on-1 call is unchanged. Pure helpers:
+  `buildParticipantRows()` + `shouldShowPanel()` in `participant-rows.js`.
+  `Agent.maxParticipants` is editable after creation on the agent detail page
+  (`AgentDetail.jsx`) — an existing agent isn't stuck at 1.
+- **Question queue** — `allowInterruptions` is turned off, so nothing barges in
+  mid-sentence. Everything said while the agent talks is buffered
+  (`apps/agent-worker/src/question-queue.js`, tagged with the asker via
+  `resolveSpeaker()` + mic-aware `chooseAttribution()`) and answered as one
+  `generateReply` when the agent stops, with floor/hand context via
+  `buildTurnResponseInstruction()`.
+
+### 2.6 Pre-call adaptive survey → per-visitor plan (`Agent.preCallSurveyEnabled`)
+
+1-on-1 only. The seller's only knob is the on/off toggle; the questions are
+LLM-generated, not authored. The toggle is hidden in the Console when
+`maxParticipants > 1`, and the agents create/update routes force
+`preCallSurveyEnabled` off whenever the save leaves the agent with more than
+one participant — and `GET /prejoin` only reports `surveyEnabled:true` for a
+1-on-1 agent, so it's safe three ways over.
+
+- **Join flow** — `Visit.jsx` fetches `GET /prejoin/:shareToken`. If
+  `surveyEnabled`, after the name screen it shows `PreCallSurvey.jsx`: one
+  AI-generated question at a time (`POST /prejoin/:token/survey`, stateless —
+  the client re-sends every answer). Adaptive: each next question comes from the
+  previous answer. Stops when the LLM has enough, or at 7 (`surveyShouldStop`).
+- **Plan** — `POST /prejoin/:token/finalize` runs a heavier LLM pass
+  (`buildTourPlan` in `@repo/ai`) → an ordered `{ url?, coverage, narration }`
+  plan with the narration **pre-written for this visitor**. `sanitizeGeneratedPlan`
+  (`@repo/agent`) enforces `agent.screenModes`: a voice-only agent's plan has NO
+  page URLs; a guided-tour agent's URLs must be real crawled pages. The plan is
+  stashed in Redis (`pre-call-plan-store.js`, 15-min TTL) and the visitor gets
+  an opaque `planToken`.
+- **Session** — `POST /sessions` passes `planToken`; `mintSession` pulls the
+  stashed `{ intent, plan }` and pins them on `Session.preCallIntent` /
+  `Session.generatedPlan`.
+- **agent-worker** — when `generatedPlan` is set it IS this session's playbook
+  (`planToPlaybookNodes` → cursor/runtime), replacing any static `Playbook`.
+  Each step's pre-written `narration` is handed to the model via `wrapDirective`
+  ("deliver this, don't compose") — removes compose latency. The browser is
+  warmed to step 1's URL during startup. `preCallIntent` goes into the system
+  prompt near the top ("skip the generic intro, go straight to what serves
+  this"). Plan is fixed at start; mid-call re-planning is #6.
+- **Cost** — ~7 cheap `gpt-4o-mini` question calls + 1 plan call per surveyed
+  visitor; `chatRateLimit` + `blockSuspiciousBots` + `PRECALL_SURVEY_DAILY_LIMIT`
+  per share link. All non-fatal: any failure → survey skipped, normal flow.
 
 ---
 

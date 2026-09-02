@@ -4,7 +4,7 @@ import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { useForm, Controller } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { z } from 'zod';
-import { AgentConfigInput } from '@repo/contracts';
+import { AgentConfigInput, MAX_ROOM_PARTICIPANTS } from '@repo/contracts';
 import { Button, Input } from '@repo/ui';
 import { Plus, Bot, X, AlertCircle } from 'lucide-react';
 import { productsApi, agentsApi } from '../lib/api.js';
@@ -60,7 +60,9 @@ function buildAgentFormSchema(productId) {
             name: data?.name,
             persona: { tone: data?.tone, language: data?.language, goals, guardrails: [] },
             avatarProvider: data?.avatarProvider,
-            screenModes: data?.screenModes || []
+            screenModes: data?.screenModes || [],
+            maxParticipants: data?.maxParticipants,
+            preCallSurveyEnabled: Boolean(data?.preCallSurveyEnabled)
         };
     }, AgentConfigInput);
 }
@@ -71,6 +73,7 @@ function NewAgentModal({ productId, onClose, onCreated }) {
         register,
         handleSubmit,
         control,
+        watch,
         formState: { errors, isSubmitting }
     } = useForm({
         resolver: zodResolver(buildAgentFormSchema(productId)),
@@ -80,7 +83,9 @@ function NewAgentModal({ productId, onClose, onCreated }) {
             language: 'tr',
             goalsText: DEFAULT_PERSONA_GOALS,
             avatarProvider: 'voice-only',
-            screenModes: ['guided-tour', 'customer-share']
+            screenModes: ['guided-tour', 'customer-share'],
+            maxParticipants: 1,
+            preCallSurveyEnabled: false
         }
     });
 
@@ -141,6 +146,16 @@ function NewAgentModal({ productId, onClose, onCreated }) {
                         {...register('goalsText')}
                     />
 
+                    <Input
+                        id="agent-max-participants"
+                        type="number"
+                        min={1}
+                        max={MAX_ROOM_PARTICIPANTS}
+                        label="Aynı anda kaç müşteriye sunum yapsın? (1 = birebir; agent bu sayıya dahil değil)"
+                        error={errors.maxParticipants?.message}
+                        {...register('maxParticipants')}
+                    />
+
                     <label className="mb-4 block text-sm">
                         <span className="mb-1.5 block font-medium text-text-muted">Avatar sağlayıcı</span>
                         <select
@@ -183,6 +198,23 @@ function NewAgentModal({ productId, onClose, onCreated }) {
                             </div>
                         )}
                     />
+
+                    {Number(watch('maxParticipants')) <= 1 && (
+                        <label className="mb-4 flex items-start gap-2 text-sm text-text">
+                            <input
+                                type="checkbox"
+                                {...register('preCallSurveyEnabled')}
+                                className="mt-0.5 h-4 w-4 rounded border-border accent-[var(--color-brand)]"
+                            />
+                            <span>
+                                Görüşmeye ön anketle başla
+                                <span className="mt-0.5 block text-xs text-text-muted">
+                                    Yalnız birebir görüşmelerde. Ziyaretçi kısa bir yapay zekâ anketi
+                                    doldurur, agent ona özel bir tur planı izler.
+                                </span>
+                            </span>
+                        </label>
+                    )}
 
                     {error && (
                         <div className="mb-4 flex items-center gap-2 rounded-[var(--radius-input)] border border-red-500/30 bg-red-500/10 px-3 py-2.5 text-sm text-red-400">

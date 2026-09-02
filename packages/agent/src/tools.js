@@ -155,7 +155,11 @@ function searchSiteElements(siteMap, query) {
  * model from reaching for it at all — a system-prompt rule can't override a
  * tool the model can see and whose description matches what it just did.
  *
- * @param {{ productId:string, tour?:object, screen?:object, stopScreenShare?:Function, saveContactInfo?:Function, advanceStep?:Function, siteMap?:object[], playbookActive?:boolean, expectResponse?:Function }} ctx
+ * `next_participant` is likewise only INCLUDED when `multiParticipant` — it
+ * moves the floor to the next visitor with a raised hand, which is meaningless
+ * (and a passivity trap, like `advance_step`) in a 1-on-1 call.
+ *
+ * @param {{ productId:string, tour?:object, screen?:object, stopScreenShare?:Function, saveContactInfo?:Function, advanceStep?:Function, siteMap?:object[], playbookActive?:boolean, multiParticipant?:boolean, expectResponse?:Function, nextParticipant?:Function }} ctx
  */
 export function buildTools({
     productId,
@@ -166,7 +170,9 @@ export function buildTools({
     advanceStep,
     siteMap = [],
     playbookActive = false,
-    expectResponse
+    multiParticipant = false,
+    expectResponse,
+    nextParticipant
 }) {
     const tools = [
         {
@@ -347,6 +353,16 @@ export function buildTools({
             handler: async () => expectResponse?.() ?? { ok: false }
         }
     ];
+
+    if (multiParticipant) {
+        tools.push({
+            name: 'next_participant',
+            description:
+                "Group session only. Call this ONCE you have fully answered whoever currently has the floor AND they have confirmed they have nothing else — it hands the floor to the next visitor who raised their hand and returns their name (or {next:null} if nobody is waiting). NEVER call it while the current person still has questions, or while others are actively discussing the current topic.",
+            parameters: { type: 'object', properties: {} },
+            handler: async () => nextParticipant?.() ?? { ok: false }
+        });
+    }
 
     if (playbookActive) {
         tools.push({

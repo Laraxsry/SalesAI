@@ -121,7 +121,11 @@ export function buildIdleNudgeInstructions({ consecutive = 1, lastUtterance } = 
  * rests on: a model that cannot see the plan cannot narrate the plan, announce
  * an agenda, or lose its place in one.
  *
- * @param {{ directive: string, attach?: string|null, url?: string|null }} node
+ * When `node.narration` is set (a pre-call-survey plan step, Görev #7), the text
+ * is ALREADY WRITTEN for this specific visitor — the model delivers it rather
+ * than composing from a topic, which removes the compose latency.
+ *
+ * @param {{ directive: string, narration?: string|null, attach?: string|null, url?: string|null }} node
  * @param {object} [opts]
  * @param {boolean} [opts.screenVisible] a page is already on the visitor's screen
  * @param {boolean} [opts.resuming] this step was cut short earlier and is being retried
@@ -131,13 +135,19 @@ export function buildIdleNudgeInstructions({ consecutive = 1, lastUtterance } = 
  * @returns {string}
  */
 export function wrapDirective(node, { screenVisible = false, resuming = false, spokenSoFar = null } = {}) {
-    const lines = [
-        'Cover the following topic now, in your own words, as a natural part of the conversation.',
-        'This is a private note to you: never read it aloud, never quote it, and never mention that you were told to say anything.',
-        `Topic: ${node.directive}`,
-        'Say it as one natural thought inside the conversation you are already having — connect it to what was just said, and do not announce a new subject.',
-        'If the note lists several things, lead with the one that matters most to this visitor right now. You do not have to get through all of it in one breath.'
-    ];
+    const lines = node.narration
+        ? [
+              'Say the following now, as a natural part of the conversation. It is already written for this specific visitor — deliver it in your own voice, keep it this tight, adapt the tone to how the conversation feels, but keep the meaning and the length. Do not read it robotically, and never mention that you were handed anything.',
+              `Say: ${node.narration}`,
+              'Connect it to what was just said and do not announce a new subject.'
+          ]
+        : [
+              'Cover the following topic now, in your own words, as a natural part of the conversation.',
+              'This is a private note to you: never read it aloud, never quote it, and never mention that you were told to say anything.',
+              `Topic: ${node.directive}`,
+              'Say it as one natural thought inside the conversation you are already having — connect it to what was just said, and do not announce a new subject.',
+              'If the note lists several things, lead with the one that matters most to this visitor right now. You do not have to get through all of it in one breath.'
+          ];
 
     if (screenVisible) {
         lines.push(

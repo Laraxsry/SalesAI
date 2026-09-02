@@ -74,6 +74,7 @@ embedRouter.post(
             });
             res.json({ ...result, config: publicConfig(req.embed.embedConfig) });
         } catch (err) {
+            if (err?.httpStatus) return res.status(err.httpStatus).json({ error: err.message });
             next(err);
         }
     }

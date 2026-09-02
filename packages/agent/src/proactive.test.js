@@ -63,6 +63,17 @@ describe('wrapDirective', () => {
         expect(wrapDirective(node)).toContain(node.directive);
     });
 
+    it('delivers pre-written narration (Görev #7 plan step) instead of framing a topic', () => {
+        const narrated = wrapDirective({
+            directive: 'fiyat',
+            narration: 'Fiyatlandırma kullanıcı başına aylık; ilk 3 koltuk ücretsiz.'
+        });
+        expect(narrated).toContain('Fiyatlandırma kullanıcı başına aylık; ilk 3 koltuk ücretsiz.');
+        expect(narrated.toLowerCase()).toContain('already written for this specific visitor');
+        expect(narrated).not.toContain('Topic: fiyat');
+        expect(narrated.toLowerCase()).toContain('deliver it in your own voice');
+    });
+
     it('frames the directive as a private note, never as a line to read', () => {
         // The whole point: a voice model handed a raw colon-list will read the
         // colon-list. If this framing is dropped the demo sounds like someone

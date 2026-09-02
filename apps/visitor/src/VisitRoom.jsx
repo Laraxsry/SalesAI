@@ -10,7 +10,10 @@ import {
 } from '@livekit/components-react';
 import { RoomEvent, Track } from 'livekit-client';
 import { Logo } from '@repo/ui';
-import { Mic, MicOff, PhoneOff, ScreenShare, ScreenShareOff, X } from 'lucide-react';
+import { Mic, MicOff, PhoneOff, ScreenShare, ScreenShareOff, X, Hand } from 'lucide-react';
+import { ParticipantsPanel } from './ParticipantsPanel.jsx';
+import { useMeetingState } from './useMeetingState.js';
+import { buildMeetingStatusText } from './meeting-status.js';
 
 // 'listening' deliberately does NOT say "Dinliyor…" (listening/waiting) —
 // the agent now self-continues almost instantly between its own turns
@@ -51,7 +54,7 @@ function Captions({ segments }) {
 }
 
 /** Rendered inside <LiveKitRoom>; everything here relies on LiveKit's room context. */
-export function VisitRoom({ embed, embedConfig, sessionId, roomName, onClose, onEnd }) {
+export function VisitRoom({ embed, embedConfig, sessionId, roomName, maxParticipants, onClose, onEnd }) {
     const { state, audioTrack, videoTrack, agentTranscriptions } = useVoiceAssistant();
     const { localParticipant, isMicrophoneEnabled, isScreenShareEnabled } = useLocalParticipant();
     // useVoiceAssistant only surfaces mic/camera; the guided-tour browser is
@@ -66,6 +69,20 @@ export function VisitRoom({ embed, embedConfig, sessionId, roomName, onClose, on
     const [shareError, setShareError] = useState('');
     const [showShareConsent, setShowShareConsent] = useState(false);
     const startedRef = useRef(false);
+
+    // Görev #11 — group meeting: waiting/floor status line + raise-hand.
+    const isGroup = Number(maxParticipants) > 1;
+    const meeting = useMeetingState();
+    const selfIdentity = localParticipant?.identity;
+    const meetingText = isGroup ? buildMeetingStatusText(meeting, selfIdentity) : '';
+    const handRaised = Boolean(meeting?.hands?.some((h) => h.identity === selfIdentity));
+
+    function toggleHand() {
+        const payload = new TextEncoder().encode(
+            JSON.stringify({ type: 'salesai:hand', raised: !handRaised })
+        );
+        localParticipant.publishData(payload, { reliable: true, topic: 'salesai' }).catch(() => {});
+    }
 
     useEffect(() => {
         if (startedRef.current) return;
@@ -185,7 +202,9 @@ export function VisitRoom({ embed, embedConfig, sessionId, roomName, onClose, on
                         </div>
                         <div className="text-center">
                             <p className="text-base font-bold text-white">AI temsilciniz</p>
-                            <p className="mt-1 text-xs font-medium text-white/40">{STATE_LABEL[state] ?? state}</p>
+                            <p className="mt-1 text-xs font-medium text-white/40">
+                                {meetingText || STATE_LABEL[state] || state}
+                            </p>
                         </div>
                     </div>
                 )}
@@ -199,6 +218,12 @@ export function VisitRoom({ embed, embedConfig, sessionId, roomName, onClose, on
                 {tourTrack && (
                     <div className="absolute left-4 top-4 rounded-xl border border-white/10 bg-[#071713]/80 px-3 py-2 text-[11px] font-bold text-white backdrop-blur" role="status">
                         AI size ürünü gösteriyor
+                    </div>
+                )}
+
+                {mainTrack && meetingText && (
+                    <div className="absolute left-1/2 top-4 -translate-x-1/2 rounded-xl border border-white/10 bg-[#071713]/85 px-3 py-2 text-center text-[11px] font-medium text-white/80 backdrop-blur" role="status">
+                        {meetingText}
                     </div>
                 )}
 
@@ -229,6 +254,8 @@ export function VisitRoom({ embed, embedConfig, sessionId, roomName, onClose, on
                 <Captions segments={agentTranscriptions} />
             </div>
 
+            <ParticipantsPanel maxParticipants={maxParticipants} />
+
             {showShareConsent && (
                 <div className="absolute inset-0 z-40 flex items-center justify-center bg-black/70 p-5">
                     <div role="dialog" aria-modal="true" aria-labelledby="share-consent-title" className="w-full max-w-sm rounded-[24px] border border-white/10 bg-[#0d2923] p-6 shadow-2xl">
@@ -254,6 +281,21 @@ export function VisitRoom({ embed, embedConfig, sessionId, roomName, onClose, on
                 >
                     {isMicrophoneEnabled ? <Mic size={18} /> : <MicOff size={18} />}
                 </button>
+
+                {isGroup && (
+                    <button
+                        onClick={toggleHand}
+                        title={handRaised ? 'Eli indir' : 'Söz iste (el kaldır)'}
+                        aria-pressed={handRaised}
+                        className={`flex h-12 w-12 items-center justify-center rounded-2xl border transition-colors ${
+                            handRaised
+                                ? 'border-[#d7f95b] bg-[#d7f95b] text-[#071713]'
+                                : 'border-white/10 bg-white/[0.07] text-white hover:bg-white/10'
+                        }`}
+                    >
+                        <Hand size={18} />
+                    </button>
+                )}
 
                 <button
                     onClick={toggleScreenShare}

@@ -62,6 +62,14 @@ describe('buildTools', () => {
         expect(toolNames(withPlaybook)).toEqual([...BASE_TOOL_NAMES, 'advance_step']);
     });
 
+    it('only includes next_participant when multiParticipant is true', () => {
+        const solo = buildTools({ productId: 'p1' });
+        const group = buildTools({ productId: 'p1', multiParticipant: true });
+
+        expect(toolNames(solo)).not.toContain('next_participant');
+        expect(toolNames(group)).toEqual([...BASE_TOOL_NAMES, 'next_participant']);
+    });
+
     describe('search_knowledge', () => {
         it('retrieves for the bound productId and maps chunks to {text, score, sourceId}', async () => {
             retrieve.mockResolvedValue([

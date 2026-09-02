@@ -98,6 +98,19 @@ const AgentSchema = new Schema(
             enum: ['none', 'guided-tour', 'customer-share'],
             default: ['guided-tour', 'customer-share']
         },
+        // How many visitors this agent presents to at once. 1 (default) keeps
+        // the original one-visitor-per-room behavior end to end. >1 turns on
+        // the multi-participant meeting flow: the agent joins the room and
+        // waits (room full, or a "shall we start?" check every minute) before
+        // beginning the presentation, and follows the active speaker. The
+        // agent itself is NOT counted here — maxParticipants:10 means 10
+        // customers + the agent.
+        maxParticipants: { type: Number, default: 1, min: 1 },
+        // When true (1-on-1 only), the visitor answers a short AI-generated
+        // adaptive questionnaire on the join screen; its answers produce a
+        // per-visitor tour plan (which pages to show + pre-written narration)
+        // that runs instead of any static Playbook for that session.
+        preCallSurveyEnabled: { type: Boolean, default: false },
         toolAccess: {
             enabled: { type: Boolean, default: false },
             // Phase 8 Task 4.2: Hassas alanlar at-rest şifreleme ile korunur.

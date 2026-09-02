@@ -38,6 +38,42 @@ export async function mapWithConcurrency(items, limit, fn) {
     return results;
 }
 
+/**
+ * Polls a Playwright `page`'s `document.body.innerText` length until it
+ * stops growing (stable for `stableChecks` consecutive polls) or `maxWaitMs`
+ * elapses, instead of a fixed grace period after navigation. Originally
+ * written for the URL crawler (`apps/worker-ingestion/src/extractors/url.js`)
+ * — a real customer site (`cyberverse.com.tr`) has a ~4-5s fake-terminal
+ * boot-animation before the real content mounts, and a fixed 3s wait
+ * captured the animation instead of the page; promoted here once the live
+ * guided tour (`packages/screen/src/cobrowse.js`) needed the exact same
+ * fix — `GuidedTour.goto()`'s fixed `waitForTimeout(3000)` had the same
+ * failure mode, just live: the agent would start narrating a page's real
+ * content while the customer was still watching the boot animation.
+ * `'networkidle'` isn't used (hangs on pages with a live connection —
+ * polling/websockets/dashboards, which never go idle); polling text length
+ * with a hard ceiling gets the same practical benefit without that hang risk.
+ *
+ * @param {import('playwright').Page} page
+ * @param {{pollMs?:number, stableChecks?:number, maxWaitMs?:number}} [options]
+ */
+export async function waitForStableContent(page, { pollMs = 500, stableChecks = 2, maxWaitMs = 8000 } = {}) {
+    const start = Date.now();
+    let lastLen = -1;
+    let stableCount = 0;
+    while (Date.now() - start < maxWaitMs) {
+        const len = await page.evaluate(() => (document.body.innerText || '').length).catch(() => lastLen);
+        if (len === lastLen) {
+            stableCount++;
+            if (stableCount >= stableChecks) break;
+        } else {
+            stableCount = 0;
+        }
+        lastLen = len;
+        await page.waitForTimeout(pollMs);
+    }
+}
+
 /** Splits an array into chunks of `size`. */
 export function chunk(arr, size) {
     const out = [];

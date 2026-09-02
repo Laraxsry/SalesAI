@@ -9,10 +9,21 @@ import { Schema, model } from 'mongoose';
 const KnowledgeChunkSchema = new Schema(
     {
         productId: { type: Schema.Types.ObjectId, ref: 'Product', required: true, index: true },
+        // Exactly one of sourceId/topicId is set, enforced below (not via
+        // mongoose `required`, which can't express "either/or") — a chunk
+        // either belongs to one crawl input (sourceId, the original model)
+        // or to a cross-source KnowledgeTopic document (topicId, see
+        // KnowledgeTopic.js). Kept as two fields rather than a shared
+        // polymorphic ref so deleteBySource()/deleteByTopic() stay simple,
+        // targeted queries instead of a discriminator lookup.
         sourceId: {
             type: Schema.Types.ObjectId,
             ref: 'KnowledgeSource',
-            required: true,
+            index: true
+        },
+        topicId: {
+            type: Schema.Types.ObjectId,
+            ref: 'KnowledgeTopic',
             index: true
         },
         text: { type: String, required: true },
@@ -41,5 +52,18 @@ const KnowledgeChunkSchema = new Schema(
     },
     { timestamps: true }
 );
+
+// No `next` callback param on purpose: Mongoose 9's insertMany() validates
+// documents in parallel (parallelLimit), and a callback-style pre('validate')
+// hook is unreliable there — Kareem intermittently invokes it without a
+// working `next`, throwing "next is not a function" (seen consistently on
+// KnowledgeTopic document inserts). A plain sync function that throws avoids
+// Kareem's callback wiring entirely and works the same for save() and
+// insertMany() alike.
+KnowledgeChunkSchema.pre('validate', function enforceSourceOrTopic() {
+    if (!this.sourceId && !this.topicId) {
+        throw new Error('KnowledgeChunk requires either sourceId or topicId');
+    }
+});
 
 export const KnowledgeChunk = model('KnowledgeChunk', KnowledgeChunkSchema);

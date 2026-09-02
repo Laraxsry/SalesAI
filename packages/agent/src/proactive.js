@@ -39,44 +39,70 @@ function alreadySaidLine(text) {
  * knowledge base are for, and a canned line ("Are you still there?") repeated
  * three times is worse than silence.
  *
- * The escalation is real but gentle: a first nudge re-engages, a later one
- * should be shorter and offer an exit, because by then the likeliest
- * explanation is that nobody is listening.
+ * This now fires with an essentially imperceptible wait (see agent.js's
+ * `idleMs`, ~500ms — short enough a human never notices it as "waiting",
+ * long enough to dodge the SDK's own transient state blips; a literal 0ms
+ * was tried first and caused real double-fires, see agent.js's comment) —
+ * `consecutive` therefore no longer means "N unanswered nudges after N
+ * separate long silences", it means "N back-to-back turns the agent has
+ * driven on its own with zero response".
+ * A continuous walkthrough of a real site easily runs 10-15+ such turns
+ * before the visitor has a reason to say anything at all, so the escalation
+ * thresholds are calibrated for THAT, not for a visitor who went quiet once.
+ * Only once the count gets genuinely large does "nobody is listening" become
+ * the likelier explanation over "they're still watching".
  *
  * @param {{ consecutive?: number, lastUtterance?: string }} [ctx]
- *   `consecutive` — how many unanswered nudges have already gone out, this one
- *   included. `lastUtterance` — what the agent actually said last, quoted back
- *   so the anti-repetition rule has a referent; omit it and the wording falls
- *   back to the blind form.
+ *   `consecutive` — how many back-to-back self-driven turns have gone out with
+ *   no response from the visitor, this one included. `lastUtterance` — what the
+ *   agent actually said last, quoted back so the anti-repetition rule has a
+ *   referent; omit it and the wording falls back to the blind form.
  * @returns {string}
  */
 export function buildIdleNudgeInstructions({ consecutive = 1, lastUtterance } = {}) {
     const alreadySaid = alreadySaidLine(lastUtterance);
 
-    if (consecutive >= 3) {
+    // Guards the one real exception to "never wait" (persona.js's contact-info
+    // confirmation rule) — this instruction is injected independently of the
+    // system prompt, so without repeating the exception here, a nudge firing
+    // right after "can you confirm that's correct?" would read as license to
+    // just proceed, treating the visitor's silence as a yes. Real session logs
+    // showed exactly this failure mode.
+    const confirmationGuard =
+        'If your last message asked the visitor to confirm a detail (contact info, say) and you have not heard a real answer, their silence is not confirmation of it — do not proceed as if they agreed and do not call any save/submit tool; gently ask the confirmation question again instead.';
+
+    // Only once the count gets genuinely large (≈30-45s of one-sided talking at
+    // idleMs≈0, see agent.js's maxConsecutive) does "nobody is listening"
+    // become likelier than "they're still watching" — until then, keep going.
+    if (consecutive >= 20) {
         return [
-            'The visitor has been quiet for a while and has not responded to your last two attempts.',
+            'You have been carrying this conversation on your own for a long stretch with no response at all.',
             'Say one short, warm closing line that leaves the door open — offer to continue whenever they are ready.',
-            'Do not ask another question. Do not call any tools.'
+            'Do not ask another question. Do not call any tools.',
+            confirmationGuard
         ].join(' ');
     }
 
     if (consecutive === 2) {
         return [
             'The visitor is still quiet.',
-            'In one short sentence, offer a concrete next thing you could show or explain, and ask if they would like that.',
+            'In one or two short sentences, move to something genuinely new — a different feature, a different section or page — never a rehash of what you just said.',
+            'Do not repeat or rehash anything you already covered, even in other words.',
             alreadySaid || 'Do not repeat what you already said.',
-            'Do not remark on the silence itself.'
+            'Do not remark on the silence itself, and do not ask permission before continuing.',
+            confirmationGuard
         ]
             .filter(Boolean)
             .join(' ');
     }
 
     return [
-        'The visitor has gone quiet.',
-        'Take the turn: in one or two short sentences, move the conversation forward — pick up the most useful thread so far, or offer something concrete you can show or explain next.',
-        'Do not remark on the silence and do not ask if they are still there.',
-        alreadySaid || 'Do not repeat your previous message.'
+        'The visitor has gone quiet, and that is fine — keep going on your own.',
+        'In one or two short sentences, move to something genuinely new: a different feature, a different page or section, a natural next detail — never something you have already covered.',
+        'Do not repeat or rehash anything you already said, even in different words; if nothing new is left about what is on screen, move to a different page or topic instead of describing the same thing again.',
+        'Do not remark on the silence, do not ask if they are still there, and do not ask permission before continuing — just continue.',
+        alreadySaid || 'Do not repeat your previous message.',
+        confirmationGuard
     ]
         .filter(Boolean)
         .join(' ');
@@ -186,12 +212,23 @@ export function buildLookupBridgeInstructions({ step = 0 } = {}) {
  * source of voice alongside this module and the persona — and it read like a
  * receptionist script. Same content-free shape as the rest of this file.
  *
+ * The visitor almost always arrives cold from a shared link with no idea what
+ * this is or whose product it demos, so when the product is known the opener
+ * has to place them — but still in one warm line, not a pitch. There is also no
+ * pause after this turn (idleMs≈0, see agent.js), so it must not end on a
+ * question it will never hear answered.
+ *
+ * @param {{ productName?: string, productDescription?: string }} [ctx]
  * @returns {string}
  */
-export function buildGreetingInstructions() {
+export function buildGreetingInstructions({ productName, productDescription } = {}) {
+    const place = productName
+        ? `In the same breath, say who you are — an AI assistant that shows people around ${productName}${productDescription ? ` (${productDescription})` : ''} — because they arrived from a link with no context yet. Do not give yourself a human name.`
+        : 'Do not announce your job title, do not read out a list of what you can help with, and do not sound like a script.';
     return [
-        'Open the conversation: one short, warm line, then hand it back to them.',
-        'Do not announce your job title, do not read out a list of what you can help with, and do not sound like a script.',
+        'Open the conversation: one short, warm line — start with an actual greeting word in the language you are speaking.',
+        place,
+        'Then say you will show them around now — do not ask an open-ended question or wait for an answer.',
         'Do not call any tools.'
     ].join(' ');
 }

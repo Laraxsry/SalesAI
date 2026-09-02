@@ -28,7 +28,8 @@ import {
     ChevronRight,
     ChevronLeft,
     FolderArchive,
-    ShieldCheck
+    ShieldCheck,
+    Sparkles
 } from 'lucide-react';
 import { productsApi, knowledgeApi } from '../lib/api.js';
 import { useAuthStore } from '../store/auth.js';
@@ -89,7 +90,7 @@ function Dropzone({ file, accept, onFile }) {
 }
 
 /** A single knowledge source row; renders as a collapsible group header when `isGroup` is set (zip uploads). */
-function SourceRow({ source: s, icon, isGroup, expanded, onToggle, childCount, onDelete, onOpen }) {
+function SourceRow({ source: s, icon, isGroup, expanded, onToggle, childCount, groupLabel, onDelete, onOpen }) {
     const typeInfo = TYPES.find((t) => t.value === s.type) ?? TYPES[0];
     const statusInfo = STATUS[s.status] ?? STATUS.pending;
     const TypeIcon = icon || typeInfo.icon;
@@ -119,7 +120,7 @@ function SourceRow({ source: s, icon, isGroup, expanded, onToggle, childCount, o
                         {s.title || s.url || typeInfo.label}
                     </p>
                     <p className="text-xs text-text-muted">
-                        {isGroup ? `Zip · ${childCount} dosya` : typeInfo.label}
+                        {isGroup ? groupLabel || `Zip · ${childCount} dosya` : typeInfo.label}
                     </p>
                 </div>
             </button>
@@ -136,6 +137,89 @@ function SourceRow({ source: s, icon, isGroup, expanded, onToggle, childCount, o
             >
                 <Trash2 size={16} />
             </button>
+        </div>
+    );
+}
+
+/**
+ * A `KnowledgeTopic` shown as a virtual "child" of the URL/API source it was
+ * crawled from — same row shape as `SourceRow` above (zip children use that
+ * one) so the two mix visually under the same expand/collapse group, but
+ * `KnowledgeTopic` isn't a `KnowledgeSource` (no `.type`/`.status`/`.fileKey`)
+ * so it needs its own, simpler row instead of reusing `SourceRow` directly.
+ */
+function TopicPreviewRow({ topic, onOpen }) {
+    return (
+        <button
+            onClick={() => onOpen(topic)}
+            className="flex w-full min-w-0 items-center gap-3 rounded-[var(--radius-card)] border border-border bg-surface px-4 py-3 text-left"
+            title="Önizle"
+        >
+            <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-brand/10 text-brand">
+                <Sparkles size={15} />
+            </span>
+            <div className="min-w-0 flex-1">
+                <p className="truncate text-sm font-medium text-text">{topic.title}</p>
+                <p className="text-xs text-text-muted">Otomatik oluşturuldu · konu dokümanı</p>
+            </div>
+        </button>
+    );
+}
+
+/**
+ * Read-only preview of one auto-generated `KnowledgeTopic` — editing stays on
+ * the "Bilgi boşlukları" page's "Site Bilgisi" tab (`KnowledgeGaps.jsx`'s
+ * `SiteTopicsTab`/`TopicNode`) so this page doesn't grow a second copy of
+ * that edit UI; this modal only links there.
+ */
+function TopicPreviewModal({ topic, productId, onClose }) {
+    return (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4">
+            <div className="flex max-h-[85vh] w-full max-w-2xl flex-col rounded-[var(--radius-card)] border border-border bg-surface p-6">
+                <div className="mb-4 flex items-center justify-between">
+                    <div className="flex items-center gap-2">
+                        <Sparkles size={16} className="text-brand" />
+                        <h2 className="text-lg font-semibold text-text">{topic.title}</h2>
+                    </div>
+                    <button onClick={onClose} aria-label="Kapat" className="text-text-muted hover:text-text">
+                        <X size={18} />
+                    </button>
+                </div>
+
+                <div className="min-h-0 flex-1 overflow-y-auto pr-1">
+                    <span className="mb-4 inline-block rounded bg-brand/15 px-1.5 py-0.5 text-[10px] font-medium text-brand-light">
+                        Otomatik oluşturuldu
+                    </span>
+
+                    {topic.sourcePages?.length > 0 && (
+                        <div className="mb-4 flex flex-wrap gap-1.5">
+                            {topic.sourcePages.map((sp, i) => (
+                                <span
+                                    key={i}
+                                    className="truncate rounded-full bg-surface-raised px-2 py-1 text-[11px] text-text-muted"
+                                    title={sp.pageUrl}
+                                >
+                                    {sp.pageUrl}
+                                </span>
+                            ))}
+                        </div>
+                    )}
+
+                    <p className="whitespace-pre-wrap text-sm text-text">{topic.body || 'Henüz içerik yok.'}</p>
+                </div>
+
+                <div className="mt-4 flex justify-end gap-2 border-t border-border pt-4">
+                    <Button type="button" variant="ghost" onClick={onClose}>
+                        Kapat
+                    </Button>
+                    <Link
+                        to={`/knowledge/gaps?product=${productId}&tab=site`}
+                        className="flex h-10 items-center rounded-[var(--radius-input)] bg-brand px-4 text-sm font-medium text-white transition-colors hover:bg-brand-dark"
+                    >
+                        Düzenle → Site Bilgisi&apos;nde aç
+                    </Link>
+                </div>
+            </div>
         </div>
     );
 }
@@ -694,6 +778,7 @@ export function Knowledge() {
     const [showModal, setShowModal] = useState(false);
     const [expandedGroups, setExpandedGroups] = useState(() => new Set());
     const [detailId, setDetailId] = useState(null);
+    const [previewTopicId, setPreviewTopicId] = useState(null);
     const productId = searchParams.get('product');
 
     const { data: products } = useQuery({
@@ -712,6 +797,19 @@ export function Knowledge() {
         queryKey: ['knowledge', productId],
         queryFn: () => knowledgeApi.list(productId),
         enabled: !!productId
+    });
+
+    // Auto-generated "Site Bilgisi" topic docs (see KnowledgeGaps.jsx's
+    // SiteTopicsTab, the same underlying KnowledgeTopic model) — shown here
+    // too, as virtual children of the url/api source they were crawled from,
+    // so they're visible without having to know to look on the separate
+    // "Bilgi boşlukları" page. Only fetched when there's at least one
+    // url/api source to attach them to.
+    const hasUrlSource = (sources || []).some((s) => s.type === 'url' || s.type === 'api');
+    const { data: topics } = useQuery({
+        queryKey: ['knowledge-topics', productId],
+        queryFn: () => knowledgeApi.topics.list(productId),
+        enabled: !!productId && hasUrlSource
     });
 
     // Deep-link from the GAP analizi raporu ("İçerik Analizi" sekmesi,
@@ -762,6 +860,25 @@ export function Knowledge() {
         return { topLevelSources, childrenByParent };
     }, [sources]);
 
+    // Only topics with an actually-composed body — most of the fixed
+    // taxonomy starts out empty (seeded on first crawl) until a page
+    // contributes to it, and showing 10 empty placeholders per source would
+    // be noise. A topic can (rarely) span more than one source's pages, so
+    // it's grouped under every source it references, not just one.
+    const topicsBySourceId = useMemo(() => {
+        const map = new Map();
+        for (const t of topics || []) {
+            if (!t.body?.trim()) continue;
+            const sourceIds = new Set((t.sourcePages || []).map((sp) => sp.sourceId));
+            for (const sourceId of sourceIds) {
+                const list = map.get(sourceId) || [];
+                list.push(t);
+                map.set(sourceId, list);
+            }
+        }
+        return map;
+    }, [topics]);
+
     function toggleGroup(id) {
         setExpandedGroups((prev) => {
             const next = new Set(prev);
@@ -793,6 +910,7 @@ export function Knowledge() {
     }
 
     const detailSource = detailId ? (sources || []).find((s) => s._id === detailId) : null;
+    const previewTopic = previewTopicId ? (topics || []).find((t) => t._id === previewTopicId) : null;
 
     if (products && products.length === 0) {
         return (
@@ -867,17 +985,23 @@ export function Knowledge() {
                 <div className="flex flex-col gap-2">
                     {topLevelSources.map((s) => {
                         const children = childrenByParent.get(s._id) || [];
-                        const isGroup = children.length > 0;
+                        const topicChildren = topicsBySourceId.get(s._id) || [];
+                        const isGroup = children.length > 0 || topicChildren.length > 0;
                         const expanded = expandedGroups.has(s._id);
+                        const groupLabel =
+                            children.length > 0
+                                ? `Zip · ${children.length} dosya`
+                                : `${topicChildren.length} otomatik doküman`;
                         return (
                             <div key={s._id}>
                                 <SourceRow
                                     source={s}
-                                    icon={isGroup ? FolderArchive : undefined}
+                                    icon={children.length > 0 ? FolderArchive : undefined}
                                     isGroup={isGroup}
                                     expanded={expanded}
                                     onToggle={isGroup ? () => toggleGroup(s._id) : undefined}
                                     childCount={children.length}
+                                    groupLabel={groupLabel}
                                     onDelete={onDelete}
                                     onOpen={(src) => setDetailId(src._id)}
                                 />
@@ -890,6 +1014,9 @@ export function Knowledge() {
                                                 onDelete={onDelete}
                                                 onOpen={(src) => setDetailId(src._id)}
                                             />
+                                        ))}
+                                        {topicChildren.map((t) => (
+                                            <TopicPreviewRow key={t._id} topic={t} onOpen={(tp) => setPreviewTopicId(tp._id)} />
                                         ))}
                                     </div>
                                 )}
@@ -908,6 +1035,14 @@ export function Knowledge() {
                     source={detailSource}
                     onClose={() => setDetailId(null)}
                     onSaved={onDetailSaved}
+                />
+            )}
+
+            {previewTopic && (
+                <TopicPreviewModal
+                    topic={previewTopic}
+                    productId={productId}
+                    onClose={() => setPreviewTopicId(null)}
                 />
             )}
         </div>

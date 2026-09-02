@@ -1,4 +1,4 @@
-import { checkSSRFUrl } from '@repo/utils';
+import { checkSSRFUrl, waitForStableContent as waitForStableContentShared } from '@repo/utils';
 import { loginWithCredentials } from '@repo/screen';
 import { chromium } from 'playwright';
 
@@ -53,6 +53,27 @@ const NAV_DISCOVERY_MAX_TEXT_CHARS = 40;
 const NAV_DISCOVERY_ACTION_WORDS =
     /demo|talep|teklif|sipariş|satın|buy|purchase|order|sign\s*up|sign\s*in|kayıt\s*ol|giriş\s*yap|log\s*in|log\s*out|çıkış|gönder|submit|kaydet|\bsave\b|\bsil\b|delete|abone|subscribe|indir|download|iletişime\s*geç|contact\s*us|whatsapp|\bara\b|\bcall\b|paylaş|share/i;
 
+// discoverTabVariants(): bound on how many candidate tab/panel labels get
+// click-tested per page — a full page reload + click per candidate is
+// expensive (see discoverTabVariants' own docstring), this just guards
+// against a pathological page with a huge sibling-button group.
+const MAX_TAB_DISCOVERY_CLICKS = Number(process.env.URL_CRAWL_MAX_TAB_CLICKS || 8);
+// Below this many sibling candidates, it's not a meaningful "tab group"
+// signal — a single button next to unrelated content would otherwise be
+// mistaken for one.
+const TAB_GROUP_MIN_MEMBERS = 2;
+
+// Component-level page inventory caps (headings/interactiveElements/sections,
+// see extractPage's evaluate() below) — this is a pure DOM read (nothing is
+// clicked, unlike discoverClientRoutedLinks above), so there's no
+// action-word/side-effect concern here, only a size bound so a very dense
+// page doesn't bloat the persisted crawlIndex/site map unboundedly.
+const MAX_HEADINGS_PER_PAGE = 30;
+const MAX_INTERACTIVE_ELEMENTS_PER_PAGE = 60;
+const MAX_SECTIONS_PER_PAGE = 20;
+const INTERACTIVE_ELEMENT_MAX_TEXT_CHARS = 80;
+const SECTION_SNIPPET_CHARS = 150;
+
 // Below this many pages, "repeats across most pages" isn't a meaningful
 // signal (with 2 pages, anything shared between them would get stripped,
 // including genuinely relevant shared content).
@@ -74,12 +95,20 @@ function normalizeUrl(href) {
     }
 }
 
-/** Normalizes and same-origin-filters `rawLinks`, pushing unvisited ones onto `queue`. */
-function enqueueLinks(rawLinks, queue, visited, rootOrigin) {
+/** Normalizes and same-origin-filters `rawLinks`, pushing unvisited ones onto `queue`.
+ * `rawLinks` entries are either a plain URL string (legacy cache shape, see
+ * `previousPages`) or `{targetUrl, label?, kind?}` (current crawl shape, see
+ * `extractPage`/`discoverClientRoutedLinks`) — both are accepted so a source
+ * crawled before the site-structure-tree fields existed still dequeues fine.
+ * `parentUrl` (the page `rawLinks` was found on) is carried onto each queued
+ * item so `pagesIndex` can record the crawl-tree parent once the link is
+ * actually visited (see `extractFromUrl`'s main loop). */
+function enqueueLinks(rawLinks, queue, visited, rootOrigin, parentUrl) {
     for (const link of rawLinks) {
-        const normalized = normalizeUrl(link);
+        const targetUrl = typeof link === 'string' ? link : link?.targetUrl;
+        const normalized = normalizeUrl(targetUrl);
         if (normalized && normalized.startsWith(rootOrigin) && !visited.has(normalized)) {
-            queue.push(normalized);
+            queue.push({ url: normalized, parentUrl });
         }
     }
 }
@@ -107,33 +136,20 @@ async function expandCollapsedNav(page) {
 }
 
 /**
- * Polls `document.body.innerText`'s length until it stops growing (stable
- * for `CONTENT_STABLE_CHECKS` consecutive polls) or `CONTENT_MAX_WAIT_MS`
- * elapses, instead of a single fixed grace period after `domcontentloaded`.
- * A plain SPA typically stabilizes within 1-2 polls (faster than the old
- * fixed 3s wait); a page with a multi-second boot/splash animation (real
- * example found in testing: a ~4-5s fake-terminal intro screen before the
- * actual site content mounts) previously had its content captured
- * mid-animation — this waits for the real content to actually settle.
- * `'networkidle'` isn't used here (see extractPage's comment) because it
- * hangs on pages with a live connection open; polling text length with a
- * hard ceiling gets the same practical benefit without that hang risk.
+ * Thin wrapper over `@repo/utils`'s `waitForStableContent()` (see its
+ * docstring for the full rationale — a real customer site's ~4-5s
+ * fake-terminal boot animation, previously captured mid-animation by a
+ * fixed 3s wait) that applies this crawler's own env-configurable ceiling
+ * (`URL_CRAWL_MAX_WAIT_MS`) and poll/stable-check constants. Kept as a
+ * named export here (not just re-exported bare) so existing callers/tests
+ * in this file don't need to pass those options through every call site.
  */
-export async function waitForStableContent(page) {
-    const start = Date.now();
-    let lastLen = -1;
-    let stableCount = 0;
-    while (Date.now() - start < CONTENT_MAX_WAIT_MS) {
-        const len = await page.evaluate(() => (document.body.innerText || '').length).catch(() => lastLen);
-        if (len === lastLen) {
-            stableCount++;
-            if (stableCount >= CONTENT_STABLE_CHECKS) break;
-        } else {
-            stableCount = 0;
-        }
-        lastLen = len;
-        await page.waitForTimeout(CONTENT_STABLE_POLL_MS);
-    }
+export function waitForStableContent(page) {
+    return waitForStableContentShared(page, {
+        pollMs: CONTENT_STABLE_POLL_MS,
+        stableChecks: CONTENT_STABLE_CHECKS,
+        maxWaitMs: CONTENT_MAX_WAIT_MS
+    });
 }
 
 /**
@@ -158,7 +174,12 @@ export async function waitForStableContent(page) {
  */
 async function discoverClientRoutedLinks(page, rootOrigin) {
     const originalUrl = page.url();
-    const discovered = new Set();
+    // Keyed by targetUrl (not a Set of bare strings) so two differently-
+    // labelled buttons landing on the same URL don't produce duplicate
+    // structure-tree edges. Entries carry the button's own text as `label`
+    // (site-structure-tree's only signal for a client-routed nav item's
+    // name — there's no `<a href>`/title to fall back on).
+    const discovered = new Map();
     const selector = 'nav button, header button, nav [role="button"], header [role="button"]';
 
     let candidates;
@@ -184,8 +205,8 @@ async function discoverClientRoutedLinks(page, rootOrigin) {
             await el.click({ timeout: 2000 });
             await page.waitForTimeout(300);
             const newUrl = page.url();
-            if (newUrl !== originalUrl && newUrl.startsWith(rootOrigin)) {
-                discovered.add(newUrl);
+            if (newUrl !== originalUrl && newUrl.startsWith(rootOrigin) && !discovered.has(newUrl)) {
+                discovered.set(newUrl, { label: text, targetUrl: newUrl, kind: 'button' });
             }
         } catch {
             // not clickable (covered/detached/no-op handler) — harmless, skip
@@ -204,7 +225,189 @@ async function discoverClientRoutedLinks(page, rootOrigin) {
         }
     }
 
-    return [...discovered];
+    return [...discovered.values()];
+}
+
+/**
+ * Reads (never clicks) a structural inventory of the page: heading
+ * hierarchy, every meaningfully-labeled interactive element site-wide (not
+ * just nav/header — see discoverClientRoutedLinks for why that pass is
+ * scoped tighter), and notable landmark sections (forms, `<section>`,
+ * `aria-label`'d blocks). This is what lets `find_element`
+ * (packages/agent/src/tools.js) hand the model a real selector instead of it
+ * guessing one for `click_element`/`highlight`.
+ *
+ * `selector` for interactive elements is a plain `text=<label>` locator —
+ * not a generated CSS path — because that's exactly what `GuidedTour.click()`/
+ * `.highlight()` (packages/screen/src/cobrowse.js) already expect and have
+ * tests exercising (see cobrowse.test.js's `text=Ürünler` cases), so no new
+ * selector scheme is introduced.
+ *
+ * @param {import('playwright').Page} page
+ * @returns {Promise<{headings:{level:number,text:string}[], interactiveElements:{label:string,kind:'button'|'link'|'submit',selector:string}[], sections:{tag:string,ariaLabel:string|null,textSnippet:string}[]}>}
+ */
+export async function extractPageComponents(page) {
+    try {
+        return await page.evaluate(
+            ({ maxHeadings, maxInteractive, maxSections, maxTextChars, snippetChars }) => {
+                const headings = [...document.querySelectorAll('h1, h2, h3, h4, h5, h6')]
+                    .map((el) => ({ level: Number(el.tagName[1]), text: (el.textContent || '').trim() }))
+                    .filter((h) => h.text)
+                    .slice(0, maxHeadings);
+
+                const interactiveElements = [];
+                const seenLabels = new Set();
+                for (const el of document.querySelectorAll(
+                    'button, a[href], [role="button"], input[type="submit"], button[type="submit"]'
+                )) {
+                    if (interactiveElements.length >= maxInteractive) break;
+                    const label = (el.textContent || el.value || '').trim();
+                    if (!label || label.length > maxTextChars || seenLabels.has(label)) continue;
+                    seenLabels.add(label);
+                    const tag = el.tagName.toLowerCase();
+                    const kind =
+                        el.matches('input[type="submit"], button[type="submit"]')
+                            ? 'submit'
+                            : tag === 'a'
+                              ? 'link'
+                              : 'button';
+                    interactiveElements.push({ label, kind, selector: `text=${label}` });
+                }
+
+                const sections = [...document.querySelectorAll('form, section, [aria-label]')]
+                    .map((el) => ({
+                        tag: el.tagName.toLowerCase(),
+                        ariaLabel: el.getAttribute('aria-label') || null,
+                        textSnippet: (el.textContent || '').trim().slice(0, snippetChars)
+                    }))
+                    .filter((s) => s.ariaLabel || s.textSnippet)
+                    .slice(0, maxSections);
+
+                return { headings, interactiveElements, sections };
+            },
+            {
+                maxHeadings: MAX_HEADINGS_PER_PAGE,
+                maxInteractive: MAX_INTERACTIVE_ELEMENTS_PER_PAGE,
+                maxSections: MAX_SECTIONS_PER_PAGE,
+                maxTextChars: INTERACTIVE_ELEMENT_MAX_TEXT_CHARS,
+                snippetChars: SECTION_SNIPPET_CHARS
+            }
+        );
+    } catch {
+        return { headings: [], interactiveElements: [], sections: [] };
+    }
+}
+
+/**
+ * Finds the largest group of short-text buttons/`[role=button]` elements
+ * that share a DOM parent and sit OUTSIDE `<nav>`/`<header>` (those are
+ * `discoverClientRoutedLinks`' territory — real page-to-page navigation;
+ * this is the opposite case: same-page product/tab selectors). Read-only,
+ * nothing is clicked here — cheap to run on every page.
+ *
+ * @param {import('playwright').Page} page
+ * @returns {Promise<string[]>} candidate labels from the single largest sibling group
+ */
+async function detectTabGroupLabels(page) {
+    try {
+        return await page.evaluate(
+            ({ maxTextChars }) => {
+                const candidates = [...document.querySelectorAll('button, [role="button"]')].filter(
+                    (el) => !el.closest('nav, header')
+                );
+                const groups = new Map();
+                for (const el of candidates) {
+                    const text = (el.textContent || '').trim();
+                    if (!text || text.length > maxTextChars) continue;
+                    const parent = el.parentElement;
+                    if (!parent) continue;
+                    if (!groups.has(parent)) groups.set(parent, []);
+                    groups.get(parent).push(text);
+                }
+                let best = [];
+                for (const labels of groups.values()) {
+                    if (labels.length > best.length) best = labels;
+                }
+                return best;
+            },
+            { maxTextChars: NAV_DISCOVERY_MAX_TEXT_CHARS }
+        );
+    } catch {
+        return [];
+    }
+}
+
+/** Same script/style-stripping + heading extraction as extractPage's final
+ * scrape, reused so a tab-variant snapshot is captured identically. */
+async function extractTabPanelSnapshot(page) {
+    try {
+        return await page.evaluate((maxHeadings) => {
+            document.querySelectorAll('script, style, noscript, iframe, link, meta').forEach((el) => el.remove());
+            const headings = [...document.querySelectorAll('h1, h2, h3, h4, h5, h6')]
+                .map((el) => ({ level: Number(el.tagName[1]), text: (el.textContent || '').trim() }))
+                .filter((h) => h.text)
+                .slice(0, maxHeadings);
+            const rawText = document.body.innerText || document.body.textContent || '';
+            return { headings, rawText };
+        }, MAX_HEADINGS_PER_PAGE);
+    } catch {
+        return { headings: [], rawText: '' };
+    }
+}
+
+/**
+ * Some pages (confirmed on a real customer site's "solutions" page) render
+ * several product/topic panels behind a row of buttons that swap the SAME
+ * page's content without changing the URL — the exact opposite signal from
+ * `discoverClientRoutedLinks` (which looks for a click that DOES change the
+ * URL). A plain crawl only ever captures whichever panel happens to be
+ * showing at load time (confirmed: 3 separate real crawls of the same page
+ * each captured a different panel), leaving every other panel's content
+ * completely unindexed.
+ *
+ * For each candidate label (from `detectTabGroupLabels`, filtered here
+ * against the same `NAV_DISCOVERY_ACTION_WORDS` safety list
+ * `discoverClientRoutedLinks` uses — never risk clicking a CTA with a real
+ * side effect), this does a full fresh reload of `urlStr` before clicking —
+ * deliberately not just clicking through panels in sequence — so one
+ * candidate's state can never bleed into the next one's snapshot.
+ *
+ * @param {import('playwright').Page} page
+ * @param {string} urlStr
+ * @returns {Promise<{label:string, headings:{level:number,text:string}[], rawText:string}[]>}
+ */
+export async function discoverTabVariants(page, urlStr) {
+    // Real-site testing found the page can arrive here in a state
+    // `detectTabGroupLabels` can't read correctly — e.g. right after
+    // discoverClientRoutedLinks()'s goBack()-based restore, which doesn't
+    // reproduce a fresh page.goto()'s hydration exactly and made a real
+    // 7-item tab bar invisible to the DOM query below. A clean reload here
+    // guarantees the same page state the per-candidate clicks below use.
+    await page.goto(urlStr, { waitUntil: 'domcontentloaded', timeout: 30000 });
+    await waitForStableContent(page);
+
+    const rawLabels = [...new Set(await detectTabGroupLabels(page))];
+    // The group-size check runs on the RAW group (a CTA sitting inside an
+    // otherwise-real tab row still counts toward "this looks like a tab
+    // group") — action words are filtered afterward, only to decide what's
+    // actually safe to click.
+    if (rawLabels.length < TAB_GROUP_MIN_MEMBERS) return [];
+    const labels = rawLabels.filter((text) => !NAV_DISCOVERY_ACTION_WORDS.test(text));
+
+    const variants = [];
+    for (const label of labels.slice(0, MAX_TAB_DISCOVERY_CLICKS)) {
+        try {
+            await page.goto(urlStr, { waitUntil: 'domcontentloaded', timeout: 30000 });
+            await waitForStableContent(page);
+            await page.click(`text=${label}`, { timeout: 2000 });
+            await waitForStableContent(page);
+            const { headings, rawText } = await extractTabPanelSnapshot(page);
+            variants.push({ label, headings, rawText });
+        } catch {
+            // candidate not clickable, or page didn't settle — skip it, harmless
+        }
+    }
+    return variants;
 }
 
 /**
@@ -232,10 +435,18 @@ async function extractPage(page, urlStr, rootOrigin) {
     // restore any nav expansion state lost in that round-trip before the
     // final scrape below.
     await expandCollapsedNav(page);
+    const components = await extractPageComponents(page);
 
     const { text, links } = await page.evaluate(() => {
         document.querySelectorAll('script, style, noscript, iframe, link, meta').forEach((el) => el.remove());
-        const links = [...document.querySelectorAll('a[href]')].map((a) => a.href);
+        // {label, targetUrl, kind} — not bare hrefs — so the site-structure
+        // tree (persisted by handleIngestSource() into meta.crawlIndex.pages)
+        // can show what a link is actually called, not just where it goes.
+        const links = [...document.querySelectorAll('a[href]')].map((a) => ({
+            label: (a.textContent || '').trim().slice(0, 80),
+            targetUrl: a.href,
+            kind: 'link'
+        }));
         return { text: document.body.innerText || document.body.textContent || '', links };
     });
     links.push(...clientRoutedLinks);
@@ -257,7 +468,11 @@ async function extractPage(page, urlStr, rootOrigin) {
         });
     }
 
-    return { ok: true, text: joined, links };
+    // Runs last — it reloads/navigates the page repeatedly and nothing
+    // below this point needs the current page state to match `urlStr`.
+    const tabVariants = await discoverTabVariants(page, urlStr);
+
+    return { ok: true, text: joined, links, components, ...(tabVariants.length ? { tabVariants } : {}) };
 }
 
 /**
@@ -313,9 +528,22 @@ export function stripRepeatedBoilerplate(pages) {
  * human-scannable as a single blob), the raw per-page breakdown (`pages` —
  * what `handleIngestSource()` uses to chunk each page separately and tag
  * its chunks with `metadata.pageUrl`), and `pagesIndex` (`{[url]: {rawText,
- * links}}` for every page in this run, reused or freshly fetched — the
- * caller persists this as `KnowledgeSource.meta.crawlIndex.pages` so the
- * *next* ingestion of this source can pass it back in as `previousPages`).
+ * links, parentUrl}}` for every page in this run, reused or freshly fetched —
+ * the caller persists this as `KnowledgeSource.meta.crawlIndex.pages` so the
+ * *next* ingestion of this source can pass it back in as `previousPages`, AND
+ * so it can be rendered as the site-structure tree — `parentUrl` is the page
+ * this one was discovered from (`null` for the root), and each `links` entry
+ * is `{label, targetUrl, kind:'link'|'button'}` (a real `<a href>` vs. a
+ * client-routed nav button, see `discoverClientRoutedLinks`) rather than a
+ * bare URL, so a customer-facing sitemap view can show what a link is
+ * actually called, not just where it points). Each `pagesIndex` entry also
+ * carries `components` — the page's heading/interactive-element/section
+ * inventory (see `extractPageComponents`), absent (`undefined`) on entries
+ * reused from a `previousPages` cache predating this field. Entries for a
+ * page with a same-page tab/panel selector (see `discoverTabVariants`) also
+ * carry `tabVariants` — `{label, headings, rawText}` per panel, absent when
+ * the page has none. Only ever populated on a freshly-fetched page, never
+ * on a `previousPages` cache hit, same rule as `components`.
  *
  * @param {string} urlStr
  * @param {{loginUrl?:string, email:string, password:string, selectors?:{email?:string,password?:string,submit?:string}}|null} [auth] -
@@ -324,17 +552,19 @@ export function stripRepeatedBoilerplate(pages) {
  *   crawling. Without it, auth-gated pages are scraped anonymously and only
  *   the public/login view gets indexed.
  * @param {(current:number, max:number) => void} [onProgress]
- * @param {Map<string, {rawText:string, links:string[]}>} [previousPages] -
+ * @param {Map<string, {rawText:string, links:(string|{targetUrl:string,label?:string,kind?:string})[], parentUrl?:string|null, components?:object}>} [previousPages] -
  *   URLs already crawled/chunked in a prior ingestion of this same source.
  *   Such a URL is NOT re-navigated — its cached text/links are reused
  *   as-is and it doesn't count against `MAX_CRAWL_PAGES`, so the budget of
  *   real page loads goes entirely to URLs not yet indexed (e.g. pages only
  *   reachable after a login that wasn't configured on the first crawl).
+ *   `links` entries may be plain URL strings (a source crawled before the
+ *   `{label,targetUrl,kind}` shape existed) — `enqueueLinks` accepts both.
  *   Known trade-off: a reused page's content is never refreshed by this
  *   mechanism even if the live site changed — only a `websiteUrl` change
  *   (a different root/crawl) or a manually forced full re-crawl would pick
  *   that up. Defaults to an empty Map (first-ever crawl of a source).
- * @returns {Promise<{ text: string, pages: { url: string, text: string }[], pagesIndex: Record<string, {rawText:string, links:string[]}> }>}
+ * @returns {Promise<{ text: string, pages: { url: string, text: string }[], pagesIndex: Record<string, {rawText:string, links:{label:string,targetUrl:string,kind:string}[], parentUrl:string|null, components:{headings:object[], interactiveElements:object[], sections:object[]}}> }>}
  */
 export async function extractFromUrl(urlStr, auth = null, onProgress = null, previousPages = new Map()) {
     // SSRF guard on the root URL; re-checked per discovered link below.
@@ -354,24 +584,29 @@ export async function extractFromUrl(urlStr, auth = null, onProgress = null, pre
         }
 
         const visited = new Set();
-        const queue = [rootUrl];
+        // Queue items carry {url, parentUrl} (not bare URLs) so the
+        // site-structure tree can record which page a freshly-fetched page
+        // was discovered from — see pagesIndex's `parentUrl` below.
+        const queue = [{ url: rootUrl, parentUrl: null }];
         const pages = [];
         const pagesIndex = {};
         let fetchedCount = 0;
 
         while (queue.length && fetchedCount < MAX_CRAWL_PAGES && visited.size < MAX_TOTAL_VISITED) {
-            const next = queue.shift();
+            const { url: next, parentUrl } = queue.shift();
             if (!next || visited.has(next)) continue;
             visited.add(next);
 
             const cached = previousPages.get(next);
             if (cached) {
                 // Already crawled/chunked in a prior run of this source —
-                // reuse its text/links without a real page load, and don't
-                // spend this run's MAX_CRAWL_PAGES budget on it.
+                // reuse its text/links (and parentUrl, if the cache predates
+                // that field, it's simply absent — degrades to an unparented
+                // structure-tree node, not an error) without a real page
+                // load, and don't spend this run's MAX_CRAWL_PAGES budget on it.
                 pages.push({ url: next, text: cached.rawText });
                 pagesIndex[next] = cached;
-                enqueueLinks(cached.links, queue, visited, rootOrigin);
+                enqueueLinks(cached.links, queue, visited, rootOrigin, next);
                 continue;
             }
 
@@ -397,8 +632,14 @@ export async function extractFromUrl(urlStr, auth = null, onProgress = null, pre
             if (!result.ok) continue;
 
             pages.push({ url: next, text: result.text });
-            pagesIndex[next] = { rawText: result.text, links: result.links };
-            enqueueLinks(result.links, queue, visited, rootOrigin);
+            pagesIndex[next] = {
+                rawText: result.text,
+                links: result.links,
+                parentUrl,
+                components: result.components,
+                ...(result.tabVariants ? { tabVariants: result.tabVariants } : {})
+            };
+            enqueueLinks(result.links, queue, visited, rootOrigin, next);
         }
 
         const cleanedPages = stripRepeatedBoilerplate(pages);

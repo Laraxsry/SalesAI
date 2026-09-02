@@ -14,19 +14,40 @@ describe('buildIdleNudgeInstructions', () => {
         expect(text.toLowerCase()).toContain('do not remark on the silence');
     });
 
-    it('escalates across consecutive unanswered nudges', () => {
+    it('keeps driving forward (not closing out) through many consecutive self-driven turns', () => {
         const first = buildIdleNudgeInstructions({ consecutive: 1 });
-        const second = buildIdleNudgeInstructions({ consecutive: 2 });
-        const third = buildIdleNudgeInstructions({ consecutive: 3 });
+        const mid = buildIdleNudgeInstructions({ consecutive: 10 });
 
-        expect(new Set([first, second, third]).size).toBe(3);
-        // By the third, the likeliest explanation is nobody is listening —
-        // asking another question just talks into an empty room.
-        expect(third.toLowerCase()).toContain('do not ask another question');
+        // A real continuous walkthrough easily runs 10+ self-driven turns
+        // before the visitor has a reason to say anything — this must not
+        // read as "give up", only the high tail should.
+        for (const text of [first, mid]) {
+            expect(text.toLowerCase()).not.toContain('do not ask another question');
+            expect(text.toLowerCase()).toContain('do not repeat or rehash');
+        }
+    });
+
+    it('only closes out once genuinely many turns have gone by with no response', () => {
+        const closing = buildIdleNudgeInstructions({ consecutive: 20 });
+        // By then, the likeliest explanation is nobody is listening — asking
+        // another question just talks into an empty room.
+        expect(closing.toLowerCase()).toContain('do not ask another question');
+        expect(closing.toLowerCase()).toContain('do not call any tools');
+    });
+
+    it('never lets a nudge be mistaken for confirmation of a pending contact-info question, at any consecutive count', () => {
+        // Regression test — a real session showed the model proceeding as if
+        // the visitor had confirmed their contact info, right after an idle
+        // nudge fired following a "can you confirm that's correct?" ask.
+        for (const consecutive of [1, 2, 20]) {
+            const text = buildIdleNudgeInstructions({ consecutive }).toLowerCase();
+            expect(text).toContain('is not confirmation');
+            expect(text).toContain('do not call any save/submit tool'.toLowerCase());
+        }
     });
 
     it('never leaks the existence of a plan or step numbering', () => {
-        for (const consecutive of [1, 2, 3, 9]) {
+        for (const consecutive of [1, 2, 3, 9, 20]) {
             const text = buildIdleNudgeInstructions({ consecutive }).toLowerCase();
             expect(text).not.toContain('step');
             expect(text).not.toContain('playbook');

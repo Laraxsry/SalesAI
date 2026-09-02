@@ -94,6 +94,10 @@ function makeFakePage(startingUrl) {
         }),
         click: vi.fn(async () => {}),
         waitForTimeout: vi.fn(async () => {}),
+        // Constant length ⇒ waitForStableContent() (goto()/click()) sees two
+        // consecutive equal reads and resolves immediately — tests that care
+        // about the adaptive-wait behavior itself override this per-test.
+        evaluate: vi.fn(async () => 42),
         /** Overwritten per-test with a specific locator fake. */
         locator: vi.fn(),
         /** Lets a test move `page.url()` without going through goto() (simulating a redirect). */
@@ -166,6 +170,25 @@ describe('GuidedTour#goto', () => {
         await tour.goto('/pricing');
 
         expect(page.goto).toHaveBeenCalledWith('https://salesai.example/pricing', { waitUntil: 'domcontentloaded' });
+    });
+
+    it('waits for the page content to actually stabilize instead of a fixed delay', async () => {
+        // Regression test for the fixed-3000ms bug: a real customer site's
+        // multi-second boot animation meant the agent started narrating a
+        // page's real content while the customer was still watching it
+        // load. Content grows for a couple of reads, then settles.
+        const page = makeFakePage('https://salesai.example/dashboard');
+        const lens = [10, 25, 40, 40, 40, 999]; // grows, settles at 40 (2 consecutive matches); the 999 read must never happen
+        let i = 0;
+        page.evaluate = vi.fn(async () => lens[Math.min(i++, lens.length - 1)]);
+        const tour = makeTour(page);
+
+        await tour.goto('/pricing');
+
+        // Same stabilization algorithm/expectation as
+        // packages/utils/src/index.test.js's waitForStableContent test —
+        // not a bare fixed-timeout call with no regard for actual content.
+        expect(page.evaluate).toHaveBeenCalledTimes(5);
     });
 
     it('navigates directly to an already-absolute trusted URL', async () => {

@@ -1,7 +1,15 @@
 import { Router } from 'express';
 import { validate } from '@repo/validation';
-import { KnowledgeSourceInput, KnowledgeSourceUpdateInput } from '@repo/contracts';
-import { KnowledgeSource, KnowledgeChunk, KnowledgeGapReport, KnowledgeAudit, Product, Membership } from '@repo/database';
+import { KnowledgeSourceInput, KnowledgeSourceUpdateInput, KnowledgeTopicUpdateInput } from '@repo/contracts';
+import {
+    KnowledgeSource,
+    KnowledgeChunk,
+    KnowledgeGapReport,
+    KnowledgeAudit,
+    KnowledgeTopic,
+    Product,
+    Membership
+} from '@repo/database';
 import { enqueueIngestion } from '../lib/ingestion.js';
 import { requireAuth } from '@repo/auth';
 import { can } from '@repo/access';
@@ -188,6 +196,184 @@ knowledgeRouter.get('/:productId/gap-analysis', requireAuth, async (req, res, ne
             reports,
             canRequestNow: recentCount < GAP_ANALYSIS_DAILY_LIMIT && can(membership.role, 'knowledge:analyze')
         });
+    } catch (err) {
+        next(err);
+    }
+});
+
+/**
+ * Resolves a KnowledgeTopic and checks the caller is a member of the
+ * workspace that owns its product — same membership pattern as
+ * `loadOwnedSource`.
+ */
+async function loadOwnedTopic(id, userId) {
+    const topic = await KnowledgeTopic.findById(id);
+    if (!topic) return { topic: null, membership: null };
+    const product = await Product.findById(topic.productId).select('workspaceId');
+    const membership = product
+        ? await Membership.findOne({ workspaceId: product.workspaceId, userId })
+        : null;
+    return { topic, membership };
+}
+
+/**
+ * GET /knowledge/:productId/topics
+ *
+ * Site Bilgisi (Konu Ağacı) — bkz. `apps/worker-ingestion/src/handlers/ingest-source.js`'in
+ * `runSiteTopicsPass()`'ı. Düz liste döner (parentTopicId ile) — Console
+ * bunu ağaca client-side dönüştürüyor.
+ */
+knowledgeRouter.get('/:productId/topics', requireAuth, async (req, res, next) => {
+    try {
+        const { product, membership } = await loadOwnedProduct(req.params.productId, req.user.sub);
+        if (!product) return res.status(404).json({ error: 'Product not found' });
+        if (!membership) return res.status(403).json({ error: 'Not a member of this workspace' });
+
+        const topics = await KnowledgeTopic.find({ productId: product._id }).sort({ createdAt: 1 });
+        res.json(topics);
+    } catch (err) {
+        next(err);
+    }
+});
+
+/**
+ * GET /knowledge/:productId/sitemap
+ *
+ * Site Yapı Ağacı — `apps/worker-ingestion/src/extractors/url.js`'in her
+ * crawl'da topladığı, `KnowledgeSource.meta.crawlIndex.pages`'e persist
+ * edilen sayfa/buton grafiği. Birden fazla url/api kaynağı varsa (nadir)
+ * hepsi tek düz listede birleştirilir — Console ve agent-worker'ın canlı
+ * tur entegrasyonu (bkz. plan) bunu okuyor.
+ *
+ * `status:'ready'` İLE FİLTRELENMİYOR — `meta.crawlIndex.pages` sadece
+ * başarılı bir crawl'ın SONUNDA yazılıyor, bir kaynak yeniden taranırken
+ * (dakikalarca sürebiliyor) `status` geçici olarak 'processing' oluyor ama
+ * önceki başarılı taramadan kalan harita hâlâ geçerli — agent-worker'ın
+ * siteMap sorgusuyla (`apps/agent-worker/src/agent.js`) aynı fix.
+ */
+knowledgeRouter.get('/:productId/sitemap', requireAuth, async (req, res, next) => {
+    try {
+        const { product, membership } = await loadOwnedProduct(req.params.productId, req.user.sub);
+        if (!product) return res.status(404).json({ error: 'Product not found' });
+        if (!membership) return res.status(403).json({ error: 'Not a member of this workspace' });
+
+        const sources = await KnowledgeSource.find({
+            productId: product._id,
+            type: { $in: ['url', 'api'] },
+            'meta.crawlIndex.pages': { $exists: true }
+        }).select('title meta.crawlIndex');
+
+        const pages = [];
+        for (const source of sources) {
+            const sourcePages = source.meta?.crawlIndex?.pages || {};
+            for (const [url, page] of Object.entries(sourcePages)) {
+                pages.push({
+                    sourceId: String(source._id),
+                    url,
+                    parentUrl: page.parentUrl ?? null,
+                    links: page.links || [],
+                    components: page.components || {}
+                });
+            }
+        }
+        res.json({ pages });
+    } catch (err) {
+        next(err);
+    }
+});
+
+/**
+ * GET /knowledge/topics/:id
+ */
+knowledgeRouter.get('/topics/:id', requireAuth, async (req, res, next) => {
+    try {
+        const { topic, membership } = await loadOwnedTopic(req.params.id, req.user.sub);
+        if (!topic) return res.status(404).json({ error: 'Topic not found' });
+        if (!membership) return res.status(403).json({ error: 'Not a member of this workspace' });
+        res.json(topic);
+    } catch (err) {
+        next(err);
+    }
+});
+
+/**
+ * PATCH /knowledge/topics/:id
+ *
+ * Müşteri düzenlemesi: title/body/parentTopicId. `body` değişirse
+ * `ingestTopicDocument()` ile tam re-embed tetiklenir (konu dokümanları
+ * sayfa kadar büyük değil, `reingestSourceIncremental()`'ın kısmi diff'i
+ * burada gerekmiyor — bkz. ingest.js'teki not).
+ */
+knowledgeRouter.patch(
+    '/topics/:id',
+    requireAuth,
+    validate({ body: KnowledgeTopicUpdateInput }),
+    async (req, res, next) => {
+        try {
+            const { topic, membership } = await loadOwnedTopic(req.params.id, req.user.sub);
+            if (!topic) return res.status(404).json({ error: 'Topic not found' });
+            if (!membership) return res.status(403).json({ error: 'Not a member of this workspace' });
+
+            const { title, body, parentTopicId } = req.body;
+
+            if (parentTopicId !== undefined) {
+                if (parentTopicId === String(topic._id)) {
+                    return res.status(400).json({ error: 'Bir konu kendi ebeveyni olamaz' });
+                }
+                topic.parentTopicId = parentTopicId || null;
+            }
+            if (title !== undefined) topic.title = title;
+
+            if (body !== undefined) {
+                topic.body = body;
+                topic.status = 'processing';
+                await topic.save();
+                try {
+                    const { ingestTopicDocument } = await import('@repo/rag');
+                    await ingestTopicDocument({ topicId: String(topic._id), productId: String(topic.productId), text: body });
+                    topic.status = 'ready';
+                    topic.error = undefined;
+                    await topic.save();
+                } catch (embedErr) {
+                    topic.status = 'failed';
+                    topic.error = embedErr.message;
+                    await topic.save();
+                    throw embedErr;
+                }
+                return res.json({ ok: true, status: 'ready' });
+            }
+
+            await topic.save();
+            res.json({ ok: true });
+        } catch (err) {
+            next(err);
+        }
+    }
+);
+
+/**
+ * DELETE /knowledge/topics/:id
+ *
+ * Alt konuları koparmaz — çocukların `parentTopicId`'si silinen konunun
+ * ebeveynine taşınır (dallanma korunur).
+ */
+knowledgeRouter.delete('/topics/:id', requireAuth, async (req, res, next) => {
+    try {
+        const { topic, membership } = await loadOwnedTopic(req.params.id, req.user.sub);
+        if (!topic) return res.status(404).json({ error: 'Topic not found' });
+        if (!membership) return res.status(403).json({ error: 'Not a member of this workspace' });
+
+        await KnowledgeTopic.updateMany({ parentTopicId: topic._id }, { parentTopicId: topic.parentTopicId || null });
+        await KnowledgeTopic.deleteOne({ _id: topic._id });
+
+        try {
+            const { getVectorStore } = await import('@repo/rag');
+            await getVectorStore().deleteByTopic(String(topic._id));
+        } catch (vectorErr) {
+            console.warn('[knowledge] failed to delete topic chunks from vector store:', vectorErr.message);
+        }
+
+        res.json({ ok: true });
     } catch (err) {
         next(err);
     }

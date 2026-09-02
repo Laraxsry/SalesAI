@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { Link, useNavigate, useSearchParams } from 'react-router-dom';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import {
@@ -11,7 +11,9 @@ import {
     Loader2,
     ChevronDown,
     ChevronUp,
-    Download
+    Download,
+    Check,
+    FolderTree
 } from 'lucide-react';
 import { analyticsApi, productsApi, knowledgeApi } from '../lib/api.js';
 import { useAuthStore } from '../store/auth.js';
@@ -19,7 +21,8 @@ import { getSocket } from '../lib/socket.js';
 
 const TABS = [
     { key: 'unanswered', label: 'Cevapsız Sorular' },
-    { key: 'analysis', label: 'İçerik Analizi' }
+    { key: 'analysis', label: 'İçerik Analizi' },
+    { key: 'site', label: 'Site Bilgisi' }
 ];
 
 const FINDING_META = {
@@ -81,9 +84,23 @@ function UnansweredQuestionsTab({ productId }) {
 }
 
 function FindingGroup({ type, findings, sourceTitleById, onJumpToSource }) {
-    if (!findings.length) return null;
     const meta = FINDING_META[type];
     const Icon = meta.icon;
+
+    if (!findings.length) {
+        return (
+            <div className="mb-5">
+                <h3 className="mb-2 flex items-center gap-1.5 text-sm font-semibold text-text">
+                    <Icon size={14} />
+                    {meta.label}
+                </h3>
+                <p className="flex items-center gap-1.5 text-sm text-text-muted">
+                    <Check size={14} className="text-emerald-400" />
+                    Bulunamadı — bu kategori kontrol edildi.
+                </p>
+            </div>
+        );
+    }
 
     return (
         <div className="mb-5">
@@ -178,26 +195,23 @@ function ReportCard({ report, isExpanded, onToggle, productName, sourceTitleById
                     {report.status === 'failed' && (
                         <p className="text-sm text-red-400">Analiz başarısız oldu: {report.error || 'bilinmeyen hata'}</p>
                     )}
-                    {report.status === 'ready' && report.findings?.length === 0 && (
-                        <p className="text-sm text-text-muted">Hiçbir tutarsızlık/eksik bulunamadı — knowledge tabanı sağlam görünüyor.</p>
-                    )}
-                    {report.status === 'ready' && report.findings?.length > 0 && (
+                    {report.status === 'ready' && (
                         <>
                             <FindingGroup
                                 type="inconsistency"
-                                findings={report.findings.filter((f) => f.type === 'inconsistency')}
+                                findings={(report.findings || []).filter((f) => f.type === 'inconsistency')}
                                 sourceTitleById={sourceTitleById}
                                 onJumpToSource={onJumpToSource}
                             />
                             <FindingGroup
                                 type="thin"
-                                findings={report.findings.filter((f) => f.type === 'thin')}
+                                findings={(report.findings || []).filter((f) => f.type === 'thin')}
                                 sourceTitleById={sourceTitleById}
                                 onJumpToSource={onJumpToSource}
                             />
                             <FindingGroup
                                 type="missing"
-                                findings={report.findings.filter((f) => f.type === 'missing')}
+                                findings={(report.findings || []).filter((f) => f.type === 'missing')}
                                 sourceTitleById={sourceTitleById}
                                 onJumpToSource={onJumpToSource}
                             />
@@ -313,6 +327,314 @@ function ContentAnalysisTab({ productId, productName }) {
     );
 }
 
+/** Best-effort short label for a page URL (falls back to the raw string for an unparsable one). */
+function pagePath(url) {
+    try {
+        return new URL(url).pathname || '/';
+    } catch {
+        return url;
+    }
+}
+
+/**
+ * One node of the Konu Ağacı (KnowledgeTopic tree) — recursive, renders its
+ * own children when expanded. Inline markdown edit (no separate modal, these
+ * documents are meant to be read/tweaked in place) saves via `onSave`, which
+ * re-embeds the topic's chunks server-side (`PATCH /knowledge/topics/:id`).
+ */
+function TopicNode({ topic, childrenByParent, depth, expandedIds, onToggle, onJumpToSource, onSave }) {
+    const kids = childrenByParent.get(topic._id) || [];
+    const isExpanded = expandedIds.has(topic._id);
+    const [editing, setEditing] = useState(false);
+    const [draft, setDraft] = useState(topic.body || '');
+    const [saving, setSaving] = useState(false);
+
+    useEffect(() => {
+        if (!editing) setDraft(topic.body || '');
+    }, [topic.body, editing]);
+
+    async function handleSave() {
+        setSaving(true);
+        try {
+            await onSave(topic._id, draft);
+            setEditing(false);
+        } finally {
+            setSaving(false);
+        }
+    }
+
+    return (
+        <div style={{ marginLeft: depth * 20 }}>
+            <button
+                onClick={() => onToggle(topic._id)}
+                className="flex w-full min-w-0 items-center gap-2 rounded-[var(--radius-card)] border border-border bg-surface px-3 py-2 text-left hover:border-brand/50"
+            >
+                {isExpanded ? (
+                    <ChevronUp size={14} className="shrink-0 text-text-muted" />
+                ) : (
+                    <ChevronDown size={14} className="shrink-0 text-text-muted" />
+                )}
+                <span className="truncate text-sm font-medium text-text">{topic.title}</span>
+                {topic.autoGenerated && (
+                    <span className="shrink-0 rounded-full bg-amber-500/10 px-2 py-0.5 text-[10px] font-medium text-amber-400">
+                        otomatik oluşturuldu
+                    </span>
+                )}
+                {!topic.body && (
+                    <span className="shrink-0 text-xs text-text-muted">içerik bulunamadı</span>
+                )}
+            </button>
+
+            {isExpanded && (
+                <div className="mb-2 mt-1.5 rounded-[var(--radius-card)] border border-border bg-surface-raised p-3">
+                    {editing ? (
+                        <>
+                            <textarea
+                                value={draft}
+                                onChange={(e) => setDraft(e.target.value)}
+                                rows={10}
+                                className="w-full rounded-[var(--radius-input)] border border-border bg-surface p-2 text-sm text-text outline-none focus:border-brand"
+                            />
+                            <div className="mt-2 flex justify-end gap-3">
+                                <button
+                                    onClick={() => {
+                                        setEditing(false);
+                                        setDraft(topic.body || '');
+                                    }}
+                                    className="text-xs text-text-muted hover:text-text"
+                                >
+                                    Vazgeç
+                                </button>
+                                <button
+                                    onClick={handleSave}
+                                    disabled={saving}
+                                    className="rounded-[var(--radius-input)] bg-brand px-3 py-1.5 text-xs font-medium text-white disabled:opacity-50"
+                                >
+                                    {saving ? 'Kaydediliyor…' : 'Kaydet'}
+                                </button>
+                            </div>
+                        </>
+                    ) : (
+                        <>
+                            <p className="whitespace-pre-wrap text-sm text-text-muted">
+                                {topic.body || 'Bu konu için henüz içerik bulunamadı — site taramasında hiçbir sayfa bu başlığa katkı sağlamadı.'}
+                            </p>
+                            <div className="mt-3 flex flex-wrap items-center justify-between gap-2">
+                                <div className="flex flex-wrap gap-1.5">
+                                    {(topic.sourcePages || []).slice(0, 8).map((sp, i) => (
+                                        <button
+                                            key={i}
+                                            onClick={() => onJumpToSource(sp.sourceId)}
+                                            title={sp.pageUrl}
+                                            className="rounded-full bg-surface px-2 py-1 text-[11px] text-text-muted hover:text-text"
+                                        >
+                                            {pagePath(sp.pageUrl)}
+                                        </button>
+                                    ))}
+                                </div>
+                                <button
+                                    onClick={() => setEditing(true)}
+                                    className="shrink-0 text-xs font-medium text-brand hover:underline"
+                                >
+                                    Düzenle
+                                </button>
+                            </div>
+                        </>
+                    )}
+                </div>
+            )}
+
+            {isExpanded &&
+                kids.map((k) => (
+                    <TopicNode
+                        key={k._id}
+                        topic={k}
+                        childrenByParent={childrenByParent}
+                        depth={depth + 1}
+                        expandedIds={expandedIds}
+                        onToggle={onToggle}
+                        onJumpToSource={onJumpToSource}
+                        onSave={onSave}
+                    />
+                ))}
+        </div>
+    );
+}
+
+/**
+ * Site Bilgisi sekmesi — Konu Ağacı (yukarıdaki, düzenlenebilir) + Site
+ * Yapısı (aşağıda, salt-okunur — sayfa/buton haritası, sadece istenince
+ * yüklenir). `apps/worker-ingestion/src/handlers/ingest-source.js`'in
+ * `runSiteTopicsPass()`'ının doldurduğu veriyi gösterir.
+ */
+function SiteTopicsTab({ productId }) {
+    const navigate = useNavigate();
+    const queryClient = useQueryClient();
+    const [expandedIds, setExpandedIds] = useState(() => new Set());
+    const [showSitemap, setShowSitemap] = useState(false);
+    const [expandedPageUrls, setExpandedPageUrls] = useState(() => new Set());
+
+    const { data: topics, isLoading } = useQuery({
+        queryKey: ['knowledge-topics', productId],
+        queryFn: () => knowledgeApi.topics.list(productId),
+        enabled: !!productId
+    });
+
+    const { data: sitemapData, isLoading: sitemapLoading } = useQuery({
+        queryKey: ['knowledge-sitemap', productId],
+        queryFn: () => knowledgeApi.sitemap(productId),
+        enabled: !!productId && showSitemap
+    });
+
+    function toggle(id) {
+        setExpandedIds((prev) => {
+            const next = new Set(prev);
+            if (next.has(id)) next.delete(id);
+            else next.add(id);
+            return next;
+        });
+    }
+
+    async function handleSaveTopic(id, body) {
+        await knowledgeApi.topics.update(id, { body });
+        queryClient.invalidateQueries({ queryKey: ['knowledge-topics', productId] });
+    }
+
+    function jumpToSource(sourceId) {
+        navigate(`/knowledge?product=${productId}&source=${sourceId}`);
+    }
+
+    function togglePageComponents(url) {
+        setExpandedPageUrls((prev) => {
+            const next = new Set(prev);
+            if (next.has(url)) next.delete(url);
+            else next.add(url);
+            return next;
+        });
+    }
+
+    const { roots, childrenByParent } = useMemo(() => {
+        const childrenByParent = new Map();
+        const roots = [];
+        for (const t of topics || []) {
+            if (t.parentTopicId) {
+                const list = childrenByParent.get(t.parentTopicId) || [];
+                list.push(t);
+                childrenByParent.set(t.parentTopicId, list);
+            } else {
+                roots.push(t);
+            }
+        }
+        return { roots, childrenByParent };
+    }, [topics]);
+
+    return (
+        <>
+            <p className="mb-6 max-w-2xl text-sm text-text-muted">
+                Site taranırken agent, sitenizdeki içerikleri (İletişim, Fiyatlandırma, SSS gibi) konu
+                başlıklarına göre kendiliğinden topluyor — her başlık, o konuyla ilgili TÜM sayfalardan
+                birleştirilmiş, düzenlenebilir bir doküman. Bir URL kaynağını her yeniden taradığınızda
+                güncellenir.
+            </p>
+
+            {isLoading && <p className="text-sm text-text-muted">Yükleniyor…</p>}
+
+            {!isLoading && roots.length === 0 && (
+                <div className="flex flex-col items-center justify-center rounded-[var(--radius-card)] border border-dashed border-border py-16 text-center">
+                    <FolderTree size={28} className="mb-3 text-text-muted" />
+                    <p className="text-sm text-text-muted">
+                        Henüz konu ağacı oluşturulmadı — bir URL kaynağı tarandığında otomatik oluşur.
+                    </p>
+                </div>
+            )}
+
+            {roots.length > 0 && (
+                <div className="flex flex-col gap-1.5">
+                    {roots.map((t) => (
+                        <TopicNode
+                            key={t._id}
+                            topic={t}
+                            childrenByParent={childrenByParent}
+                            depth={0}
+                            expandedIds={expandedIds}
+                            onToggle={toggle}
+                            onJumpToSource={jumpToSource}
+                            onSave={handleSaveTopic}
+                        />
+                    ))}
+                </div>
+            )}
+
+            <div className="mt-8 border-t border-border pt-6">
+                <button
+                    onClick={() => setShowSitemap((v) => !v)}
+                    className="flex items-center gap-1.5 text-sm font-medium text-text hover:text-brand"
+                >
+                    {showSitemap ? <ChevronUp size={14} /> : <ChevronDown size={14} />}
+                    Site Yapısı (sayfa/buton haritası)
+                </button>
+                {showSitemap && (
+                    <div className="mt-3 flex flex-col gap-1.5">
+                        {sitemapLoading && <p className="text-sm text-text-muted">Yükleniyor…</p>}
+                        {!sitemapLoading && sitemapData?.pages?.length === 0 && (
+                            <p className="text-sm text-text-muted">Site haritası bulunamadı.</p>
+                        )}
+                        {sitemapData?.pages?.map((p, i) => {
+                            const headings = p.components?.headings || [];
+                            const elements = p.components?.interactiveElements || [];
+                            const sections = p.components?.sections || [];
+                            const hasComponents = headings.length > 0 || elements.length > 0 || sections.length > 0;
+                            const pageExpanded = expandedPageUrls.has(p.url);
+                            return (
+                                <div key={i} className="rounded-[var(--radius-card)] border border-border bg-surface px-3 py-2 text-xs">
+                                    <p className="truncate font-medium text-text">{p.url}</p>
+                                    {p.parentUrl && <p className="mt-0.5 truncate text-text-muted">↳ {p.parentUrl}</p>}
+                                    {p.links?.length > 0 && (
+                                        <p className="mt-1 text-text-muted">{p.links.length} link/buton</p>
+                                    )}
+                                    {hasComponents && (
+                                        <button
+                                            type="button"
+                                            onClick={() => togglePageComponents(p.url)}
+                                            className="mt-1 flex items-center gap-1 text-text-muted hover:text-brand"
+                                        >
+                                            {pageExpanded ? <ChevronUp size={12} /> : <ChevronDown size={12} />}
+                                            {elements.length} sayfa-içi öğe, {headings.length} başlık
+                                            {sections.length > 0 && `, ${sections.length} bölüm`}
+                                        </button>
+                                    )}
+                                    {pageExpanded && (
+                                        <div className="mt-2 flex flex-col gap-1 border-t border-border pt-2">
+                                            {headings.length > 0 && (
+                                                <p className="text-text-muted">
+                                                    <span className="font-medium text-text">Başlıklar:</span>{' '}
+                                                    {headings.map((h) => h.text).join(' · ')}
+                                                </p>
+                                            )}
+                                            {elements.length > 0 && (
+                                                <p className="text-text-muted">
+                                                    <span className="font-medium text-text">Butonlar/linkler:</span>{' '}
+                                                    {elements.map((el) => el.label).join(' · ')}
+                                                </p>
+                                            )}
+                                            {sections.length > 0 && (
+                                                <p className="text-text-muted">
+                                                    <span className="font-medium text-text">Bölümler:</span>{' '}
+                                                    {sections.map((s) => s.ariaLabel || s.tag).join(' · ')}
+                                                </p>
+                                            )}
+                                        </div>
+                                    )}
+                                </div>
+                            );
+                        })}
+                    </div>
+                )}
+            </div>
+        </>
+    );
+}
+
 export function KnowledgeGaps() {
     const workspace = useAuthStore((s) => s.workspace);
     const [searchParams, setSearchParams] = useSearchParams();
@@ -392,6 +714,7 @@ export function KnowledgeGaps() {
                     productName={products?.find((p) => p.id === productId)?.name}
                 />
             )}
+            {tab === 'site' && <SiteTopicsTab productId={productId} />}
         </div>
     );
 }

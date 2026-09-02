@@ -117,7 +117,9 @@ Kurallar:
 - "missing" bulgularında sourceIndexes alanını hiç ekleme veya boş dizi bırak — tanım gereği hiçbir kaynakta yok.
 - Gerçekten emin olmadığın, zorlama/önemsiz bulguları ekleme — az ama isabetli bulgu, çok ama gürültülü bulgudan iyidir.
 - Hiç bulgu yoksa ilgili diziyi boş bırak.
-- Tüm başlık/açıklama metinlerini TÜRKÇE yaz.`;
+- Tüm başlık/açıklama metinlerini TÜRKÇE yaz.
+
+"inconsistencies" için özellikle dikkat et — her kaynağı diğerleriyle karşılaştırıp şu somut çelişki türlerini ara: farklı fiyat/ücret rakamları, farklı süre/adım sayısı, birbirini dışlayan kural/koşul ifadeleri, aynı özellik/süreç için çelişen açıklamalar. Bu tür bir çelişki varsa MUTLAKA raporla; "description" alanında çelişen İKİ değeri de açıkça yaz (örn. "Kaynak 1 fiyatı 500 TL derken Kaynak 3 aynı paketi 650 TL olarak veriyor").`;
 
     const llm = getLLM(undefined, { timeoutMs: REDUCE_LLM_TIMEOUT_MS });
     const response = await llm.complete({

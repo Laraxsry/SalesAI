@@ -157,6 +157,16 @@ export const KnowledgeSourceUpdateInput = z
     })
     .refine((val) => Object.keys(val).length > 0, { message: 'En az bir alan gerekli' });
 
+// PATCH /knowledge/topics/:id — customer edits to a Site Bilgisi (KnowledgeTopic)
+// document: title, body (markdown), or re-parenting it in the topic tree.
+export const KnowledgeTopicUpdateInput = z
+    .object({
+        title: z.string().min(1).optional(),
+        body: z.string().optional(),
+        parentTopicId: z.string().nullable().optional()
+    })
+    .refine((val) => Object.keys(val).length > 0, { message: 'En az bir alan gerekli' });
+
 // ─── Agent persona / configuration ────────────────────────────
 export const AgentConfigInput = z.object({
     productId: z.string(),

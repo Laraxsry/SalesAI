@@ -18,7 +18,10 @@ function toRetrievable(docs, topK) {
         .slice(0, topK)
         .map((r) => ({
             id: String(r._id),
-            sourceId: String(r.sourceId),
+            // A chunk belongs to exactly one of these — a KnowledgeSource crawl
+            // or a cross-source KnowledgeTopic (see KnowledgeChunk model).
+            sourceId: r.sourceId ? String(r.sourceId) : undefined,
+            topicId: r.topicId ? String(r.topicId) : undefined,
             text: r.text,
             score: r.score,
             audience: r.audience,
@@ -74,6 +77,7 @@ export class MongoVectorStore {
             {
                 $project: {
                     sourceId: 1,
+                    topicId: 1,
                     text: 1,
                     metadata: 1,
                     audience: 1,
@@ -90,9 +94,20 @@ export class MongoVectorStore {
         await KnowledgeChunk.deleteMany({ sourceId });
     }
 
+    /** @param {string} topicId */
+    async deleteByTopic(topicId) {
+        await KnowledgeChunk.deleteMany({ topicId });
+    }
+
     /** @param {string} sourceId @returns {Promise<{id:string, text:string}[]>} */
     async listBySource(sourceId) {
         const chunks = await KnowledgeChunk.find({ sourceId }).select('text');
+        return chunks.map((c) => ({ id: String(c._id), text: c.text }));
+    }
+
+    /** @param {string} topicId @returns {Promise<{id:string, text:string}[]>} */
+    async listByTopic(topicId) {
+        const chunks = await KnowledgeChunk.find({ topicId }).select('text');
         return chunks.map((c) => ({ id: String(c._id), text: c.text }));
     }
 
@@ -145,6 +160,7 @@ export class MongoVectorStore {
             {
                 $project: {
                     sourceId: 1,
+                    topicId: 1,
                     text: 1,
                     metadata: 1,
                     audience: 1,
@@ -177,7 +193,7 @@ export class MongoVectorStore {
 
         return docs.map((d) => ({
             id: String(d._id),
-            sourceId: String(d.sourceId),
+            sourceId: d.sourceId ? String(d.sourceId) : undefined,
             text: d.text,
             embedding: d.embedding,
             audience: d.audience,

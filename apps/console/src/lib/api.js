@@ -118,6 +118,13 @@ export const knowledgeApi = {
         trigger: (productId) => apiFetch(`/knowledge/${productId}/gap-analysis`, { method: 'POST' }),
         list: (productId) => apiFetch(`/knowledge/${productId}/gap-analysis`)
     },
+    topics: {
+        list: (productId) => apiFetch(`/knowledge/${productId}/topics`),
+        get: (id) => apiFetch(`/knowledge/topics/${id}`),
+        update: (id, payload) => apiFetch(`/knowledge/topics/${id}`, { method: 'PATCH', body: payload }),
+        remove: (id) => apiFetch(`/knowledge/topics/${id}`, { method: 'DELETE' })
+    },
+    sitemap: (productId) => apiFetch(`/knowledge/${productId}/sitemap`),
     uploadUrl: (filename, contentType) =>
         apiFetch('/knowledge/upload-url', { method: 'POST', body: { filename, contentType } }),
     /** Uploads a file straight to storage via a presigned URL (bypasses our API/JSON pipeline). */

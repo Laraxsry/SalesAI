@@ -8,7 +8,7 @@ import {
     VideoSource, LocalVideoTrack, VideoBufferType, VideoStream, TrackKind, TrackSource, VideoFrame, RoomEvent
 } from '@livekit/rtc-node';
 import sharp from 'sharp';
-import { connectDB, Agent, Product, Session, Message, Playbook } from '@repo/database';
+import { connectDB, Agent, Product, Session, Message, Playbook, KnowledgeSource } from '@repo/database';
 import {
     buildSystemPrompt,
     buildTools,
@@ -106,6 +106,18 @@ async function runSession(ctx) {
     const playbookCursor = playbookActive ? createPlaybookCursor(playbookNodes) : null;
     /** @type {ReturnType<typeof createPlaybookRuntime>|null} */
     let playbookRuntime = null;
+    // Real session logs (outside a playbook, so playbookRuntime.busy is
+    // always false) repeatedly showed the silence driver firing an idle
+    // nudge WHILE the visitor's own turn was still being generated — before
+    // it had even issued its first tool call, so a per-tool-call counter
+    // (tried first) saw nothing in flight and let the nudge through anyway.
+    // Bumping idleMs (tried second, 500ms -> 1200ms) only narrowed the
+    // window, it never closed it — the model can legitimately take longer
+    // than any fixed guess to decide what to call first. Both were guessing
+    // at "is a turn still going" from the outside; this instead asks the
+    // SDK directly via `SpeechCreated`'s `SpeechHandle.addDoneCallback()` —
+    // see `silence` below.
+    let activeSpeechCount = 0;
 
     // Logged unconditionally, including the inactive case: "was a playbook
     // even running?" is otherwise unanswerable from the logs, and every
@@ -174,6 +186,66 @@ async function runSession(ctx) {
     // LiveKit video track.
     let latestTourFrameBase64 = null;
 
+    // Capture a frame and push it to the LiveKit VideoSource. Defined at
+    // tourControls scope (not inside openAt) so goto/highlight/click/scroll
+    // can trigger an immediate frame too — they each reference it right after
+    // acting so the visitor sees the result without waiting for the next
+    // scheduled poll.
+    const captureAndPublishTourFrame = async () => {
+        if (!isTourActive || !tourVideoSource) return false;
+        tourCaptureInFlight = true;
+        try {
+            const pngBuffer = await tour.screenshot();
+            // Convert PNG → raw ARGB buffer via sharp
+            const { data, info } = await sharp(pngBuffer)
+                .resize({ width: 1280, height: 720, fit: 'contain', background: '#000' })
+                .ensureAlpha()
+                .raw()
+                .toBuffer({ resolveWithObject: true });
+
+            // *** CRASH WARNING — re-check right before touching the native
+            // track. stopScreenShare() may have unpublished it while we were
+            // awaiting the screenshot/resize above; calling captureFrame() on a
+            // source whose track is concurrently being unpublished is a native
+            // Rust panic in livekit-ffi (unwrap() on Err), which kills the whole
+            // agent-worker process — not a catchable JS error. ***
+            if (!isTourActive || !tourVideoSource) return false;
+
+            // Push to LiveKit VideoSource
+            const frame = new VideoFrame(data, info.width, info.height, VideoBufferType.RGBA);
+            const timestampUs = BigInt(Date.now()) * 1000n;
+            tourVideoSource.captureFrame(frame, timestampUs);
+
+            // Also keep a downscaled JPEG copy for read_tour_screen — cheap
+            // (just re-encoding the same PNG we already have), the actual
+            // vision-model cost only happens when the tool is called.
+            const jpegBuffer = await sharp(pngBuffer)
+                .resize({ width: 1024, withoutEnlargement: true })
+                .jpeg({ quality: 80 })
+                .toBuffer();
+            latestTourFrameBase64 = `data:image/jpeg;base64,${jpegBuffer.toString('base64')}`;
+            return true;
+        } catch (frameErr) {
+            // Non-fatal: log and skip this frame
+            log.warn('Tour frame capture failed', { error: frameErr.message });
+            return false;
+        } finally {
+            tourCaptureInFlight = false;
+        }
+    };
+
+    // Schedule the next capture only after the current one finishes.
+    // Overlapping Playwright/sharp work can starve LiveKit heartbeats.
+    const scheduleTourFrame = (delayMs = 800) => {
+        if (tourPublishTimer) clearTimeout(tourPublishTimer);
+        tourPublishTimer = setTimeout(async () => {
+            tourPublishTimer = null;
+            if (!isTourActive || !tourVideoSource) return;
+            await captureAndPublishTourFrame();
+            if (isTourActive && tourVideoSource) scheduleTourFrame(800);
+        }, delayMs);
+    };
+
     const tourControls = {
         openAt: async (url) => {
             if (!screenModes.includes('guided-tour')) {
@@ -215,63 +287,6 @@ async function runSession(ctx) {
                     console.error('Could not publish tour track to LiveKit:', e);
                 }
 
-                // Capture a frame and push it to the LiveKit VideoSource.
-                const captureAndPublishTourFrame = async () => {
-                    if (!isTourActive || !tourVideoSource) return false;
-                    tourCaptureInFlight = true;
-                    try {
-                        const pngBuffer = await tour.screenshot();
-                        // Convert PNG → raw ARGB buffer via sharp
-                        const { data, info } = await sharp(pngBuffer)
-                            .resize({ width: 1280, height: 720, fit: 'contain', background: '#000' })
-                            .ensureAlpha()
-                            .raw()
-                            .toBuffer({ resolveWithObject: true });
-
-                        // *** CRASH WARNING — re-check right before touching the
-                        // native track. stopScreenShare() may have unpublished
-                        // it while we were awaiting the screenshot/resize above;
-                        // calling captureFrame() on a source whose track is
-                        // concurrently being unpublished is a native Rust panic
-                        // in livekit-ffi (unwrap() on Err), which kills the whole
-                        // agent-worker process — not a catchable JS error. ***
-                        if (!isTourActive || !tourVideoSource) return false;
-
-                        // Push to LiveKit VideoSource
-                        const frame = new VideoFrame(data, info.width, info.height, VideoBufferType.RGBA);
-                        const timestampUs = BigInt(Date.now()) * 1000n;
-                        tourVideoSource.captureFrame(frame, timestampUs);
-
-                        // Also keep a downscaled JPEG copy for read_tour_screen —
-                        // cheap (just re-encoding the same PNG we already have),
-                        // the actual vision-model cost only happens when the
-                        // tool is called.
-                        const jpegBuffer = await sharp(pngBuffer)
-                            .resize({ width: 1024, withoutEnlargement: true })
-                            .jpeg({ quality: 80 })
-                            .toBuffer();
-                        latestTourFrameBase64 = `data:image/jpeg;base64,${jpegBuffer.toString('base64')}`;
-                        return true;
-                    } catch (frameErr) {
-                        // Non-fatal: log and skip this frame
-                        log.warn('Tour frame capture failed', { error: frameErr.message });
-                        return false;
-                    } finally {
-                        tourCaptureInFlight = false;
-                    }
-                };
-
-                // Schedule the next capture only after the current one finishes.
-                // Overlapping Playwright/sharp work can starve LiveKit heartbeats.
-                const scheduleTourFrame = (delayMs = 800) => {
-                    if (tourPublishTimer) clearTimeout(tourPublishTimer);
-                    tourPublishTimer = setTimeout(async () => {
-                        tourPublishTimer = null;
-                        if (!isTourActive || !tourVideoSource) return;
-                        await captureAndPublishTourFrame();
-                        if (isTourActive && tourVideoSource) scheduleTourFrame(800);
-                    }, delayMs);
-                };
                 scheduleTourFrame();
 
                 // Capture initial frame immediately
@@ -596,6 +611,48 @@ async function runSession(ctx) {
     // What the agent actually said out loud, so "do not repeat yourself" has a
     // referent instead of being a blind instruction — see utterance-memory.js.
     const utterances = createUtteranceMemory();
+
+    // Site Bilgisi — Site Yapı Ağacı: flattened `meta.crawlIndex.pages` from
+    // every url/api KnowledgeSource this product has, so the `find_page`
+    // tool (packages/agent/src/tools.js) can resolve a semantic query
+    // ("İletişim") to a real URL/selector instead of the model guessing
+    // one. Best-effort — a lookup failure just means find_page returns no
+    // candidates this session, never blocks the call from starting.
+    //
+    // Deliberately NOT filtered by status:'ready' — `meta.crawlIndex.pages`
+    // is only overwritten at the end of a successful crawl (see
+    // ingest-source.js), so it holds the last known-good page/button map
+    // even while a re-crawl of the same source is currently 'processing'
+    // (or even if that re-crawl later ends in 'failed'). Requiring 'ready'
+    // meant the site map — and therefore find_page and on-site
+    // navigation — went completely empty for the whole duration of any
+    // re-ingestion, which for an 8+ page site is minutes, not seconds.
+    const siteMap = [];
+    try {
+        const urlSources = await KnowledgeSource.find({
+            productId: product._id,
+            type: { $in: ['url', 'api'] },
+            'meta.crawlIndex.pages': { $exists: true }
+        }).select('meta.crawlIndex');
+        for (const src of urlSources) {
+            const pages = src.meta?.crawlIndex?.pages || {};
+            for (const [url, page] of Object.entries(pages)) {
+                siteMap.push({
+                    url,
+                    parentUrl: page.parentUrl ?? null,
+                    links: page.links || [],
+                    // Absent on pages reused from a pre-component-discovery
+                    // crawl cache (see extractPageComponents) — find_element
+                    // just returns no candidates for those, same posture as
+                    // `links || []` above.
+                    components: page.components ?? {}
+                });
+            }
+        }
+    } catch (err) {
+        log.warn('site map load failed (non-fatal, find_page will return no candidates)', { error: err.message });
+    }
+
     // Bridge is the OUTERMOST decorator: the filler must wrap the whole call,
     // while withToolCallMetrics still has to time only the real handler.
     const tools = withToolBridge(
@@ -607,15 +664,26 @@ async function runSession(ctx) {
                 screen: screenControls,
                 stopScreenShare,
                 saveContactInfo,
+                siteMap,
+                playbookActive,
                 // Not yet awaitable at this point in the source (playbookRuntime
                 // is constructed further down, once agentSession exists) — this
                 // closure only reads it, and by the time the model can actually
-                // call the tool the runtime is long since assigned. When no
-                // playbook is running playbookRuntime stays null and this is a
-                // harmless no-op; the model is never told to call advance_step
-                // in that mode anyway (see persona.js's playbookActive gate).
+                // call the tool the runtime is long since assigned. Only wired
+                // up (and only exposed to the model at all — see buildTools'
+                // playbookActive gate) when a playbook is actually running.
                 advanceStep: () => {
                     playbookRuntime?.signal('advance_step');
+                    return { ok: true };
+                },
+                // Referenced before `silence` is declared further down this
+                // function — safe: this closure only runs when the model
+                // actually calls the tool, long after `silence` is
+                // initialized (same pattern as `advanceStep`/`playbookRuntime`
+                // above). 7s: within the customer-requested 5-10s window for
+                // a genuine "I asked something, give them time to answer" wait.
+                expectResponse: () => {
+                    silence.expectResponse(7000);
                     return { ok: true };
                 }
             }),
@@ -840,8 +908,26 @@ async function runSession(ctx) {
     // stopped speaking and the visitor isn't speaking either, so it cannot
     // talk over anyone; see silence-driver.js for the two SDK behaviours it
     // depends on.
+    //
+    // idleMs was set to literal 0 on customer request (no perceptible wait —
+    // barge-in already works on its own regardless of this timer). That
+    // turned out to be a genuine bug, not just "too short": a real session
+    // log showed TWO speech handles created 3ms apart right at the greeting
+    // (the idle-nudge firing on a transient 'listening' blip that exists
+    // for a few microtasks *before* the greeting's own generateReply() call
+    // lands), and later a "Conversation already has an active response in
+    // progress" API error right after an interruption (same transient blip
+    // between the cancelled response tearing down and the visitor's new
+    // turn actually starting). 500ms dodges those microtask-scale blips.
+    // A LONGER version of the same race (AgentState reading 'listening' for
+    // several hundred ms while the model is still deciding what to call
+    // first) kept recurring in real sessions no matter how far idleMs was
+    // pushed out (1200ms still wasn't enough) — see `activeSpeechCount`'s
+    // declaration above for why that's now handled by a real SDK signal
+    // instead of a bigger guess, which is what makes 500ms safe to use here
+    // again.
     const silence = createSilenceDriver({
-        idleMs: Number(process.env.AGENT_IDLE_NUDGE_MS ?? 12_000),
+        idleMs: Number(process.env.AGENT_IDLE_NUDGE_MS ?? 500),
         onIdle: ({ consecutive }) => {
             // While a playbook is running and hasn't finished, silence is the
             // presentation's own advance signal — see md/backend/agent_flow.md,
@@ -868,17 +954,51 @@ async function runSession(ctx) {
                 log.warn('idle nudge skipped', { error: err.message, consecutive });
             }
         },
-        // Vetoes the timer while the playbook is mid-navigate-or-narrate — see
-        // playbook-runtime.js's `busy` getter and hazard #2 in the plan.
-        isBusy: () => playbookRuntime?.busy ?? false
+        // Vetoes the timer while the playbook is mid-navigate-or-narrate (see
+        // playbook-runtime.js's `busy` getter and hazard #2 in the plan) OR
+        // while a speech turn is still active (activeSpeechCount, declared
+        // above — outside a playbook this was the real gap: a nudge could
+        // fire before the visitor's own turn had even issued its first tool
+        // call, producing a second concurrent turn that independently
+        // re-did the same lookup and repeated "still loading" filler in a
+        // real session).
+        isBusy: () => activeSpeechCount > 0 || (playbookRuntime?.busy ?? false),
+        // silence-driver.js's own default (3) assumes each fire follows a
+        // genuinely long silence — with idleMs≈0 each fire is just "one more
+        // self-driven turn", so a real continuous walkthrough would hit the
+        // default ceiling (and the closing/goodbye instructions) after only
+        // ~30-45s of talking. Matches buildIdleNudgeInstructions' own
+        // `consecutive >= 20` threshold for when it switches to that closing
+        // message.
+        maxConsecutive: 20
     });
 
-    agentSession.on(voice.AgentSessionEventTypes.AgentStateChanged, (ev) =>
-        silence.handleAgentState(ev.newState)
-    );
-    agentSession.on(voice.AgentSessionEventTypes.UserStateChanged, (ev) =>
-        silence.handleUserState(ev.newState)
-    );
+    // Closes the startup race at its source: `agentSession.start()` briefly
+    // reports 'listening' before the greeting/playbook's own first
+    // generateReply() call actually lands (a few microtasks later), and the
+    // driver has no way to tell that transient blip apart from a genuinely
+    // quiet visitor. Ignoring state events entirely until the greeting/
+    // playbook has actually been kicked off means the driver's first-ever
+    // read of `agentState` is already past that blip.
+    let greetingSent = false;
+    agentSession.on(voice.AgentSessionEventTypes.AgentStateChanged, (ev) => {
+        if (greetingSent) silence.handleAgentState(ev.newState);
+    });
+    agentSession.on(voice.AgentSessionEventTypes.UserStateChanged, (ev) => {
+        if (greetingSent) silence.handleUserState(ev.newState);
+    });
+    // Ground truth for `activeSpeechCount` (declared above): every
+    // generateReply()/say() call — the greeting, a real reply, an idle
+    // nudge, a playbook step — creates a SpeechHandle and fires this event.
+    // `addDoneCallback` is the SDK's own signal that the WHOLE turn (tool
+    // calls, audio playout, everything) has actually finished, not just
+    // that AgentState happened to read 'listening' for a moment.
+    agentSession.on(voice.AgentSessionEventTypes.SpeechCreated, (ev) => {
+        activeSpeechCount++;
+        ev.speechHandle.addDoneCallback(() => {
+            activeSpeechCount--;
+        });
+    });
     // A completed visitor utterance is the clearest sign someone is still
     // there, so the nudge budget starts over.
     agentSession.on(voice.AgentSessionEventTypes.UserInputTranscribed, (ev) => {
@@ -966,6 +1086,11 @@ async function runSession(ctx) {
                 agent: new voice.Agent({ instructions, tools }),
                 room: ctx.room
             }).then(() => {
+                // Opens the silence driver's eyes — see `greetingSent`'s
+                // declaration above for why this must happen right here,
+                // synchronously, before either branch below issues its own
+                // first generateReply()/playbook start.
+                greetingSent = true;
                 // No synthetic "step 0": the editor seeds a playbook's first
                 // row with the greeting itself (AgentGoals.jsx), so starting
                 // the runtime IS the greeting — the worker holds no special
@@ -975,8 +1100,24 @@ async function runSession(ctx) {
                     playbookRuntime.start();
                 } else {
                     log.info('no playbook; sending plain greeting');
+                    // Identifies itself as an AI demo assistant FOR THE
+                    // PRODUCT, deliberately not "introduce yourself by name"
+                    // — a customer flagged the model stating an invented-
+                    // sounding human first name as off-putting; it doesn't
+                    // need a personal name, just to be clearly an AI acting
+                    // on the product's behalf. Not a generic "hi, how can I
+                    // help" either — the visitor almost always arrives cold
+                    // via a shared link with zero context on what this is or
+                    // whose product it demos. No open-ended question either
+                    // — consistent with the "never ask what to do next" rule
+                    // in persona.js, there's no wait after this turn either,
+                    // so state what you're about to do instead of asking
+                    // permission to do it.
                     agentSession.generateReply({
-                        instructions: buildGreetingInstructions(),
+                        instructions: buildGreetingInstructions({
+                            productName: product.name,
+                            productDescription: product.description
+                        }),
                         toolChoice: 'none'
                     });
                 }

@@ -1,5 +1,5 @@
 export { chunkText } from './chunk.js';
-export { ingestSource, reingestSourceIncremental } from './ingest.js';
+export { ingestSource, reingestSourceIncremental, ingestTopicDocument } from './ingest.js';
 export { extractDocumentText, extractZipMemberText } from './document-text.js';
 export { retrieve, invalidateProductCache } from './retrieve.js';
 export { runKnowledgeAudit, applyAuditFindings } from './audit/index.js';

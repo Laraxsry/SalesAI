@@ -40,21 +40,29 @@ vi.mock('@repo/database', () => ({
     KnowledgeSource: { create: vi.fn(), findById: vi.fn(), findByIdAndUpdate: vi.fn() },
     Product: { findById: vi.fn() },
     Agent: { findOne: vi.fn() },
-    KnowledgeChunk: { find: vi.fn() }
+    KnowledgeChunk: { find: vi.fn() },
+    KnowledgeTopic: { findOneAndUpdate: vi.fn(), findOne: vi.fn() }
 }));
 // extractDocumentText lives in @repo/rag too (packages/rag/src/document-text.js)
-// — only ingestSource is mocked here, extractDocumentText (and its real
-// pdf-parse/mammoth stack, see the comment on buildMinimalPdfBuffer above)
-// stays the genuine implementation.
+// — only ingestSource/ingestTopicDocument are mocked here, extractDocumentText
+// (and its real pdf-parse/mammoth stack, see the comment on
+// buildMinimalPdfBuffer above) stays the genuine implementation.
 vi.mock('@repo/rag', async (importOriginal) => {
     const actual = await importOriginal();
-    return { ...actual, ingestSource: vi.fn() };
+    return { ...actual, ingestSource: vi.fn(), ingestTopicDocument: vi.fn() };
 });
 vi.mock('@repo/ai', () => ({
     describeImage: vi.fn(),
     transcribeAudio: vi.fn(),
     synthesizePage: vi.fn().mockResolvedValue(''),
-    synthesizeOverview: vi.fn().mockResolvedValue('')
+    synthesizeOverview: vi.fn().mockResolvedValue(''),
+    FIXED_TOPICS: [
+        { slug: 'iletisim', title: 'İletişim' },
+        { slug: 'fiyatlandirma', title: 'Fiyatlandırma' }
+    ],
+    classifyPageTopics: vi.fn().mockResolvedValue({ findings: [] }),
+    dedupeProposedTopics: vi.fn().mockResolvedValue([]),
+    composeTopicDocument: vi.fn().mockResolvedValue('')
 }));
 vi.mock('@repo/storage', () => ({ presignDownload: vi.fn() }));
 vi.mock('@repo/realtime', () => ({
@@ -81,9 +89,10 @@ vi.mock('../extractors/url.js', () => ({ extractFromUrl: vi.fn() }));
 vi.mock('fluent-ffmpeg', () => ({ default: Object.assign(vi.fn(), { setFfmpegPath: vi.fn(), setFfprobePath: vi.fn() }) }));
 vi.mock('mammoth', () => ({ default: { extractRawText: vi.fn() } }));
 
-const { KnowledgeSource, Product, Agent, KnowledgeChunk } = await import('@repo/database');
-const { ingestSource } = await import('@repo/rag');
-const { synthesizePage, synthesizeOverview } = await import('@repo/ai');
+const { KnowledgeSource, Product, Agent, KnowledgeChunk, KnowledgeTopic } = await import('@repo/database');
+const { ingestSource, ingestTopicDocument } = await import('@repo/rag');
+const { synthesizePage, synthesizeOverview, classifyPageTopics, dedupeProposedTopics, composeTopicDocument } =
+    await import('@repo/ai');
 const { extractFromUrl } = await import('../extractors/url.js');
 const mammoth = (await import('mammoth')).default;
 const { extractDocumentText, ingestZipEntries, handleIngestSource } = await import('./ingest-source.js');
@@ -101,6 +110,9 @@ beforeEach(() => {
     Product.findById.mockReturnValue({ select: () => Promise.resolve(null) });
     Agent.findOne.mockReturnValue({ sort: () => ({ select: () => Promise.resolve(null) }) });
     KnowledgeChunk.find.mockReturnValue({ select: () => Promise.resolve([]) });
+    KnowledgeTopic.findOneAndUpdate.mockResolvedValue({});
+    KnowledgeTopic.findOne.mockResolvedValue(null);
+    ingestTopicDocument.mockResolvedValue({ chunks: 1 });
 });
 
 describe('extractDocumentText', () => {
@@ -330,6 +342,63 @@ describe('handleIngestSource — url/api synthesis segments', () => {
         ]);
     });
 
+    // A rotating "solutions" page only shows one panel to a plain crawl —
+    // discoverTabVariants (extractors/url.js) captures the other panels
+    // separately, keyed by page in pagesIndex.
+    it('adds an extra raw segment per tab/panel variant, tagged with its pageUrl and tabLabel', async () => {
+        synthesizePage.mockResolvedValue('');
+        synthesizeOverview.mockResolvedValue('');
+        extractFromUrl.mockResolvedValue({
+            text: '[Page: https://example.com/a]\npage a',
+            pages: [{ url: 'https://example.com/a', text: 'page a' }],
+            pagesIndex: {
+                'https://example.com/a': {
+                    rawText: 'page a',
+                    links: [],
+                    tabVariants: [
+                        { label: 'ISO 27001', headings: [{ level: 2, text: 'ISO/IEC 27001' }], rawText: 'iso panel text' },
+                        { label: 'sGRC Platform', headings: [], rawText: 'sgrc panel text' }
+                    ]
+                }
+            }
+        });
+
+        await handleIngestSource({ sourceId: 'src-1', productId: 'prod-1' });
+
+        const { text: segments } = ingestSource.mock.calls[0][0];
+        expect(segments).toEqual([
+            { text: 'page a', metadata: { pageUrl: 'https://example.com/a' } },
+            {
+                text: 'ISO/IEC 27001\niso panel text',
+                metadata: { pageUrl: 'https://example.com/a', tabLabel: 'ISO 27001' }
+            },
+            { text: 'sgrc panel text', metadata: { pageUrl: 'https://example.com/a', tabLabel: 'sGRC Platform' } }
+        ]);
+    });
+
+    it('never feeds tab/panel variant text into the site-topics (classifyPageTopics) pass', async () => {
+        synthesizePage.mockResolvedValue('');
+        synthesizeOverview.mockResolvedValue('');
+        extractFromUrl.mockResolvedValue({
+            text: '[Page: https://example.com/a]\npage a',
+            pages: [{ url: 'https://example.com/a', text: 'page a' }],
+            pagesIndex: {
+                'https://example.com/a': {
+                    rawText: 'page a',
+                    links: [],
+                    tabVariants: [{ label: 'ISO 27001', headings: [], rawText: 'iso panel text' }]
+                }
+            }
+        });
+
+        await handleIngestSource({ sourceId: 'src-1', productId: 'prod-1' });
+
+        expect(classifyPageTopics).toHaveBeenCalledTimes(1);
+        expect(classifyPageTopics).toHaveBeenCalledWith(
+            expect.objectContaining({ pageUrl: 'https://example.com/a', pageText: 'page a' })
+        );
+    });
+
     it('passes the source\'s meta.crawlIndex.pages to extractFromUrl as previousPages, and reuses cached synthesis for unchanged pages in the same language', async () => {
         KnowledgeSource.findById.mockResolvedValue({
             _id: 'src-1',
@@ -402,6 +471,108 @@ describe('handleIngestSource — url/api synthesis segments', () => {
         expect(segments).toContainEqual({
             text: 'new english summary',
             metadata: { pageUrl: 'https://example.com/a', synthesized: true, language: 'en' }
+        });
+    });
+});
+
+describe('handleIngestSource — Site Bilgisi (konu ağacı)', () => {
+    /** Fake mongoose doc with a real `.save()` mock — matches how runSiteTopicsPass mutates+saves it. */
+    function makeFakeTopic(overrides) {
+        const topic = { _id: 'topic-1', title: 'İletişim', lastContributingPages: [], save: vi.fn(), ...overrides };
+        topic.save.mockImplementation(async () => topic);
+        return topic;
+    }
+
+    beforeEach(() => {
+        KnowledgeSource.findById.mockResolvedValue({ _id: 'src-1', type: 'url', url: 'https://example.com' });
+        extractFromUrl.mockResolvedValue({
+            text: '[Page: https://example.com/a]\npage a',
+            pages: [{ url: 'https://example.com/a', text: 'page a' }]
+        });
+    });
+
+    it('seeds the fixed taxonomy every run, and never composes a topic no page contributed to', async () => {
+        classifyPageTopics.mockResolvedValue({ findings: [] });
+
+        await handleIngestSource({ sourceId: 'src-1', productId: 'prod-1' });
+
+        // One upsert per FIXED_TOPICS entry (mocked to 2 — see @repo/ai mock above).
+        expect(KnowledgeTopic.findOneAndUpdate).toHaveBeenCalledTimes(2);
+        expect(KnowledgeTopic.findOneAndUpdate).toHaveBeenCalledWith(
+            { productId: 'prod-1', slug: 'iletisim' },
+            expect.objectContaining({ $setOnInsert: expect.objectContaining({ slug: 'iletisim', autoGenerated: false }) }),
+            { upsert: true }
+        );
+        expect(composeTopicDocument).not.toHaveBeenCalled();
+        expect(ingestTopicDocument).not.toHaveBeenCalled();
+    });
+
+    it('composes and embeds a fixed topic a page contributed a finding to, and persists the result on the topic doc', async () => {
+        classifyPageTopics.mockResolvedValue({
+            findings: [{ topicSlug: 'iletisim', text: 'Telefon: 0212 000 00 00' }]
+        });
+        composeTopicDocument.mockResolvedValue('# İletişim\nTelefon: 0212 000 00 00');
+        const fakeTopic = makeFakeTopic();
+        KnowledgeTopic.findOne.mockResolvedValue(fakeTopic);
+
+        await handleIngestSource({ sourceId: 'src-1', productId: 'prod-1' });
+
+        expect(composeTopicDocument).toHaveBeenCalledWith(
+            expect.objectContaining({
+                topicTitle: 'İletişim',
+                findings: [{ text: 'Telefon: 0212 000 00 00', pageUrl: 'https://example.com/a' }]
+            })
+        );
+        expect(fakeTopic.body).toBe('# İletişim\nTelefon: 0212 000 00 00');
+        expect(fakeTopic.status).toBe('ready');
+        expect(fakeTopic.lastContributingPages).toEqual(['https://example.com/a']);
+        expect(fakeTopic.sourcePages).toEqual([{ sourceId: 'src-1', pageUrl: 'https://example.com/a' }]);
+        expect(fakeTopic.save).toHaveBeenCalled();
+        expect(ingestTopicDocument).toHaveBeenCalledWith({
+            topicId: 'topic-1',
+            productId: 'prod-1',
+            text: '# İletişim\nTelefon: 0212 000 00 00'
+        });
+    });
+
+    it('skips the reduce+embed call entirely when the contributing-page set is unchanged from last run', async () => {
+        classifyPageTopics.mockResolvedValue({
+            findings: [{ topicSlug: 'iletisim', text: 'Telefon: 0212 000 00 00' }]
+        });
+        const fakeTopic = makeFakeTopic({ lastContributingPages: ['https://example.com/a'] });
+        KnowledgeTopic.findOne.mockResolvedValue(fakeTopic);
+
+        await handleIngestSource({ sourceId: 'src-1', productId: 'prod-1' });
+
+        expect(composeTopicDocument).not.toHaveBeenCalled();
+        expect(ingestTopicDocument).not.toHaveBeenCalled();
+        expect(fakeTopic.save).not.toHaveBeenCalled();
+    });
+
+    it('clusters a site-specific (non-fixed) finding via dedupeProposedTopics into a new autoGenerated topic', async () => {
+        classifyPageTopics.mockResolvedValue({
+            findings: [{ proposedTopic: 'Kurulum Rehberi', text: 'Adım 1: paketi indirin.' }]
+        });
+        dedupeProposedTopics.mockResolvedValue([{ index: 0, slug: 'kurulum-rehberi', title: 'Kurulum Rehberi' }]);
+        composeTopicDocument.mockResolvedValue('Adım 1: paketi indirin.');
+        const fakeTopic = makeFakeTopic({ _id: 'topic-2', title: 'Kurulum Rehberi' });
+        KnowledgeTopic.findOne.mockResolvedValue(fakeTopic);
+
+        await handleIngestSource({ sourceId: 'src-1', productId: 'prod-1' });
+
+        expect(dedupeProposedTopics).toHaveBeenCalledWith([{ proposedTopic: 'Kurulum Rehberi' }], 'en');
+        expect(KnowledgeTopic.findOneAndUpdate).toHaveBeenCalledWith(
+            { productId: 'prod-1', slug: 'kurulum-rehberi' },
+            expect.objectContaining({
+                $setOnInsert: expect.objectContaining({ slug: 'kurulum-rehberi', title: 'Kurulum Rehberi', autoGenerated: true })
+            }),
+            { upsert: true }
+        );
+        expect(fakeTopic.body).toBe('Adım 1: paketi indirin.');
+        expect(ingestTopicDocument).toHaveBeenCalledWith({
+            topicId: 'topic-2',
+            productId: 'prod-1',
+            text: 'Adım 1: paketi indirin.'
         });
     });
 });

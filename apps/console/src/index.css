@@ -121,7 +121,13 @@ a {
 }
 
 .page-enter {
-    animation: page-enter 420ms cubic-bezier(0.2, 0.75, 0.25, 1) both;
+    /* fill-mode: backwards (not "both") — the animation's transform must not
+       persist after it finishes, or it becomes a new containing block for
+       any position:fixed descendant (e.g. KnowledgeDetailModal), shrinking
+       it to the page content's box instead of the viewport. The end state
+       (translateY(0), opacity:1) is visually identical to the un-animated
+       base styles, so dropping "forwards" causes no visible jump. */
+    animation: page-enter 420ms cubic-bezier(0.2, 0.75, 0.25, 1) backwards;
 }
 
 .wow-hero {

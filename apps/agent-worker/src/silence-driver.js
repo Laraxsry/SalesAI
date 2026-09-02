@@ -45,6 +45,14 @@ export function createSilenceDriver({ idleMs, onIdle, maxConsecutive = 3, isBusy
     let userState = 'listening';
     let consecutive = 0;
     let disposed = false;
+    // One-shot override for the NEXT armed timer only — set by
+    // `expectResponse()` right when the model has just asked something that
+    // genuinely needs a real answer (e.g. confirming contact info), so that
+    // one wait is long enough for a human to actually respond instead of the
+    // normal near-instant self-driven-continuation delay. Consumed (cleared)
+    // the moment a timer is armed with it, so it never lingers past the one
+    // question it was requested for.
+    let nextIdleMsOverride = null;
 
     function clear() {
         if (timer) {
@@ -67,6 +75,8 @@ export function createSilenceDriver({ idleMs, onIdle, maxConsecutive = 3, isBusy
             return;
         }
         if (timer) return; // already counting down; don't restart the clock
+        const waitMs = nextIdleMsOverride ?? idleMs;
+        nextIdleMsOverride = null;
         timer = setTimeout(() => {
             timer = null;
             if (disposed || !isQuiet()) return;
@@ -76,7 +86,7 @@ export function createSilenceDriver({ idleMs, onIdle, maxConsecutive = 3, isBusy
             if (isBusy()) return;
             consecutive += 1;
             onIdle({ consecutive });
-        }, idleMs);
+        }, waitMs);
     }
 
     return {
@@ -95,6 +105,22 @@ export function createSilenceDriver({ idleMs, onIdle, maxConsecutive = 3, isBusy
         resetConsecutive() {
             consecutive = 0;
             evaluate();
+        },
+        /**
+         * Requests a longer, one-shot wait for the next idle check — call
+         * right when the model asks a real question it needs an actual
+         * answer to. If a timer is already counting down (still mid-turn,
+         * the common case — the model calls this in the same turn as the
+         * question), it's cleared and re-armed at `ms` once the turn
+         * actually finishes and the driver goes to arm the real wait.
+         * @param {number} ms
+         */
+        expectResponse(ms) {
+            nextIdleMsOverride = ms;
+            if (timer) {
+                clear();
+                evaluate();
+            }
         },
         dispose() {
             disposed = true;

@@ -204,6 +204,54 @@ describe('createSilenceDriver — busy veto', () => {
     });
 });
 
+describe('createSilenceDriver — expectResponse (one-shot longer wait)', () => {
+    it('uses the requested longer wait for the next arm, then falls back to idleMs afterward', () => {
+        const onIdle = vi.fn();
+        const driver = createSilenceDriver({ idleMs: IDLE_MS, onIdle });
+        driver.handleUserState('listening');
+        driver.expectResponse(IDLE_MS * 5); // e.g. a real 5-10s ask, vs. the normal near-instant continuation
+        driver.handleAgentState('listening');
+
+        vi.advanceTimersByTime(IDLE_MS * 4);
+        expect(onIdle).not.toHaveBeenCalled(); // would already have fired at the normal idleMs
+
+        vi.advanceTimersByTime(IDLE_MS);
+        expect(onIdle).toHaveBeenCalledTimes(1);
+
+        // Next cycle is back to the ordinary short wait — the override was one-shot.
+        driver.handleAgentState('speaking');
+        driver.handleAgentState('listening');
+        vi.advanceTimersByTime(IDLE_MS);
+        expect(onIdle).toHaveBeenCalledTimes(2);
+    });
+
+    it('re-arms with the longer wait when called mid-countdown (the common case — same turn as the question)', () => {
+        const { driver, onIdle } = quietDriver();
+        vi.advanceTimersByTime(IDLE_MS - 1); // one tick from firing at the normal duration
+
+        driver.expectResponse(IDLE_MS * 3);
+
+        // The short-duration fire must NOT have happened — it was cleared and re-armed longer.
+        vi.advanceTimersByTime(1);
+        expect(onIdle).not.toHaveBeenCalled();
+
+        vi.advanceTimersByTime(IDLE_MS * 3 - 1);
+        expect(onIdle).toHaveBeenCalledTimes(1);
+    });
+
+    it('still never fires while the agent is speaking, even with a pending expectResponse', () => {
+        const onIdle = vi.fn();
+        const driver = createSilenceDriver({ idleMs: IDLE_MS, onIdle });
+        driver.handleUserState('listening');
+        driver.expectResponse(IDLE_MS * 5);
+        driver.handleAgentState('speaking');
+
+        expect(driver.armed).toBe(false);
+        vi.advanceTimersByTime(IDLE_MS * 10);
+        expect(onIdle).not.toHaveBeenCalled();
+    });
+});
+
 describe('createSilenceDriver — disposal', () => {
     it('never fires after dispose, even with a countdown in flight', () => {
         const { driver, onIdle } = quietDriver();

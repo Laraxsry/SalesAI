@@ -40,6 +40,7 @@ export class QdrantVectorStore {
                 payload: {
                     productId: it.productId,
                     sourceId: it.sourceId,
+                    topicId: it.topicId,
                     text: it.text,
                     modality: it.modality || 'text',
                     audience: it.audience || 'general',
@@ -71,6 +72,7 @@ export class QdrantVectorStore {
             .map((r) => ({
                 id: String(r.id),
                 sourceId: r.payload?.sourceId,
+                topicId: r.payload?.topicId,
                 text: r.payload?.text,
                 score: r.score,
                 audience: r.payload?.audience,
@@ -84,14 +86,31 @@ export class QdrantVectorStore {
         });
     }
 
+    /** @param {string} topicId */
+    async deleteByTopic(topicId) {
+        await this.client.delete(COLLECTION, {
+            filter: { must: [{ key: 'topicId', match: { value: topicId } }] }
+        });
+    }
+
     /** @param {string} sourceId @returns {Promise<{id:string, text:string}[]>} */
     async listBySource(sourceId) {
+        return this._scrollByField('sourceId', sourceId);
+    }
+
+    /** @param {string} topicId @returns {Promise<{id:string, text:string}[]>} */
+    async listByTopic(topicId) {
+        return this._scrollByField('topicId', topicId);
+    }
+
+    /** @param {string} field @param {string} value @returns {Promise<{id:string, text:string}[]>} */
+    async _scrollByField(field, value) {
         const out = [];
         let offset;
         // Qdrant scroll() paginates — loop until it stops returning a next_page_offset.
         for (;;) {
             const res = await this.client.scroll(COLLECTION, {
-                filter: { must: [{ key: 'sourceId', match: { value: sourceId } }] },
+                filter: { must: [{ key: field, match: { value } }] },
                 with_payload: ['text'],
                 with_vector: false,
                 limit: 256,

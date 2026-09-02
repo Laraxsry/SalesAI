@@ -1,5 +1,5 @@
-import { describe, it, expect } from 'vitest';
-import { buildEmbedSnippet, chunk, compact, mapWithConcurrency } from './index.js';
+import { describe, it, expect, vi } from 'vitest';
+import { buildEmbedSnippet, chunk, compact, mapWithConcurrency, waitForStableContent } from './index.js';
 
 describe('buildEmbedSnippet', () => {
     it('renders the exact two-line snippet sellers paste onto their site', () => {
@@ -69,5 +69,30 @@ describe('mapWithConcurrency', () => {
             throw new Error('should never be called');
         });
         expect(results).toEqual([]);
+    });
+});
+
+describe('waitForStableContent', () => {
+    it('stops polling once the content length is stable for two consecutive reads', async () => {
+        const lens = [10, 25, 40, 40, 40, 999]; // grows, settles at 40 (2 consecutive matches), would grow again if not stopped
+        let i = 0;
+        const page = {
+            evaluate: vi.fn(async () => lens[Math.min(i++, lens.length - 1)]),
+            waitForTimeout: vi.fn(async () => {})
+        };
+
+        await waitForStableContent(page);
+
+        expect(page.evaluate).toHaveBeenCalledTimes(5);
+    });
+
+    it('respects a custom maxWaitMs ceiling if content never stabilizes', async () => {
+        const page = {
+            evaluate: vi.fn(async () => Math.floor(Math.random() * 1000)), // never repeats
+            waitForTimeout: vi.fn(async () => {})
+        };
+
+        await expect(waitForStableContent(page, { maxWaitMs: 50, pollMs: 10 })).resolves.toBeUndefined();
+        expect(page.evaluate.mock.calls.length).toBeGreaterThan(0);
     });
 });

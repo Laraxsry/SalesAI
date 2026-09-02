@@ -86,14 +86,17 @@ export function downloadGapReportPdf(report, { productName, statusLabel, sourceT
 
     if (report.status === 'failed') {
         addText(`Analiz başarısız oldu: ${report.error || 'bilinmeyen hata'}`, { color: [180, 40, 40] });
-    } else if (!report.findings?.length) {
-        addText('Hiçbir tutarsızlık/eksik bulunamadı — knowledge tabanı sağlam görünüyor.');
     } else {
         for (const type of ['inconsistency', 'thin', 'missing']) {
-            const findings = report.findings.filter((f) => f.type === type);
-            if (!findings.length) continue;
+            const findings = (report.findings || []).filter((f) => f.type === type);
 
             y += 6;
+            if (!findings.length) {
+                addHeading(GROUP_LABELS[type], 13);
+                addText('Bulunamadı — bu kategori kontrol edildi.', { size: 10, color: [50, 130, 90] });
+                continue;
+            }
+
             addHeading(`${GROUP_LABELS[type]} (${findings.length})`, 13);
 
             findings.forEach((f, i) => {

@@ -58,6 +58,12 @@ export function getVectorStore() {
         // The knowledge audit's read (listByProduct) and write (setStatus) path
         // — see @repo/rag audit/index.js.
         listByProduct: (args) => primary.listByProduct(args),
-        setStatus: (args) => primary.setStatus(args)
+        setStatus: (args) => primary.setStatus(args),
+        // KnowledgeTopic chunks (see packages/database/src/models/KnowledgeTopic.js)
+        // are keyed by topicId instead of sourceId — this facade only forwards
+        // methods listed here by name, so a new store method (like these) is a
+        // silent no-op everywhere else until it's added here too.
+        deleteByTopic: (topicId) => primary.deleteByTopic(topicId),
+        listByTopic: (topicId) => primary.listByTopic(topicId)
     };
 }

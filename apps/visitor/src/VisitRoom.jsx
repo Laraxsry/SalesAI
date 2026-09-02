@@ -12,12 +12,20 @@ import { RoomEvent, Track } from 'livekit-client';
 import { Logo } from '@repo/ui';
 import { Mic, MicOff, PhoneOff, ScreenShare, ScreenShareOff, X } from 'lucide-react';
 
+// 'listening' deliberately does NOT say "Dinliyor…" (listening/waiting) —
+// the agent now self-continues almost instantly between its own turns
+// (apps/agent-worker's silence driver, ~500ms) rather than genuinely
+// waiting on the visitor, and a customer flagged that label as breaking the
+// illusion of a continuous conversation by flashing "waiting for you" on
+// every brief natural gap. There's no reliable client-side way to tell that
+// gap apart from the rare genuine wait (contact-info confirmation) using
+// this state alone, so it's treated the same, neutral way either way.
 const STATE_LABEL = {
     connecting: 'Bağlanıyor…',
     'pre-connect-buffering': 'Bağlanıyor…',
     initializing: 'Hazırlanıyor…',
     idle: 'Hazır',
-    listening: 'Dinliyor…',
+    listening: 'Aktif',
     thinking: 'Düşünüyor…',
     speaking: 'Konuşuyor…',
     disconnected: 'Bağlantı kesildi',
@@ -26,9 +34,25 @@ const STATE_LABEL = {
 
 const API = import.meta.env.VITE_API_URL || 'http://localhost:5001';
 
+/** Live caption overlay — the agent's spoken text, synced via LiveKit's
+ * transcription stream (`useVoiceAssistant()`'s `agentTranscriptions`, fed
+ * by agent-worker's `SyncedTextOutput`). Only the most recent segment is
+ * shown, matching how a live caption naturally rolls forward. */
+function Captions({ segments }) {
+    const last = segments[segments.length - 1];
+    if (!last?.text) return null;
+    return (
+        <div className="pointer-events-none absolute bottom-24 left-1/2 w-full max-w-lg -translate-x-1/2 px-4">
+            <p className="rounded-[var(--radius-card)] bg-black/70 px-4 py-2.5 text-center text-sm text-white backdrop-blur">
+                {last.text}
+            </p>
+        </div>
+    );
+}
+
 /** Rendered inside <LiveKitRoom>; everything here relies on LiveKit's room context. */
 export function VisitRoom({ embed, embedConfig, sessionId, roomName, onClose, onEnd }) {
-    const { state, audioTrack, videoTrack } = useVoiceAssistant();
+    const { state, audioTrack, videoTrack, agentTranscriptions } = useVoiceAssistant();
     const { localParticipant, isMicrophoneEnabled, isScreenShareEnabled } = useLocalParticipant();
     // useVoiceAssistant only surfaces mic/camera; the guided-tour browser is
     // published as a screen-share track, so pick it up separately (remote only —
@@ -202,6 +226,7 @@ export function VisitRoom({ embed, embedConfig, sessionId, roomName, onClose, on
                     </div>
                 )}
 
+                <Captions segments={agentTranscriptions} />
             </div>
 
             {showShareConsent && (

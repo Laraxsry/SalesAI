@@ -1,6 +1,7 @@
 import { chromium } from 'playwright';
 import { getDomain } from 'tldts';
 import { getLogger } from '@repo/logger';
+import { waitForStableContent } from '@repo/utils';
 
 const log = getLogger({ mod: 'guided-tour' });
 
@@ -293,8 +294,16 @@ export class GuidedTour {
             phase.gotoMs = Date.now() - t;
             log.info('GuidedTour open: initial navigation done', { url: this.startUrl, gotoMs: phase.gotoMs });
 
+            // Adaptive, not a fixed grace period — a real customer site
+            // (cyberverse.com.tr) has a ~4-5s fake-terminal boot animation
+            // before the actual content mounts; a fixed 3s wait opened the
+            // tour on that animation, and the agent would then narrate the
+            // page's real content while the customer was still watching it
+            // load. Same fix as the crawler's `waitForStableContent`
+            // (`apps/worker-ingestion/src/extractors/url.js`), now shared
+            // via `@repo/utils`.
             t = Date.now();
-            await this.page.waitForTimeout(3000);
+            await waitForStableContent(this.page);
             phase.settleMs = Date.now() - t;
         }
         log.info('GuidedTour open: complete', { ...phase, totalMs: Date.now() - openStartedAt });
@@ -349,7 +358,8 @@ export class GuidedTour {
             throw new Error(`[GuidedTour] Navigation outside the product's domain is not allowed: ${target}`);
         }
         await this.page.goto(target, { waitUntil: 'domcontentloaded' });
-        await this.page.waitForTimeout(3000);
+        // Adaptive wait, not a fixed one — see open()'s comment above for why.
+        await waitForStableContent(this.page);
         // The check above only validated the requested URL; the site itself
         // may then have redirected further (open-redirect abuse). Re-check
         // where the browser actually ended up.
@@ -404,6 +414,12 @@ export class GuidedTour {
         }
 
         await this.page.click(selector);
+        // A click can load a new page/route just like goto() — same
+        // adaptive wait (see goto()'s comment); on a click that DOESN'T
+        // navigate (a toggle, an accordion) this resolves quickly since two
+        // consecutive reads already match, so it's not a meaningful tax on
+        // ordinary in-page clicks.
+        await waitForStableContent(this.page);
         await this.assertCurrentPageTrusted('click');
     }
 

@@ -136,6 +136,17 @@ without Atlas cloud. See [`infra/docker-compose.yaml`](../infra/docker-compose.y
 - Consumes `ingestion` queue. For each source, extracts text by modality
   (transcribe video/audio, describe images, crawl URLs, parse docs), then calls
   the RAG pipeline (chunk -> embed -> upsert).
+- For `url`/`api` sources, also runs the **Site Bilgisi** map-reduce pass
+  (`runSiteTopicsPass()` in `handlers/ingest-source.js`) — classifies each
+  crawled page against a fixed + site-specific topic taxonomy, then composes
+  one long markdown document per topic from every page that contributed to
+  it (`@repo/ai`'s `site-topics.js`, `KnowledgeTopic` model — see
+  `md/backend/phase1_rag_ingestion.md` and `md/03_data_model_and_api.md`).
+  Separately, the crawl's own page/button graph (no LLM) is persisted as the
+  **Site Yapı Ağacı** (`KnowledgeSource.meta.crawlIndex.pages`), including a
+  per-page **component inventory** (headings, interactive elements with a
+  ready `text=<label>` selector, landmark sections — `extractPageComponents()`
+  in `extractors/url.js`, also DOM-only, no LLM) that `find_element` searches.
 
 ### 5.4 `apps/worker-general` — BullMQ
 - Link expiry, stale session cleanup, scheduled maintenance.
@@ -149,11 +160,14 @@ without Atlas cloud. See [`infra/docker-compose.yaml`](../infra/docker-compose.y
 
 - **`@repo/ai`** — `getLLM()` (OpenAI/Anthropic), `embed()/embedBatch()`,
   `describeImage()/transcribeAudio()`.
-- **`@repo/rag`** — `chunkText()`, `ingestSource()`, `retrieve()`,
-  `getVectorStore()` (Mongo Atlas / Qdrant).
+- **`@repo/rag`** — `chunkText()`, `ingestSource()`, `ingestTopicDocument()`,
+  `retrieve()`, `getVectorStore()` (Mongo Atlas / Qdrant).
 - **`@repo/avatar`** — `getAvatarProvider()` (voice-only/tavus/simli/heygen/did).
 - **`@repo/screen`** — `GuidedTour` (Playwright), `analyzeFrame()` (vision).
-- **`@repo/agent`** — `buildSystemPrompt()`, `buildTools()`.
+- **`@repo/agent`** — `buildSystemPrompt()`, `buildTools()` (incl. `find_page`,
+  which resolves a semantic query against the Site Yapı Ağacı to a real
+  page/URL, and `find_element`, which resolves one to a real in-page
+  button/link/form selector — both instead of the model guessing).
 - **`@repo/livekit`** — `createAccessToken()`, `roomService()`.
 - **`@repo/database`** — `connectDB()` + Mongoose models.
 

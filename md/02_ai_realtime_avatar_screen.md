@@ -98,14 +98,45 @@ Selected via env (`LLM_PROVIDER`, `OPENAI_REALTIME_MODEL`, `STT_PROVIDER`,
 
 Defined in [`packages/agent/src/tools.js`](../packages/agent/src/tools.js):
 
-- `search_knowledge(query, topK)` — RAG retrieval.
-- `start_guided_tour(url)` — open the live product for a demo.
+- `search_knowledge(query, topK)` — RAG retrieval; a result may carry
+  `pageUrl` (the real page a fact was crawled from) and, if that content
+  sits behind a same-page tab/panel selector, `tabLabel` — see
+  `md/03_data_model_and_api.md`'s `KnowledgeChunk.metadata`.
+- `start_guided_tour()` — open the live product for a demo.
 - `navigate_to(url)` — move the demo browser.
-- `highlight(selector)` — point at an element.
+- `find_page(query)` — look up a page's real URL by what it's about (e.g.
+  "iletişim"), from the Site Yapı Ağacı
+  (`KnowledgeSource.meta.crawlIndex.pages`, see
+  `md/backend/phase1_rag_ingestion.md`'s "Site Bilgisi"). Word-overlap
+  matching (`tokenize()`/`textMentions()`), no LLM — meant to be called
+  right before `navigate_to` instead of the model guessing.
+- `find_element(query)` — same idea as `find_page` but for a button/link/
+  form ON a page: returns a real `text=<label>` (or `[aria-label=...]`)
+  selector from the crawl's `components`/`tabVariants` inventory, deduped
+  globally by selector so a site-wide repeated element (e.g. a badge) only
+  ever fills one of the (small) candidate slots — meant to be called right
+  before `click_element`/`highlight`.
+- `click_element(selector)` / `highlight(selector)` — act on / point at an
+  element on the tour page; a wrong selector just fails harmlessly.
+- `scroll_page(direction, amount)` — scroll the tour page; reports
+  `atTop`/`atBottom`.
+- `read_tour_screen(question)` — vision-model read of what's actually
+  rendered on the tour page right now (the agent doesn't otherwise "see"
+  it) — required before asserting any visual specific.
 - `read_customer_screen(question)` — interpret the customer's shared screen.
+- `stop_screen_share()` — close the guided tour and/or ask the customer to
+  stop sharing.
+- `save_contact_info(field, value)` / `expect_response(ms)` — persist a
+  confirmed contact detail; `expect_response` is a one-shot longer-wait
+  request for the one moment the agent genuinely needs a real answer (see
+  `persona.js`'s contact-info confirmation rule).
+- `advance_step()` — playbook-only (only exposed to the model when a
+  playbook is actively running); signals that the current step's topic has
+  been fully covered.
 
 The agent-worker injects handlers for the tour/screen tools (it owns those
-objects); `search_knowledge` only needs `productId`.
+objects) and loads `siteMap` (flattened from the product's ready url/api
+`KnowledgeSource`s) for `find_page`; `search_knowledge` only needs `productId`.
 
 ### 2.4 Live tool / MCP access (optional)
 

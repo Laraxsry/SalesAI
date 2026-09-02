@@ -104,6 +104,48 @@ export async function ingestSource({ sourceId, productId, text, modality = 'text
 }
 
 /**
+ * Embeds one `KnowledgeTopic`'s composed markdown body
+ * (`packages/ai/src/site-topics.js`'s `composeTopicDocument()`) into
+ * `KnowledgeChunk`, keyed by `topicId` instead of `sourceId` — a topic's
+ * content is cross-source (see KnowledgeTopic.js's docstring), so it can't
+ * share `ingestSource()`'s per-source delete-and-recreate lifecycle without
+ * that call's `store.deleteBySource(sourceId)` inadvertently wiping chunks
+ * that belong to a DIFFERENT source's ingestion of the same run. Otherwise
+ * mirrors `ingestSource()` exactly (same `chunkText`/`embedBatch`/
+ * `classifyAudience`/store calls) — this is not a second pipeline, just the
+ * same steps addressed by topicId.
+ *
+ * Always fully re-embeds (delete + recreate) rather than diffing like
+ * `reingestSourceIncremental()` — topic documents are composed as a whole by
+ * the reduce phase (see ingest-source.js), so there's no meaningful
+ * "unchanged chunk" to preserve; the caller (ingest-source.js) already only
+ * calls this for topics whose contributing-page set actually changed.
+ *
+ * @param {{ topicId:string, productId:string, text:string }} input
+ * @returns {Promise<{ chunks:number }>}
+ */
+export async function ingestTopicDocument({ topicId, productId, text }) {
+    const store = getVectorStore();
+    await store.deleteByTopic(topicId);
+
+    const chunks = chunkText(text);
+    if (!chunks.length) return { chunks: 0 };
+
+    const [embeddings, audiences] = await Promise.all([embedBatch(chunks), classifyAudience(chunks)]);
+    const items = chunks.map((c, i) => ({
+        productId,
+        topicId,
+        text: c,
+        embedding: embeddings[i],
+        modality: 'text',
+        audience: audiences[i],
+        metadata: { isTopicDoc: true }
+    }));
+    await store.upsert(items);
+    return { chunks: items.length };
+}
+
+/**
  * Re-ingests a source's text after a hand edit (`PATCH /knowledge/:id`),
  * touching only the chunks that actually changed instead of
  * `ingestSource()`'s full delete-everything-and-redo — a small edit to a

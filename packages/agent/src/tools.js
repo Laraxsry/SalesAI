@@ -159,7 +159,7 @@ function searchSiteElements(siteMap, query) {
  * moves the floor to the next visitor with a raised hand, which is meaningless
  * (and a passivity trap, like `advance_step`) in a 1-on-1 call.
  *
- * @param {{ productId:string, tour?:object, screen?:object, stopScreenShare?:Function, saveContactInfo?:Function, advanceStep?:Function, siteMap?:object[], playbookActive?:boolean, multiParticipant?:boolean, expectResponse?:Function, nextParticipant?:Function }} ctx
+ * @param {{ productId:string, tour?:object, screen?:object, stopScreenShare?:Function, saveContactInfo?:Function, advanceStep?:Function, siteMap?:object[], playbookActive?:boolean, multiParticipant?:boolean, expectResponse?:Function, nextParticipant?:Function, flagFollowup?:Function }} ctx
  */
 export function buildTools({
     productId,
@@ -172,7 +172,8 @@ export function buildTools({
     playbookActive = false,
     multiParticipant = false,
     expectResponse,
-    nextParticipant
+    nextParticipant,
+    flagFollowup
 }) {
     const tools = [
         {
@@ -351,6 +352,19 @@ export function buildTools({
                 "Call this the moment you ask the visitor something that genuinely needs a real answer (e.g. confirming a piece of contact info) — nowhere else. It gives them a real few seconds to actually respond instead of you continuing on your own almost immediately, which is what normally happens after you finish speaking. Do not call this for anything else — you are told never to ask the visitor what to do next in the first place, so this should be rare.",
             parameters: { type: 'object', properties: {} },
             handler: async () => expectResponse?.() ?? { ok: false }
+        },
+        {
+            name: 'flag_followup_needed',
+            description:
+                "Call this ONLY after the visitor has explicitly said yes to having an unanswered question forwarded to the team — never before they agree, and never as a substitute for search_knowledge. Pass a short, clear version of their question.",
+            parameters: {
+                type: 'object',
+                properties: {
+                    question: { type: 'string' }
+                },
+                required: ['question']
+            },
+            handler: async ({ question }) => flagFollowup?.(question) ?? { ok: false }
         }
     ];
 

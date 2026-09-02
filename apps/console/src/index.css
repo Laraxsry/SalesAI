@@ -121,12 +121,9 @@ a {
 }
 
 .page-enter {
-    /* fill-mode: backwards (not "both") — the animation's transform must not
-       persist after it finishes, or it becomes a new containing block for
-       any position:fixed descendant (e.g. KnowledgeDetailModal), shrinking
-       it to the page content's box instead of the viewport. The end state
-       (translateY(0), opacity:1) is visually identical to the un-animated
-       base styles, so dropping "forwards" causes no visible jump. */
+    /* Opacity-only by design: a transformed routed wrapper creates a CSS
+       containing block that traps position:fixed descendants such as
+       full-screen modals inside the page container. */
     animation: page-enter 420ms cubic-bezier(0.2, 0.75, 0.25, 1) backwards;
 }
 
@@ -236,14 +233,15 @@ a {
     box-shadow: 0 18px 44px -30px rgb(0 0 0 / 85%);
 }
 
+/* Keep the route-level animation opacity-only so fixed descendants always use
+   the viewport as their containing block. Landing-only reveals can safely use
+   transforms because they do not wrap routed modal content. */
 @keyframes page-enter {
     from {
         opacity: 0;
-        transform: translateY(8px);
     }
     to {
         opacity: 1;
-        transform: translateY(0);
     }
 }
 

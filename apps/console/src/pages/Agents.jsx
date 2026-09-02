@@ -42,6 +42,17 @@ const LANGUAGES = [
     { value: 'en', label: 'English' }
 ];
 
+// Kept in sync by hand with packages/agent/src/persona-archetypes.js's keys —
+// that file owns the actual behavior rules, this is only display copy.
+// 'custom' isn't a real archetype block (persona.js's renderArchetype()
+// returns '' for it) — it's the escape hatch that reveals the free-text
+// Tone input below, preserving today's exact hand-written-tone behavior.
+const ARCHETYPES = [
+    { value: 'marketing', label: 'Pazarlama', description: 'İkna edici, hikaye anlatan, fayda odaklı bir satış sesi.' },
+    { value: 'technical', label: 'Teknik', description: 'Net, kanıta dayalı, mühendis diliyle konuşan bir satış sesi.' },
+    { value: 'custom', label: 'Custom', description: 'Kendi ton tanımını yaz (serbest metin).' }
+];
+
 const DEFAULT_PERSONA_TONE = 'consultative, persuasive, concise, outcome-focused';
 const DEFAULT_PERSONA_GOALS = [
     'Musterinin ihtiyacini hizlica anlamak',
@@ -58,7 +69,13 @@ function buildAgentFormSchema(productId) {
         return {
             productId,
             name: data?.name,
-            persona: { tone: data?.tone, language: data?.language, goals, guardrails: [] },
+            persona: {
+                tone: data?.tone,
+                language: data?.language,
+                goals,
+                guardrails: [],
+                archetype: data?.archetype
+            },
             avatarProvider: data?.avatarProvider,
             screenModes: data?.screenModes || [],
             maxParticipants: data?.maxParticipants,
@@ -79,6 +96,10 @@ function NewAgentModal({ productId, onClose, onCreated }) {
         resolver: zodResolver(buildAgentFormSchema(productId)),
         defaultValues: {
             name: '',
+            // 'marketing' by default — a curated, tested character out of the
+            // box. This is a UI-layer default only; the DB/contract default is
+            // 'custom' (safe fallback for agents that predate this field).
+            archetype: 'marketing',
             tone: DEFAULT_PERSONA_TONE,
             language: 'tr',
             goalsText: DEFAULT_PERSONA_GOALS,
@@ -88,6 +109,7 @@ function NewAgentModal({ productId, onClose, onCreated }) {
             preCallSurveyEnabled: false
         }
     });
+    const archetype = watch('archetype');
 
     async function onSubmit(agent) {
         setError('');
@@ -118,12 +140,45 @@ function NewAgentModal({ productId, onClose, onCreated }) {
                         {...register('name')}
                     />
 
-                    <Input
-                        id="agent-tone"
-                        label="Ton"
-                        placeholder={DEFAULT_PERSONA_TONE}
-                        {...register('tone')}
+                    <Controller
+                        name="archetype"
+                        control={control}
+                        render={({ field }) => (
+                            <div className="mb-4">
+                                <span className="mb-1.5 block text-sm font-medium text-text-muted">Karakter</span>
+                                <div className="grid grid-cols-3 gap-2">
+                                    {ARCHETYPES.map((a) => (
+                                        <button
+                                            key={a.value}
+                                            type="button"
+                                            onClick={() => field.onChange(a.value)}
+                                            title={a.description}
+                                            aria-pressed={field.value === a.value}
+                                            className={`rounded-[var(--radius-input)] border px-2 py-2 text-left text-xs transition-colors ${
+                                                field.value === a.value
+                                                    ? 'border-brand bg-brand/10 text-text'
+                                                    : 'border-border bg-bg text-text-muted hover:border-brand/50'
+                                            }`}
+                                        >
+                                            <span className="block font-semibold">{a.label}</span>
+                                        </button>
+                                    ))}
+                                </div>
+                                <p className="mt-1.5 text-xs text-text-muted">
+                                    {ARCHETYPES.find((a) => a.value === field.value)?.description}
+                                </p>
+                            </div>
+                        )}
                     />
+
+                    {archetype === 'custom' && (
+                        <Input
+                            id="agent-tone"
+                            label="Ton"
+                            placeholder={DEFAULT_PERSONA_TONE}
+                            {...register('tone')}
+                        />
+                    )}
 
                     <label className="mb-4 block text-sm">
                         <span className="mb-1.5 block font-medium text-text-muted">Dil</span>

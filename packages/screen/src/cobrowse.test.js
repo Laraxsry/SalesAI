@@ -1,5 +1,12 @@
 import { describe, it, expect, vi } from 'vitest';
-import { trustKey, assertHttpUrl, authRouteKey, GuidedTour } from './cobrowse.js';
+import {
+    trustKey,
+    assertHttpUrl,
+    authRouteKey,
+    injectSessionSnapshot,
+    waitForPageReady,
+    GuidedTour
+} from './cobrowse.js';
 import { isTourNavigableUrl } from '@repo/contracts';
 
 /**
@@ -97,6 +104,7 @@ function makeFakePage(startingUrl) {
         // Constant length ⇒ waitForStableContent() (goto()/click()) sees two
         // consecutive equal reads and resolves immediately — tests that care
         // about the adaptive-wait behavior itself override this per-test.
+        waitForFunction: vi.fn(async () => {}),
         evaluate: vi.fn(async () => 42),
         /** Overwritten per-test with a specific locator fake. */
         locator: vi.fn(),
@@ -128,10 +136,57 @@ function makeFakeElement({ tagName = 'DIV', type = null } = {}) {
 
 /** A GuidedTour that trusts salesai.example, with its browser bits swapped for fakes. */
 function makeTour(page) {
-    const tour = new GuidedTour({ startUrl: 'https://salesai.example/dashboard' });
+    const tour = new GuidedTour({
+        startUrl: 'https://salesai.example/dashboard',
+        waitForReady: vi.fn(async () => ({ ready: true, waitMs: 0 }))
+    });
     tour.page = page;
     return tour;
 }
+
+describe('injectSessionSnapshot', () => {
+    it('seeds cookies and origin-scoped localStorage without a setup navigation', async () => {
+        const context = {
+            addCookies: vi.fn(async () => {}),
+            addInitScript: vi.fn(async () => ({ dispose: vi.fn(async () => {}) }))
+        };
+        const cookies = [{ name: 'session', value: 'x', domain: 'salesai.example', path: '/' }];
+        const localStorage = { token: 'secret' };
+
+        const initializer = await injectSessionSnapshot(
+            context,
+            'https://salesai.example/dashboard',
+            { cookies, localStorage }
+        );
+
+        expect(context.addCookies).toHaveBeenCalledWith(cookies);
+        expect(context.addInitScript).toHaveBeenCalledWith(
+            expect.any(Function),
+            { allowedOrigin: 'https://salesai.example', storage: localStorage }
+        );
+        expect(initializer.origin).toBe('https://salesai.example');
+    });
+});
+
+describe('waitForPageReady', () => {
+    it('returns immediately after useful DOM content and two paint frames are available', async () => {
+        const page = makeFakePage('https://salesai.example/dashboard');
+
+        const result = await waitForPageReady(page, { timeoutMs: 50 });
+
+        expect(result.ready).toBe(true);
+        expect(page.waitForFunction).toHaveBeenCalledTimes(1);
+        expect(page.evaluate).toHaveBeenCalledTimes(1);
+        expect(page.waitForTimeout).not.toHaveBeenCalled();
+    });
+
+    it('degrades to the loaded page when readiness times out instead of failing navigation', async () => {
+        const page = makeFakePage('https://salesai.example/dashboard');
+        page.waitForFunction.mockRejectedValueOnce(new Error('not ready'));
+
+        await expect(waitForPageReady(page, { timeoutMs: 10 })).resolves.toMatchObject({ ready: false });
+    });
+});
 
 describe('GuidedTour#requiresDemoLogin', () => {
     it('requires login when the first destination is the demo login domain', () => {
@@ -172,23 +227,15 @@ describe('GuidedTour#goto', () => {
         expect(page.goto).toHaveBeenCalledWith('https://salesai.example/pricing', { waitUntil: 'domcontentloaded' });
     });
 
-    it('waits for the page content to actually stabilize instead of a fixed delay', async () => {
-        // Regression test for the fixed-3000ms bug: a real customer site's
-        // multi-second boot animation meant the agent started narrating a
-        // page's real content while the customer was still watching it
-        // load. Content grows for a couple of reads, then settles.
+    it('runs exactly one readiness policy instead of stacking multiple waits or a fixed delay', async () => {
         const page = makeFakePage('https://salesai.example/dashboard');
-        const lens = [10, 25, 40, 40, 40, 999]; // grows, settles at 40 (2 consecutive matches); the 999 read must never happen
-        let i = 0;
-        page.evaluate = vi.fn(async () => lens[Math.min(i++, lens.length - 1)]);
         const tour = makeTour(page);
 
         await tour.goto('/pricing');
 
-        // Same stabilization algorithm/expectation as
-        // packages/utils/src/index.test.js's waitForStableContent test —
-        // not a bare fixed-timeout call with no regard for actual content.
-        expect(page.evaluate).toHaveBeenCalledTimes(5);
+        expect(tour.waitForReady).toHaveBeenCalledTimes(1);
+        expect(tour.waitForReady).toHaveBeenCalledWith(page);
+        expect(page.waitForTimeout).not.toHaveBeenCalled();
     });
 
     it('navigates directly to an already-absolute trusted URL', async () => {
@@ -198,6 +245,36 @@ describe('GuidedTour#goto', () => {
         await tour.goto('https://salesai.example/settings');
 
         expect(page.goto).toHaveBeenCalledWith('https://salesai.example/settings', { waitUntil: 'domcontentloaded' });
+        expect(page.waitForTimeout).not.toHaveBeenCalled();
+    });
+
+    it('removes transient-auth initialization after the first matching-origin navigation', async () => {
+        const page = makeFakePage('about:blank');
+        const tour = makeTour(page);
+        const dispose = vi.fn(async () => {});
+        tour.snapshotInitScript = { origin: 'https://salesai.example', dispose };
+
+        await tour.goto('https://salesai.example/dashboard');
+
+        expect(dispose).toHaveBeenCalledTimes(1);
+        expect(tour.snapshotInitScript).toBeNull();
+    });
+
+    it('keeps transient-auth initialization until its configured origin is reached', async () => {
+        const page = makeFakePage('about:blank');
+        const tour = new GuidedTour({
+            startUrl: 'https://salesai.example/dashboard',
+            allowedDomains: ['https://product-demo.example'],
+            waitForReady: vi.fn(async () => ({ ready: true, waitMs: 0 }))
+        });
+        tour.page = page;
+        const dispose = vi.fn(async () => {});
+        tour.snapshotInitScript = { origin: 'https://salesai.example', dispose };
+
+        await tour.goto('https://product-demo.example/home');
+
+        expect(dispose).not.toHaveBeenCalled();
+        expect(tour.snapshotInitScript).not.toBeNull();
     });
 
     it('rejects an absolute URL outside the trusted domain(s) without navigating', async () => {
@@ -229,6 +306,143 @@ describe('GuidedTour#goto', () => {
         const tour = makeTour(page);
 
         await expect(tour.goto('/pricing')).rejects.toThrow(/landed outside the trusted domain/);
+        // Never execute page-side readiness code after an untrusted redirect.
+        expect(tour.waitForReady).not.toHaveBeenCalled();
+    });
+});
+
+describe('GuidedTour#open', () => {
+    it('loads the requested first destination exactly once without an intermediate startUrl navigation', async () => {
+        const tour = new GuidedTour({ startUrl: 'https://salesai.example' });
+        tour.prepare = vi.fn(async () => tour);
+        tour.goto = vi.fn(async () => ({ ready: true, waitMs: 0 }));
+
+        await tour.open('https://salesai.example/solutions');
+
+        expect(tour.prepare).toHaveBeenCalledWith({ loginTargetUrl: 'https://salesai.example/solutions' });
+        expect(tour.goto).toHaveBeenCalledTimes(1);
+        expect(tour.goto).toHaveBeenCalledWith('https://salesai.example/solutions');
+    });
+
+    it('reuses a prepared browser instead of treating prewarm as an already-open tour', async () => {
+        const page = makeFakePage('about:blank');
+        const tour = makeTour(page);
+        tour.browser = { close: vi.fn(async () => {}) };
+        const ensureSpy = vi.spyOn(tour, 'ensureBrowserReady');
+
+        await tour.open('https://salesai.example/dashboard');
+
+        expect(ensureSpy).toHaveBeenCalled();
+        expect(page.goto).toHaveBeenCalledTimes(1);
+        expect(tour.opened).toBe(true);
+    });
+});
+
+/**
+ * `open()` only ever checks demoSession login against the tour's FIRST
+ * destination (see requiresDemoLogin's own docs) — a playbook that opens on
+ * the public site and reaches the demo domain several nodes later (this
+ * project's own reference scenario, agent_flow.md) never logged in at all
+ * before this: goto() had no equivalent check, so the visitor landed on a
+ * bare login screen instead of the actual dashboard.
+ */
+describe('GuidedTour#goto — on-demand demoSession login', () => {
+    function makeAuthedTour(page) {
+        const tour = new GuidedTour({
+            startUrl: 'https://www.cyberverse.example',
+            allowedDomains: ['https://demo.cyberverse.example'],
+            auth: { loginUrl: 'https://demo.cyberverse.example/login', username: 'demo', password: 'x' },
+            waitForReady: vi.fn(async () => ({ ready: true, waitMs: 0 }))
+        });
+        tour.page = page;
+        tour.login = vi.fn(async () => {}); // real login() drives a real form — not under test here
+        return tour;
+    }
+
+    it('logs in before navigating, the first time a demo-domain target is reached', async () => {
+        const page = makeFakePage('https://www.cyberverse.example/solutions');
+        const tour = makeAuthedTour(page);
+
+        await tour.goto('https://demo.cyberverse.example/dashboard');
+
+        expect(tour.login).toHaveBeenCalledTimes(1);
+        expect(tour.loggedIn).toBe(true);
+        // Login happens before the real navigation, not after.
+        expect(tour.login.mock.invocationCallOrder[0]).toBeLessThan(page.goto.mock.invocationCallOrder[0]);
+    });
+
+    it('does not log in again on a later return to the demo domain in the same tour', async () => {
+        const page = makeFakePage('https://www.cyberverse.example/solutions');
+        const tour = makeAuthedTour(page);
+
+        await tour.goto('https://demo.cyberverse.example/dashboard');
+        await tour.goto('https://demo.cyberverse.example/reports');
+
+        expect(tour.login).toHaveBeenCalledTimes(1);
+    });
+
+    it('shares one in-flight login between background prewarm and foreground navigation', async () => {
+        const page = makeFakePage('about:blank');
+        const tour = makeAuthedTour(page);
+        let finishLogin;
+        tour.login = vi.fn(() => new Promise((resolve) => { finishLogin = resolve; }));
+
+        const prewarm = tour.prepare({ loginTargetUrl: 'https://demo.cyberverse.example/dashboard' });
+        const navigation = tour.goto('https://demo.cyberverse.example/dashboard');
+        await vi.waitFor(() => expect(tour.login).toHaveBeenCalledTimes(1));
+        finishLogin();
+        await Promise.all([prewarm, navigation]);
+
+        expect(tour.login).toHaveBeenCalledTimes(1);
+        expect(tour.loggedIn).toBe(true);
+    });
+
+    it('runs prewarmed login in an isolated page while keeping the visible page untouched', async () => {
+        const visiblePage = makeFakePage('about:blank');
+        const loginPage = { ...makeFakePage('about:blank'), close: vi.fn(async () => {}) };
+        const tour = makeAuthedTour(visiblePage);
+        tour.context = { newPage: vi.fn(async () => loginPage) };
+        tour.login = vi.fn(async () => {});
+
+        await tour.prepare({ loginTargetUrl: 'https://demo.cyberverse.example/dashboard' });
+
+        expect(tour.context.newPage).toHaveBeenCalledTimes(1);
+        expect(tour.login).toHaveBeenCalledWith(loginPage);
+        expect(loginPage.close).toHaveBeenCalledTimes(1);
+        expect(visiblePage.goto).not.toHaveBeenCalled();
+    });
+
+    it('never logs in for a target outside the demo domain, regardless of loggedIn state', async () => {
+        const page = makeFakePage('https://www.cyberverse.example/solutions');
+        const tour = makeAuthedTour(page);
+
+        await tour.goto('https://www.cyberverse.example/references');
+
+        expect(tour.login).not.toHaveBeenCalled();
+        expect(tour.loggedIn).toBe(false);
+    });
+
+    it('does nothing extra when there are no demo credentials configured at all', async () => {
+        const page = makeFakePage('https://salesai.example/dashboard');
+        const tour = makeTour(page); // no auth
+        tour.login = vi.fn(async () => {});
+
+        await tour.goto('/pricing');
+
+        expect(tour.login).not.toHaveBeenCalled();
+    });
+});
+
+describe('GuidedTour#close', () => {
+    it('resets loggedIn — a fresh open() afterwards is a fresh browser with no cookies', async () => {
+        const tour = new GuidedTour({ startUrl: 'https://salesai.example' });
+        tour.loggedIn = true;
+        tour.browser = { close: vi.fn(async () => {}) };
+        // activeBrowsers isn't exported; close() tolerates a browser it never registered.
+
+        await tour.close();
+
+        expect(tour.loggedIn).toBe(false);
     });
 });
 

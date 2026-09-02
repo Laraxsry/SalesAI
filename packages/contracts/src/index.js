@@ -186,7 +186,10 @@ export const AgentConfigInput = z.object({
             tone: z.string().default('friendly, expert, concise'),
             language: z.string().default('en'),
             goals: z.array(z.string()).default([]),
-            guardrails: z.array(z.string()).default([])
+            guardrails: z.array(z.string()).default([]),
+            // 'custom' default mirrors the Mongoose schema default — see
+            // Agent.js's comment for why 'marketing' would be unsafe here.
+            archetype: z.enum(['marketing', 'technical', 'custom']).default('custom')
         })
         .default({}),
     avatarProvider: AvatarProvider.default('voice-only'),
@@ -219,7 +222,8 @@ export const AgentUpdateInput = z.object({
             tone: z.string().optional(),
             language: z.string().optional(),
             goals: z.array(z.string()).optional(),
-            guardrails: z.array(z.string()).optional()
+            guardrails: z.array(z.string()).optional(),
+            archetype: z.enum(['marketing', 'technical', 'custom']).optional()
         })
         .optional(),
     avatarProvider: AvatarProvider.optional(),

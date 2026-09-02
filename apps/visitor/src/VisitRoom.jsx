@@ -45,8 +45,8 @@ function Captions({ segments }) {
     const last = segments[segments.length - 1];
     if (!last?.text) return null;
     return (
-        <div className="pointer-events-none absolute bottom-24 left-1/2 w-full max-w-lg -translate-x-1/2 px-4">
-            <p className="rounded-[var(--radius-card)] bg-black/70 px-4 py-2.5 text-center text-sm text-white backdrop-blur">
+        <div aria-live="polite" aria-atomic="true" className="pointer-events-none absolute bottom-24 left-1/2 w-full max-w-lg -translate-x-1/2 px-4">
+            <p className="rounded-xl border border-white/10 bg-[#071713]/85 px-4 py-2.5 text-center text-sm font-medium text-white backdrop-blur-xl">
                 {last.text}
             </p>
         </div>

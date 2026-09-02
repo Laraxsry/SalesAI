@@ -26,6 +26,23 @@
  *    when constructing the session so the two timers don't run on different
  *    clocks against the same silence.
  *
+ * *** ONE COUNTER, TWO CALLERS — WHY isCapExempt EXISTS ***
+ * `onIdle` is used for two genuinely different things by the same caller
+ * (agent.js): advancing a playbook node on silence, and nudging an otherwise-
+ * idle visitor once no playbook is running. Both go through the same
+ * `consecutive` counter, and it only resets on a final visitor transcript.
+ * A visitor who never speaks through a 6-node playbook — the common case for
+ * someone passively watching a demo, observed repeatedly in this project's
+ * own live testing — burns the budget on node 1-3 alone; from node 4 on,
+ * `evaluate()` returns early forever and the driver goes permanently dormant,
+ * with no further backstop to move a stuck node along. A "the visitor didn't
+ * answer three times, stop pestering them" cap is right for idle chit-chat;
+ * it is wrong for a scripted walkthrough, which has no "give up" concept —
+ * `isBusy` already tells the difference "still working" from "genuinely
+ * quiet"; this tells the difference "presentation is running" from
+ * "ordinary conversation", so the budget check can be skipped for the former
+ * without touching the underlying counter or its post-playbook meaning.
+ *
  * Pure in-memory timing, no I/O — same shape as `realtime-gate.js` and
  * `session-cost-tracker.js`: the caller decides what an idle moment means.
  *
@@ -37,8 +54,14 @@
  * @param {() => boolean} [opts.isBusy]              veto — true while the caller
  *   is mid-work that has not reached the audio pipeline yet (e.g. awaiting a
  *   page navigation), which reads as silence but is not an idle conversation
+ * @param {() => boolean} [opts.isCapExempt]          when true, `maxConsecutive`
+ *   is not enforced (see the note above) — the counter itself still advances,
+ *   so a caller that flips this off again (e.g. once a playbook completes)
+ *   sees the accumulated count, not a reset one; call `resetConsecutive()`
+ *   explicitly at that transition if a fresh budget is wanted (agent.js does,
+ *   on `playbookRuntime`'s `onCompleted`)
  */
-export function createSilenceDriver({ idleMs, onIdle, maxConsecutive = 3, isBusy = () => false }) {
+export function createSilenceDriver({ idleMs, onIdle, maxConsecutive = 3, isBusy = () => false, isCapExempt = () => false }) {
     /** @type {ReturnType<typeof setTimeout>|null} */
     let timer = null;
     let agentState = 'initializing';
@@ -69,7 +92,8 @@ export function createSilenceDriver({ idleMs, onIdle, maxConsecutive = 3, isBusy
     }
 
     function evaluate() {
-        if (disposed || consecutive >= maxConsecutive) return;
+        if (disposed) return;
+        if (consecutive >= maxConsecutive && !isCapExempt()) return;
         if (!isQuiet()) {
             clear();
             return;

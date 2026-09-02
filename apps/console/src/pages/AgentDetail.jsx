@@ -13,6 +13,14 @@ const STATUS_STYLE = {
     archived: 'text-text-muted bg-surface-raised'
 };
 
+// Mirrors apps/console/src/pages/Agents.jsx's ARCHETYPES — kept as separate
+// local copies (display labels only) to match this codebase's existing
+// per-page constant convention (STATUS_LABEL etc. below are the same pattern).
+const ARCHETYPE_LABEL = {
+    marketing: 'Pazarlama',
+    technical: 'Teknik'
+};
+
 const STATUS_LABEL = {
     draft: 'Taslak',
     active: 'Aktif',
@@ -164,8 +172,10 @@ export function AgentDetail() {
                     <h3 className="mb-3 text-sm font-semibold text-text">Persona</h3>
                     <dl className="flex flex-col gap-2 text-sm">
                         <div className="flex justify-between gap-4">
-                            <dt className="text-text-muted">Ton</dt>
-                            <dd className="text-right text-text">{agent.persona?.tone}</dd>
+                            <dt className="text-text-muted">Karakter</dt>
+                            <dd className="text-right text-text">
+                                {ARCHETYPE_LABEL[agent.persona?.archetype] || agent.persona?.tone}
+                            </dd>
                         </div>
                         <div className="flex justify-between gap-4">
                             <dt className="text-text-muted">Dil</dt>

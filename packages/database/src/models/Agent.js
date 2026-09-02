@@ -86,7 +86,22 @@ const AgentSchema = new Schema(
             tone: { type: String, default: 'friendly, expert, concise' },
             language: { type: String, default: 'en' },
             goals: { type: [String], default: [] },
-            guardrails: { type: [String], default: [] }
+            guardrails: { type: [String], default: [] },
+            // 'marketing' | 'technical': a curated, concrete-behavior-rules
+            // character (see @repo/agent's persona-archetypes.js) replaces the
+            // free-text `tone` sentence entirely. 'custom' (default) preserves
+            // today's exact behavior — `tone` is a free-text style label. The
+            // DB default is deliberately 'custom', not 'marketing': an agent
+            // saved before this field existed has no `archetype` key at all,
+            // and Mongoose applies schema defaults on hydration too, so a
+            // 'marketing' default here would silently discard whatever tone
+            // string that agent's owner already wrote. The console's *new*
+            // agent form sets its own default to 'marketing' at the UI layer.
+            archetype: {
+                type: String,
+                enum: ['marketing', 'technical', 'custom'],
+                default: 'custom'
+            }
         },
         avatarProvider: {
             type: String,

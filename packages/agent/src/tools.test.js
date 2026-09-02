@@ -33,7 +33,8 @@ describe('buildTools', () => {
         'stop_screen_share',
         'read_tour_screen',
         'save_contact_info',
-        'expect_response'
+        'expect_response',
+        'flag_followup_needed'
     ];
 
     it('exposes exactly the expected tool set (no advance_step) when no playbook is active, each with a name/description/parameters/handler', () => {
@@ -68,6 +69,21 @@ describe('buildTools', () => {
 
         expect(toolNames(solo)).not.toContain('next_participant');
         expect(toolNames(group)).toEqual([...BASE_TOOL_NAMES, 'next_participant']);
+    });
+
+    it('composes follow-up, group-floor and playbook tools without dropping any capability', () => {
+        const tools = buildTools({
+            productId: 'p1',
+            multiParticipant: true,
+            playbookActive: true
+        });
+
+        expect(toolNames(tools)).toEqual([
+            ...BASE_TOOL_NAMES,
+            'next_participant',
+            'advance_step'
+        ]);
+        expect(toolNames(tools)).toContain('flag_followup_needed');
     });
 
     describe('search_knowledge', () => {
@@ -430,6 +446,24 @@ describe('buildTools', () => {
             const withPlaybook = buildTools({ productId: 'p1', playbookActive: true });
             expect(toolNames(withoutPlaybook)).toContain('expect_response');
             expect(toolNames(withPlaybook)).toContain('expect_response');
+        });
+    });
+
+    describe('flag_followup_needed', () => {
+        it('calls the bound flagFollowup with the question and returns its result', async () => {
+            const flagFollowup = vi.fn().mockResolvedValue({ ok: true });
+            const tools = buildTools({ productId: 'p1', flagFollowup });
+
+            const result = await findTool(tools, 'flag_followup_needed').handler({ question: 'Ürün X ile entegre olur mu?' });
+
+            expect(flagFollowup).toHaveBeenCalledWith('Ürün X ile entegre olur mu?');
+            expect(result).toEqual({ ok: true });
+        });
+
+        it('falls back to { ok: false } when flagFollowup is missing', async () => {
+            const tools = buildTools({ productId: 'p1' });
+            const result = await findTool(tools, 'flag_followup_needed').handler({ question: 'x' });
+            expect(result).toEqual({ ok: false });
         });
     });
 

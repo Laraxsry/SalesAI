@@ -17,6 +17,7 @@ export { AnalyticsRollup } from './AnalyticsRollup.js';
 export { Lead } from './Lead.js';
 export { KnowledgeGapReport } from './KnowledgeGapReport.js';
 export { KnowledgeTopic } from './KnowledgeTopic.js';
+export { FollowUpTask } from './FollowUpTask.js';
 // Phase 5: Embeddable SDK & Widget
 export { EmbedConfig } from './EmbedConfig.js';
 export { EmbedDomain } from './EmbedDomain.js';
@@ -39,4 +40,3 @@ export { AuditLog, AUDIT_ACTIONS } from './AuditLog.js';
 export { Visitor } from './Visitor.js';
 export { MagicLinkToken } from './MagicLinkToken.js';
 export { Device } from './Device.js';
-

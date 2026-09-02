@@ -30,6 +30,50 @@ import { wrapDirective } from '@repo/agent';
  * create any. If a future change makes `signal()` call `speak()` directly,
  * re-read hazard #3/#13 in the playbook plan before doing it.
  *
+ * *** P0 — WHY 'tool'/'advance_step' RESOLVE AGAINST `activeNode`, NOT `cursor.current()` ***
+ * `cursor.current()` answers "where is the pointer right now" — a live,
+ * mutable read. `advance_step` (the model's own "I've covered this" call)
+ * can arrive more than once for what turns out to be the same logical turn
+ * — e.g. a duplicated/retried model turn after a transient realtime-session
+ * reconnect — and if an earlier one already advanced the cursor before the
+ * second is processed, the second one, if it re-read `cursor.current()`,
+ * would land on the NEXT node and satisfy it before it was ever dispatched,
+ * silently skipping its content (observed live: a node's screen opened but
+ * its narration never played — see md/backend/playbook_session_log.md,
+ * item 3 / 4.9). `activeNode` is captured once, synchronously, the moment
+ * `pump()` begins dispatching a node, and is the fixed reference `signal()`
+ * resolves against for 'tool'/'advance_step' — whichever signal arrives
+ * first satisfies it; a later one for the same turn is a no-op via
+ * `cursor.satisfy()`'s own idempotence, because it resolves to the SAME
+ * already-satisfied node instead of accidentally reaching the next one.
+ * ('tool' itself currently has no caller — `click_element` succeeding used
+ * to trigger it via `withPlaybookProgress`, removed after live testing
+ * showed a click landing before any narration happened could close a node
+ * that was never actually covered; see md item 6/15. `signal()` still
+ * accepts 'tool' so this file doesn't have to change if a real deterministic
+ * completion signal is reintroduced later.) `silence`/`answered` are
+ * deliberately exempt — those come from a genuinely real-time, independent
+ * observer (the silence driver), so "current" correctly means right now for
+ * them, not "whatever was active when a signal's origin happened".
+ *
+ * *** P1 — WHY 'tool'/'advance_step' ALSO REQUIRE `hasSpoken()` ***
+ * Identity alone (P0, above) isn't sufficient: live testing across three
+ * separate sessions showed the model calling `advance_step` as its very
+ * first move on a node — before saying a single word, `handleResponseDone`
+ * closing with zero message items, only the tool call. Worse, it compounds:
+ * once one node's turn in a session has that "call the tool, say nothing"
+ * shape, the model's own prior turns are part of its context, so it tends to
+ * repeat exactly that shape for every node after — observed as the SAME
+ * leftover sentence from an earlier node resurfacing verbatim 4-6 times
+ * across one session, while every later node got skipped unnarrated. See
+ * `hasSpoken()` below and md/backend/playbook_session_log.md. A content-less
+ * 'tool'/'advance_step' is now ignored entirely — not satisfied, cursor
+ * untouched. `pump()`'s own in-flight `waitForPlayout()` still resolves
+ * normally right after (the empty generation closes fast) and marks the node
+ * `delivered`, same bookkeeping as an interrupted turn, so it isn't left
+ * dispatching forever — just waiting on the next legitimate signal (a later,
+ * real advance_step, or an eventual 'silence' once the model actually stops).
+ *
  * @typedef {import('./playbook-cursor.js').PlaybookNode} PlaybookNode
  *
  * @typedef {object} ScreenPort
@@ -39,6 +83,10 @@ import { wrapDirective } from '@repo/agent';
  * @typedef {object} SpeechHandleLike
  * @property {() => Promise<void>} waitForPlayout
  * @property {boolean} interrupted
+ * @property {Array<{type: string, role?: string}>} [chatItems] SpeechHandle's
+ *   own live-updated record of what the turn has produced so far
+ *   (message/function_call/function_call_output) — optional in the type only
+ *   for defensiveness against a differently-shaped port; see `hasSpoken()`.
  *
  * @param {object} deps
  * @param {ReturnType<import('./playbook-cursor.js').createPlaybookCursor>} deps.cursor
@@ -52,6 +100,12 @@ import { wrapDirective } from '@repo/agent';
  *   url that failed to open" (with screenVisible:false) for `failed`.
  * @param {() => void} [deps.onCompleted]
  * @param {(message: string, meta?: object) => void} [deps.onError]
+ * @param {(node: PlaybookNode, kind: string, reason: string) => void} [deps.onSignalIgnored]
+ *   A progress signal was received and deliberately dropped. Exists purely so
+ *   that decision is visible: "the model called advance_step but had said
+ *   nothing, so the node stayed open" is otherwise indistinguishable from
+ *   "the model never called advance_step at all" — and those two have
+ *   completely different fixes.
  */
 export function createPlaybookRuntime({
     cursor,
@@ -63,13 +117,19 @@ export function createPlaybookRuntime({
     lastSpoken = () => null,
     onNodeEvent = () => { },
     onCompleted = () => { },
-    onError = () => { }
+    onError = () => { },
+    onSignalIgnored = () => { }
 }) {
     let stopped = false;
     let dispatching = false;
     let pendingPoke = false;
     let generation = 0;
     let completedFlag = false;
+    /** The node `pump()` is currently (or was most recently) dispatching —
+     *  see the P0 note above. Fixed the instant a node is picked up, and
+     *  only ever changed by `pump()` itself when it moves to a genuinely
+     *  new node — never by `signal()`. */
+    let activeNode = null;
 
     let lastShownUrl = null;
     /** Node ids whose narration has actually been spoken this session — used
@@ -95,6 +155,68 @@ export function createPlaybookRuntime({
      *  repetition worse, not better. */
     const interruptedText = new Map();
 
+    /** The SpeechHandle `pump()` is currently (or was most recently)
+     *  dispatching — same lifecycle as `activeNode` (set once, the instant a
+     *  node's `speak()` call is made; only ever changed by `pump()` itself).
+     *  Exists purely so `signal()` can answer "did this turn actually say
+     *  anything" AT THE MOMENT it needs to, via `chatItems` (SpeechHandle's
+     *  own public, live-updated record of message/function_call items) —
+     *  see the `hasSpoken()` helper below and its comment for why this can't
+     *  just be computed once inside `pump()` after the fact. */
+    let activeHandle = null;
+
+    /** Real, checkable answer to "did the currently-active node's turn
+     *  produce any actual narration" — read fresh every time, not cached,
+     *  because for 'advance_step'/'tool' this must be evaluated AT SIGNAL
+     *  TIME, while `pump()` may still be awaiting the very same handle's
+     *  `waitForPlayout()` (see the P0 note atop this file: those two kinds
+     *  are deliberately exempt from the `dispatching` guard, so `signal()`
+     *  can run mid-turn). `chatItems` is live-updated as items are produced,
+     *  so this is accurate whether the turn is still open or long done. Live
+     *  evidence this matters: md/backend/playbook_session_log.md — a session
+     *  where `advance_step` closed node 2 ("Çözümlerimizden detaylıca
+     *  bahset. 30sn civarı konuş.") in 0.7s with zero spoken content; before
+     *  this, spotting that required manually diffing enter/exit timestamps
+     *  against the Message collection for a gap with no assistant text. */
+    function hasSpoken() {
+        return Boolean(activeHandle?.chatItems?.some((item) => item.type === 'message' && item.role === 'assistant'));
+    }
+
+    /** Node ids awaiting a forced re-dispatch after being found empty — set by
+     *  `requestEmptyRetry()`, consumed by `pump()`'s own delivered-check. Kept
+     *  separate from `delivered.delete()` alone because the request and
+     *  pump()'s own `delivered.add(node.id)` (from the turn that's BEING
+     *  retried) can land in either order: 'followup_suppressed' arrives from
+     *  agent.js reacting to an SDK event, mid-flight, exactly like 'tool'/
+     *  'advance_step' (see the P0 note). A bare `delivered.delete()` at
+     *  request time can be silently overwritten if the in-flight pump() call
+     *  hasn't reached its own `delivered.add()` yet; recording the *intent*
+     *  here and having pump() honor it whenever it next evaluates that node
+     *  is order-independent. */
+    const pendingRedeliver = new Set();
+    /** Node ids' empty-turn retry counts. Shared by BOTH paths that can
+     *  discover a node closing with zero real narration — a suppressed
+     *  advance_step follow-up (`signal('followup_suppressed')`) and an
+     *  ordinary 'silence' timeout on a node that never said anything (see
+     *  P2 below) — one budget per node regardless of which one found it,
+     *  not two independent ones that could double a node's total retries. */
+    const emptyRetries = new Map();
+    const EMPTY_RETRY_CAP = 2;
+
+    /** Requests one more real attempt at the given (already-`delivered`,
+     *  never-actually-spoken) node instead of accepting the empty turn as
+     *  final. Returns false once the per-node budget is spent, so the caller
+     *  falls through to its normal close path — accepted content loss beats
+     *  a node stuck retrying forever. */
+    function requestEmptyRetry(node) {
+        const attempts = (emptyRetries.get(node.id) ?? 0) + 1;
+        if (attempts > EMPTY_RETRY_CAP) return false;
+        emptyRetries.set(node.id, attempts);
+        pendingRedeliver.add(node.id);
+        pump();
+        return true;
+    }
+
     async function pump() {
         if (stopped || dispatching) {
             pendingPoke = true;
@@ -111,7 +233,20 @@ export function createPlaybookRuntime({
                 }
                 return;
             }
-            if (delivered.has(node.id)) return; // already spoken; waiting on a signal
+            // Fixed here, before anything async happens below — this is the
+            // one place `activeNode` is ever assigned. See the P0 note atop
+            // this file for why `signal()` must resolve 'tool'/'advance_step'
+            // against this instead of re-reading `cursor.current()` later.
+            activeNode = node;
+
+            if (delivered.has(node.id)) {
+                if (!pendingRedeliver.has(node.id)) return; // already spoken; waiting on a signal
+                // A forced retry was requested (see requestEmptyRetry) —
+                // consume the request and fall through to dispatch this node
+                // again, exactly like a first-time delivery.
+                pendingRedeliver.delete(node.id);
+                delivered.delete(node.id);
+            }
 
             // ── 1. NAVIGATE FIRST — the visitor must never hear "look at this"
             // over whatever the previous step left on screen. ──────────────
@@ -153,6 +288,12 @@ export function createPlaybookRuntime({
                     spokenSoFar: resuming ? interruptedText.get(node.id) ?? null : null
                 })
             );
+            // Set before the await, not after — see the P0 note and
+            // `hasSpoken()`'s comment: 'advance_step'/'tool' can call into
+            // `signal()` while this exact await is still pending, and it
+            // needs `activeHandle` pointing at THIS turn's handle to answer
+            // "did it say anything yet" correctly at that moment.
+            activeHandle = handle;
             await handle.waitForPlayout();
             if (stopped || generation !== epoch) return;
 
@@ -192,12 +333,18 @@ export function createPlaybookRuntime({
         },
 
         /**
-         * @param {'tool'|'advance_step'|'silence'|'answered'} kind
+         * @param {'tool'|'advance_step'|'silence'|'answered'|'followup_suppressed'} kind
          * @param {object} [meta]
          */
         signal(kind, meta) {
-            const node = cursor.current();
-            if (!node || stopped) return;
+            if (stopped) return;
+            // 'tool'/'advance_step' close out whatever node's turn most
+            // recently opened — resolved against the fixed `activeNode`,
+            // not the cursor's live position (see the P0 note atop this
+            // file). 'silence'/'answered' are real-time observations, so
+            // they still ask the cursor what's current right now.
+            const node = (kind === 'tool' || kind === 'advance_step' || kind === 'followup_suppressed') ? activeNode : cursor.current();
+            if (!node) return;
 
             // 'silence' only makes sense once the agent has actually stopped
             // talking — the real caller (silence-driver) already vetoes on
@@ -210,11 +357,88 @@ export function createPlaybookRuntime({
             // or advance_step call from mid-utterance) and must still work.
             if (kind === 'silence' && dispatching) return;
 
+            // *** P1 — WHY advance_step/tool REQUIRE hasSpoken() ***
+            // Live-observed, three separate sessions (md/backend/
+            // playbook_session_log.md): the model calls advance_step as its
+            // very first move on a node, before saying a single word —
+            // `handleResponseDone` closes with zero message items, only the
+            // tool call. Worse, it's self-reinforcing: once one node's turn
+            // in this session was "call the tool, say nothing", the model's
+            // own prior turns are part of its context, so it tends to repeat
+            // exactly that shape for every node after — observed as the
+            // SAME leftover sentence from an earlier node re-surfacing
+            // verbatim 4-6 times across a single session, while every node
+            // after the first got skipped with zero real narration. A
+            // content-less advance_step is not a legitimate "I'm done" —
+            // ignore it here (do not satisfy, do not advance). pump()'s own
+            // in-flight `waitForPlayout()` still resolves normally right
+            // after (the empty generation closes fast) and marks the node
+            // `delivered`, same bookkeeping as an interrupted turn — so the
+            // node isn't left dispatching forever, just waiting on the next
+            // legitimate signal (typically an eventual 'silence' once the
+            // model actually stops, or a later advance_step once it has
+            // actually said something) instead of vanishing unnarrated.
+            if ((kind === 'tool' || kind === 'advance_step') && !hasSpoken()) {
+                onSignalIgnored(node, kind, 'nothing_spoken');
+                return;
+            }
+
+            // *** WHY 'followup_suppressed' EXISTS ***
+            // agent.js intercepts the SDK's own auto-generated follow-up turn
+            // when it would carry no per-turn instructions AND the turn that
+            // triggered it only ever called advance_step (see followup-
+            // guard.js) — that follow-up is what produced the "same sentence
+            // 4-6 times" bug (it has nothing to draw from except whatever was
+            // last genuinely said). Interrupting it alone would strand
+            // agentState in 'thinking' forever (@livekit/agents only clears
+            // that on a completed reply) — so the caller reports it here, and
+            // this re-dispatches the SAME node with its real directive via
+            // the normal pump() path, which completes a genuine turn and
+            // lets the SDK's own state cycle sort itself out. Shares its
+            // retry budget with the 'silence' path below on purpose (P2) —
+            // it's the same failure ("this node said nothing"), just caught
+            // by a different observer.
+            if (kind === 'followup_suppressed') {
+                if (!requestEmptyRetry(node)) {
+                    onSignalIgnored(node, kind, 'empty_retry_cap_reached');
+                }
+                return;
+            }
+
             if (kind === 'silence' && node.mode === 'important' && interruptedIds.has(node.id) && !redelivered.has(node.id)) {
                 redelivered.add(node.id);
                 delivered.delete(node.id);
                 pump();
                 return;
+            }
+
+            // *** P2 — WHY 'silence' ALSO REQUIRES hasSpoken() BEFORE CLOSING ***
+            // A node timing out into 'silence' having said literally nothing
+            // is not "the visitor didn't respond" — the visitor never had
+            // anything to respond TO. Silently closing it the same as a
+            // normal, narrated node hid this: `empty:true` was logged but
+            // never acted on. First occurrence gets the same forced-retry
+            // treatment as an empty advance_step; only once the shared budget
+            // (see `requestEmptyRetry`) is spent does this fall through to an
+            // ordinary close, matching the existing accepted-content-loss
+            // precedent for an interrupted situational node above.
+            //
+            // Deliberately excludes `interruptedIds` — a node the visitor cut
+            // off mid-sentence almost certainly said SOMETHING before being
+            // interrupted (the real handle's chatItems would show a partial
+            // message; the test harness's bare fake doesn't, which is a test
+            // fixture gap, not a reason to treat "interrupted" and "never
+            // spoke at all" as the same failure). Interrupted nodes already
+            // have their own, older, deliberately different handling just
+            // above (single redelivery for `important`, accepted content
+            // loss for anything else) — P2 must not re-litigate that.
+            if (kind === 'silence' && !hasSpoken() && !interruptedIds.has(node.id)) {
+                if (requestEmptyRetry(node)) {
+                    onSignalIgnored(node, kind, 'nothing_spoken');
+                    return;
+                }
+                onSignalIgnored(node, kind, 'empty_retry_cap_reached');
+                // fall through — close anyway, content loss accepted
             }
 
             // A skip-if-no-answer node only advances on an explicit answer
@@ -230,6 +454,7 @@ export function createPlaybookRuntime({
                 reason: kind,
                 screenVisible: lastShownUrl !== null,
                 url: lastShownUrl,
+                empty: !hasSpoken(),
                 ...meta
             });
             cursor.advance();
@@ -244,6 +469,17 @@ export function createPlaybookRuntime({
          * reliable enough to act on, so this intentionally does nothing yet.
          */
         noteUserSpeech() { },
+
+        /**
+         * The single authoritative answer to "which node is this turn about"
+         * — external callers (currently agent.js's follow-up suppression)
+         * must read this instead of the cursor directly, so an event check and
+         * `signal()` itself can never disagree about which node a turn belongs
+         * to. See the P0 note atop this file.
+         */
+        activeNode() {
+            return activeNode;
+        },
 
         stop,
 

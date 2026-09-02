@@ -2,7 +2,6 @@ import { describe, it, expect } from 'vitest';
 import {
     buildIdleNudgeInstructions,
     wrapDirective,
-    buildLookupBridgeInstructions,
     buildGreetingInstructions
 } from './proactive.js';
 
@@ -54,6 +53,7 @@ describe('buildIdleNudgeInstructions', () => {
             expect(text).not.toContain('plan');
         }
     });
+
 });
 
 describe('wrapDirective', () => {
@@ -178,8 +178,6 @@ describe('proactive builders — quoting back what was already said', () => {
         const texts = [
             buildIdleNudgeInstructions({ consecutive: 1, lastUtterance: 'bir şey' }),
             wrapDirective(node, { resuming: true, spokenSoFar: 'bir şey' }),
-            buildLookupBridgeInstructions({ step: 0 }),
-            buildLookupBridgeInstructions({ step: 1 }),
             buildGreetingInstructions()
         ];
 
@@ -189,37 +187,5 @@ describe('proactive builders — quoting back what was already said', () => {
             expect(lower).not.toContain('step');
             expect(lower).not.toContain('next topic');
         }
-    });
-});
-
-describe('buildLookupBridgeInstructions', () => {
-    it('offers a first, shortest bridge', () => {
-        const text = buildLookupBridgeInstructions({ step: 0 });
-        expect(text).toContain('Do not call any tools');
-        expect(text.toLowerCase()).toContain('do not begin the answer yet');
-    });
-
-    it('asks for different words the second time', () => {
-        const first = buildLookupBridgeInstructions({ step: 0 });
-        const second = buildLookupBridgeInstructions({ step: 1 });
-        expect(second).not.toBe(first);
-        expect(second.toLowerCase()).toContain('different words');
-    });
-
-    // Past two, more talking reads as stalling; silence is the better answer.
-    it('goes quiet rather than stalling a third time', () => {
-        expect(buildLookupBridgeInstructions({ step: 2 })).toBeNull();
-        expect(buildLookupBridgeInstructions({ step: 7 })).toBeNull();
-    });
-
-    it('defaults to the first bridge', () => {
-        expect(buildLookupBridgeInstructions()).toBe(buildLookupBridgeInstructions({ step: 0 }));
-    });
-
-    // The bridge must never describe the machinery it is covering for — that
-    // is the exact failure it exists to replace.
-    it('forbids narrating the lookup itself', () => {
-        const lower = buildLookupBridgeInstructions({ step: 0 }).toLowerCase();
-        expect(lower).toContain('do not describe what you are doing');
     });
 });

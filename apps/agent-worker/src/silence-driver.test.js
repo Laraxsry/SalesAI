@@ -182,6 +182,82 @@ describe('createSilenceDriver — budget', () => {
     });
 });
 
+describe('createSilenceDriver — isCapExempt', () => {
+    // Reproduces a live bug: a visitor who never speaks through a multi-node
+    // playbook burns the shared `consecutive` budget on the first
+    // `maxConsecutive` silence-driven node advances, then the driver goes
+    // permanently dormant — later nodes have no backstop at all.
+    it('keeps firing past maxConsecutive while exempt', () => {
+        const onIdle = vi.fn();
+        const exempt = true;
+        const driver = createSilenceDriver({ idleMs: IDLE_MS, onIdle, maxConsecutive: 2, isCapExempt: () => exempt });
+        driver.handleUserState('listening');
+
+        for (let i = 0; i < 5; i += 1) {
+            driver.handleAgentState('speaking');
+            driver.handleAgentState('listening');
+            vi.advanceTimersByTime(IDLE_MS);
+        }
+
+        expect(onIdle).toHaveBeenCalledTimes(5); // not capped at 2
+    });
+
+    it('the budget applies again once exemption is lifted, using the accumulated count', () => {
+        const onIdle = vi.fn();
+        let exempt = true;
+        const driver = createSilenceDriver({ idleMs: IDLE_MS, onIdle, maxConsecutive: 2, isCapExempt: () => exempt });
+        driver.handleUserState('listening');
+
+        // 3 fires while exempt (playbook running) — over the cap, allowed.
+        for (let i = 0; i < 3; i += 1) {
+            driver.handleAgentState('speaking');
+            driver.handleAgentState('listening');
+            vi.advanceTimersByTime(IDLE_MS);
+        }
+        expect(onIdle).toHaveBeenCalledTimes(3);
+
+        // Playbook completes — caller lifts the exemption. Without an
+        // explicit reset, the accumulated count (3) is already past the cap
+        // (2), so the driver goes dormant for the post-playbook nudge phase.
+        exempt = false;
+        driver.handleAgentState('speaking');
+        driver.handleAgentState('listening');
+        vi.advanceTimersByTime(IDLE_MS);
+        expect(onIdle).toHaveBeenCalledTimes(3); // still 3 — capped
+    });
+
+    it('resetConsecutive gives the post-playbook phase a clean budget', () => {
+        const onIdle = vi.fn();
+        let exempt = true;
+        const driver = createSilenceDriver({ idleMs: IDLE_MS, onIdle, maxConsecutive: 2, isCapExempt: () => exempt });
+        driver.handleUserState('listening');
+
+        for (let i = 0; i < 3; i += 1) {
+            driver.handleAgentState('speaking');
+            driver.handleAgentState('listening');
+            vi.advanceTimersByTime(IDLE_MS);
+        }
+        expect(onIdle).toHaveBeenCalledTimes(3);
+
+        // agent.js calls this from playbookRuntime's onCompleted.
+        exempt = false;
+        driver.resetConsecutive();
+
+        for (let i = 0; i < 2; i += 1) {
+            driver.handleAgentState('speaking');
+            driver.handleAgentState('listening');
+            vi.advanceTimersByTime(IDLE_MS);
+        }
+        expect(onIdle).toHaveBeenCalledTimes(5); // 3 + fresh 2 = the normal cap
+
+        // third post-reset fire is capped, exactly as the ordinary budget test above.
+        driver.handleAgentState('speaking');
+        driver.handleAgentState('listening');
+        vi.advanceTimersByTime(IDLE_MS);
+        expect(onIdle).toHaveBeenCalledTimes(5);
+    });
+});
+
 describe('createSilenceDriver — busy veto', () => {
     it('skips the fire while the caller reports being busy', () => {
         const onIdle = vi.fn();

@@ -177,45 +177,6 @@ export function wrapDirective(node, { screenVisible = false, resuming = false, s
 }
 
 /**
- * The half-sentence a person says when they are a beat away from answering.
- *
- * Spoken by `withToolBridge` while a lookup is genuinely still running, never
- * on a fast one — which is the whole reason this is scheduled by code rather
- * than left to the model. A model asked to "say something before you look
- * things up" says it every single time, including on a cache hit that returns
- * in milliseconds, and a bridge that lands on top of its own answer is just a
- * new robotic tic in place of the old one.
- *
- * Content-free on purpose, like `buildIdleNudgeInstructions`: a canned filler
- * string is exactly the fake-sounding line we are trying to get rid of.
- *
- * @param {{ step?: number }} [ctx] how many bridges have already been spoken
- *   during this one tool call (0 = this is the first)
- * @returns {string|null} null once it would start sounding like stalling
- */
-export function buildLookupBridgeInstructions({ step = 0 } = {}) {
-    if (step === 0) {
-        return [
-            'The visitor is waiting on you for a moment.',
-            'Say one very short, natural thing to hold the moment — the kind of half-sentence a person says when they are just about to answer. Two or three words is plenty.',
-            'Do not describe what you are doing, do not mention finding or checking anything, and do not begin the answer yet.',
-            'Do not call any tools.'
-        ].join(' ');
-    }
-
-    if (step === 1) {
-        return [
-            'It is taking longer than you expected.',
-            'One more short line, in different words from the one you just used, that acknowledges the wait without explaining it.',
-            'Do not call any tools.'
-        ].join(' ');
-    }
-
-    // Past two, more talking reads as stalling. Silence is the better answer.
-    return null;
-}
-
-/**
  * The opening line, when there is no presentation to run.
  *
  * Lived inline in agent-worker as a hardcoded string, which made it a third

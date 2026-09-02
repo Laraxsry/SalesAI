@@ -215,6 +215,7 @@ agentsRouter.patch('/:id', requireAuth, validate({ body: AgentUpdateInput }), as
             if (p.language !== undefined) update['persona.language'] = p.language;
             if (p.goals !== undefined) update['persona.goals'] = p.goals;
             if (p.guardrails !== undefined) update['persona.guardrails'] = p.guardrails;
+            if (p.archetype !== undefined) update['persona.archetype'] = p.archetype;
         }
 
         // Merge toolAccess fields individually

@@ -19,6 +19,7 @@ const log = getLogger({ mod: 'guided-tour' });
 /** Global set to track active browser instances across all sessions. */
 const activeBrowsers = new Set();
 const MAX_CONCURRENT_BROWSERS = Number(process.env.MAX_TOUR_BROWSERS || 3);
+const PAGE_READY_TIMEOUT_MS = Number(process.env.TOUR_PAGE_READY_TIMEOUT_MS || 3000);
 
 /**
  * Candidate selectors for auto-detecting a login form's fields, tried in
@@ -76,7 +77,7 @@ export function trustKey(url) {
 }
 
 /**
- * Injects a captured cookie/localStorage snapshot into `page` — used for
+ * Injects a captured cookie/localStorage snapshot into a BrowserContext — used for
  * `Session.transientAuth` (the visitor's own live session, handed over
  * single-use for one tour and deleted from the DB immediately after being
  * read; see agent-worker/src/agent.js). Unlike a seller's long-lived demo
@@ -85,23 +86,30 @@ export function trustKey(url) {
  * `Product.demoSession` (see `loginWithCredentials`) doesn't apply here.
  *
  * @param {import('playwright').BrowserContext} context
- * @param {import('playwright').Page} page
  * @param {string} rootUrl - used to resolve the origin localStorage is set on.
  * @param {{cookies?: object[], localStorage?: Record<string,string>}} auth
  */
-export async function injectSessionSnapshot(context, page, rootUrl, auth) {
+export async function injectSessionSnapshot(context, rootUrl, auth) {
     if (auth.cookies) {
         await context.addCookies(auth.cookies);
     }
     if (auth.localStorage && rootUrl) {
         const origin = new URL(rootUrl).origin;
-        await page.goto(origin, { waitUntil: 'domcontentloaded' });
-        await page.evaluate((storage) => {
+        // Seed storage before the product's own scripts run on the first real
+        // destination. This avoids the old origin-only setup navigation while
+        // preserving strict origin isolation across every page/frame.
+        const initScript = await context.addInitScript(({ allowedOrigin, storage }) => {
+            if (window.location.origin !== allowedOrigin) return;
             for (const [key, value] of Object.entries(storage)) {
                 window.localStorage.setItem(key, value);
             }
-        }, auth.localStorage);
+        }, { allowedOrigin: origin, storage: auth.localStorage });
+        return {
+            origin,
+            dispose: async () => initScript?.dispose?.()
+        };
     }
+    return null;
 }
 
 export function assertHttpUrl(url) {
@@ -123,6 +131,86 @@ export function authRouteKey(url) {
     return `${parsed.origin}${pathname}`;
 }
 
+/**
+ * Waits for useful page content instead of sleeping for a fixed amount of
+ * time after every navigation. `domcontentloaded` only says the HTML parser
+ * finished; client-rendered applications may still have an empty root at
+ * that point. Conversely, a server-rendered page may already be ready and
+ * should not pay an unconditional three-second penalty.
+ *
+ * This is deliberately a small Playwright policy function rather than part
+ * of the tour orchestrator: products can eventually supply a stronger
+ * product-specific ready selector without coupling browser lifecycle code to
+ * any one UI framework. A timeout degrades to the already-loaded page instead
+ * of failing the whole tour — the previous fixed delay offered no readiness
+ * guarantee either.
+ *
+ * @param {import('playwright').Page} page
+ * @param {{timeoutMs?: number}} [options]
+ * @returns {Promise<{ready:boolean, waitMs:number}>}
+ */
+export async function waitForPageReady(page, { timeoutMs = PAGE_READY_TIMEOUT_MS } = {}) {
+    const startedAt = Date.now();
+    try {
+        await page.waitForFunction(
+            () => {
+                const isVisible = (element) => {
+                    const rect = element.getBoundingClientRect();
+                    const style = getComputedStyle(element);
+                    return rect.width > 0
+                        && rect.height > 0
+                        && style.visibility !== 'hidden'
+                        && style.display !== 'none';
+                };
+                const hasUsefulContent = (root) => {
+                    if (!isVisible(root)) return false;
+                    // Products may provide an explicit contract when their
+                    // own loading lifecycle is more precise than inference.
+                    if (root.hasAttribute('data-tour-ready')) return true;
+                    // `body.children.length > 0` is insufficient: an empty
+                    // SPA mount plus script tags would pass while the visitor
+                    // still sees a blank canvas. Require rendered text or an
+                    // interactive/media surface that can actually be shown.
+                    const text = root.innerText?.trim();
+                    const surface = root.matches('canvas, iframe, video, img[src], button, input, select, textarea, table')
+                        ? root
+                        : root.querySelector('canvas, iframe, video, img[src], button, input, select, textarea, table');
+                    return Boolean(text || (surface && isVisible(surface)));
+                };
+
+                const appRoots = [...document.querySelectorAll('[data-tour-ready], main, #root, #app')];
+                if (appRoots.some(hasUsefulContent)) return true;
+
+                // SSR/static pages may not use a conventional app root. Ignore
+                // infrastructure-only body children so scripts/styles cannot
+                // make an otherwise blank document look ready.
+                const bodyContent = [...(document.body?.children ?? [])]
+                    .filter((element) => !['SCRIPT', 'STYLE', 'NOSCRIPT', 'LINK'].includes(element.tagName));
+                return bodyContent.some(hasUsefulContent);
+            },
+            undefined,
+            { timeout: timeoutMs }
+        );
+
+        // Let layout/paint settle for two frames. Unlike a wall-clock sleep,
+        // this returns as soon as the browser has actually rendered the DOM.
+        await page.evaluate(() => new Promise((resolve) => {
+            const fallback = setTimeout(resolve, 100);
+            requestAnimationFrame(() => requestAnimationFrame(() => {
+                clearTimeout(fallback);
+                resolve();
+            }));
+        }));
+        return { ready: true, waitMs: Date.now() - startedAt };
+    } catch (error) {
+        log.warn('GuidedTour page readiness timed out; continuing with loaded page', {
+            timeoutMs,
+            error: error.message
+        });
+        return { ready: false, waitMs: Date.now() - startedAt };
+    }
+}
+
 export class GuidedTour {
     /**
      * @param {string} startUrl - the product's primary URL (e.g. Product.websiteUrl).
@@ -131,6 +219,9 @@ export class GuidedTour {
      *   This list is never populated from a visitor conversation — that's
      *   the trust boundary the SSRF guard below depends on.
      * @param {'playwright'|'stagehand'} backend - which browser backend to drive.
+     * @param {(page: import('playwright').Page) => Promise<{ready:boolean, waitMs:number}>} waitForReady -
+     *   navigation-readiness policy; injectable so lifecycle orchestration is
+     *   independent from any one readiness strategy.
      * @param {({loginUrl?:string, username?:string, email?:string, password:string, selectors?:{username?:string,email?:string,password?:string,submit?:string}}|{cookies?:object[], localStorage?:Record<string,string>})|null} auth -
      *   Either `Product.demoSession` (seller-configured demo account — logs
      *   into the real form fresh every tour via login(), since a captured
@@ -145,15 +236,32 @@ export class GuidedTour {
         allowedDomains = [],
         viewport = { width: 1280, height: 720 },
         backend = 'playwright',
-        auth = null
+        auth = null,
+        waitForReady = waitForPageReady
     } = {}) {
         this.startUrl = startUrl;
         this.viewport = viewport;
         this.backend = backend;
         this.auth = auth;
+        this.waitForReady = waitForReady;
         this.browser = null;
+        this.context = null;
         this.page = null;
         this.stagehand = null;
+        this.opened = false;
+        this.preparePromise = null;
+        this.loginPromise = null;
+        this.browserReservation = null;
+        this.snapshotInitScript = null;
+        this.lifecycleEpoch = 0;
+        // Set the instant a credential login succeeds (in `open()` or,
+        // on-demand, in `goto()`) and never cleared until `close()` — a
+        // single yes/no across the whole tour is all that's needed, because
+        // `this.page` is the same page/context for the tour's entire
+        // lifetime (see cobrowse.js's own single-page design): once logged
+        // in, the session cookies are already there for every later goto()
+        // to the same domain, so there's nothing per-page to track.
+        this.loggedIn = false;
         this.trustedKeys = new Set(
             [startUrl, ...allowedDomains].map(trustKey).filter(Boolean)
         );
@@ -176,9 +284,13 @@ export class GuidedTour {
     }
 
     /**
-     * Whether the tour's first destination (`targetUrl`, e.g. the opening
-     * playbook node's URL — defaults to `startUrl` when the caller doesn't
-     * know one yet) actually lives on the demoSession's own domain.
+     * Whether `targetUrl` actually lives on the demoSession's own domain.
+     * Called from two places: `open()` (against the tour's first
+     * destination — defaults to `startUrl` when the caller doesn't know one
+     * yet) and `goto()` (against whatever it's asked to navigate to next,
+     * on-demand, gated on `this.loggedIn` — see goto()'s own comment for why
+     * a single first-destination check in `open()` alone isn't enough for a
+     * tour that reaches the demo domain several nodes in).
      * `Product.demoSession` logs into a long-lived demo account whose login
      * form commonly lives on a different *host* than the seller's public
      * marketing site (e.g. `demo.cyberverse.com.tr` vs
@@ -206,112 +318,206 @@ export class GuidedTour {
         return Boolean(demoHost && requestedHost && demoHost === requestedHost);
     }
 
-    /** @param {string} [targetUrl] - the first destination the caller actually wants to show (e.g. the opening playbook node's URL); defaults to `startUrl` when not yet known. */
-    async open(targetUrl) {
-        if (this.browser || this.stagehand) {
-            throw new Error('[GuidedTour] Already open. Call close() before opening again.');
-        }
-        if (activeBrowsers.size >= MAX_CONCURRENT_BROWSERS) {
-            throw new Error(
-                `[GuidedTour] Concurrent browser limit reached (${MAX_CONCURRENT_BROWSERS}). ` +
-                'Try again later or increase MAX_TOUR_BROWSERS env var.'
-            );
-        }
+    /**
+     * Creates the expensive browser/context resources without showing a page
+     * to the visitor. Calls are single-flight and idempotent, so session-start
+     * prewarm and a later `open()` can safely race and share the same work.
+     *
+     * `loginTargetUrl` is intentionally explicit: the tour owns the mechanics
+     * of authentication, while the playbook orchestrator owns the policy of
+     * whether a future node justifies speculative login.
+     *
+     * @param {{loginTargetUrl?: string|null}} [options]
+     */
+    async prepare({ loginTargetUrl = null } = {}) {
+        await this.ensureBrowserReady();
+        if (loginTargetUrl) await this.ensureDemoLogin(loginTargetUrl);
+        return this;
+    }
 
-        // Per-phase timing: `open()` has no explicit timeouts, so it inherits
-        // Playwright's defaults (30s for launch, 30s for goto) plus a hard 3s
-        // settle wait — up to ~63s in the worst case. When a caller is waiting
-        // on this before it can speak, knowing WHICH phase burned the time is
-        // the difference between fixing the browser and fixing the site.
-        const openStartedAt = Date.now();
-        const phase = {};
-        log.info('GuidedTour open: begin', { backend: this.backend, startUrl: this.startUrl });
+    async ensureBrowserReady() {
+        if (this.page) return this;
+        if (this.preparePromise) return this.preparePromise;
 
-        let context;
-        if (this.backend === 'stagehand') {
-            try {
-                const { Stagehand } = await import('@browserbasehq/stagehand');
-                this.stagehand = new Stagehand({
-                    env: process.env.BROWSERBASE_API_KEY ? 'BROWSERBASE' : 'LOCAL',
-                    browserbaseSessionCreateParams: { projectId: process.env.BROWSERBASE_PROJECT_ID }
-                });
-                await this.stagehand.init();
-                this.page = this.stagehand.page;
-                context = this.stagehand.context;
-                activeBrowsers.add(this.stagehand);
-            } catch (err) {
-                console.warn('[GuidedTour] Stagehand backend failed, falling back to local playwright.', err.message);
-                this.backend = 'playwright';
-                this.stagehand = null;
+        const epoch = this.lifecycleEpoch;
+        this.preparePromise = (async () => {
+            if (activeBrowsers.size >= MAX_CONCURRENT_BROWSERS) {
+                throw new Error(
+                    `[GuidedTour] Concurrent browser limit reached (${MAX_CONCURRENT_BROWSERS}). ` +
+                    'Try again later or increase MAX_TOUR_BROWSERS env var.'
+                );
+            }
+
+            // Reserve synchronously before the first await. Without this, two
+            // concurrent prepare() calls from different sessions can both see
+            // the same free slot and launch past the configured browser cap.
+            this.browserReservation = { tour: this };
+            activeBrowsers.add(this.browserReservation);
+
+            const prepareStartedAt = Date.now();
+            const phase = {};
+            log.info('GuidedTour prepare: begin', { backend: this.backend });
+
+            if (this.backend === 'stagehand') {
+                let stagehand = null;
+                try {
+                    const { Stagehand } = await import('@browserbasehq/stagehand');
+                    stagehand = new Stagehand({
+                        env: process.env.BROWSERBASE_API_KEY ? 'BROWSERBASE' : 'LOCAL',
+                        browserbaseSessionCreateParams: { projectId: process.env.BROWSERBASE_PROJECT_ID }
+                    });
+                    await stagehand.init();
+                    if (epoch !== this.lifecycleEpoch) {
+                        await stagehand.close().catch(() => {});
+                        throw new Error('[GuidedTour] Preparation cancelled because the tour was closed.');
+                    }
+                    this.stagehand = stagehand;
+                    this.page = stagehand.page;
+                    this.context = stagehand.context;
+                    activeBrowsers.delete(this.browserReservation);
+                    this.browserReservation = null;
+                    activeBrowsers.add(stagehand);
+                } catch (err) {
+                    // init() can fail before the candidate is assigned to the
+                    // tour. Close that partial resource explicitly so the
+                    // Stagehand fallback never leaks a remote/local session.
+                    if (stagehand && stagehand !== this.stagehand) {
+                        await stagehand.close().catch(() => {});
+                    }
+                    if (epoch !== this.lifecycleEpoch) throw err;
+                    console.warn('[GuidedTour] Stagehand backend failed, falling back to local playwright.', err.message);
+                    this.backend = 'playwright';
+                    this.stagehand = null;
+                }
+            }
+
+            if (this.backend === 'playwright') {
+                let t = Date.now();
+                const browser = await chromium.launch({ headless: true });
+                phase.launchMs = Date.now() - t;
+                if (epoch !== this.lifecycleEpoch) {
+                    await browser.close().catch(() => {});
+                    throw new Error('[GuidedTour] Preparation cancelled because the tour was closed.');
+                }
+                this.browser = browser;
+                activeBrowsers.delete(this.browserReservation);
+                this.browserReservation = null;
+                activeBrowsers.add(browser);
+
+                t = Date.now();
+                this.context = await browser.newContext({ viewport: this.viewport });
+                this.page = await this.context.newPage();
+                phase.contextMs = Date.now() - t;
+            }
+
+            // A visitor-provided snapshot is session-scoped and should be
+            // injected during preparation. Seller demo credentials are handled
+            // separately by ensureDemoLogin() because their need is URL-based.
+            if (this.auth?.cookies || this.auth?.localStorage) {
+                const t = Date.now();
+                this.snapshotInitScript = await injectSessionSnapshot(this.context, this.startUrl, this.auth);
+                phase.snapshotMs = Date.now() - t;
+            }
+
+            log.info('GuidedTour prepare: complete', {
+                ...phase,
+                totalMs: Date.now() - prepareStartedAt
+            });
+            return this;
+        })();
+
+        try {
+            return await this.preparePromise;
+        } catch (error) {
+            // A partially-created browser must never consume a pool slot after
+            // failed preparation. `close()` also invalidates in-flight work.
+            await this.close().catch(() => {});
+            throw error;
+        } finally {
+            this.preparePromise = null;
+        }
+    }
+
+    async ensureDemoLogin(targetUrl) {
+        const hasDemoCredentials = Boolean((this.auth?.username || this.auth?.email) && this.auth?.password);
+        if (!hasDemoCredentials || this.loggedIn || !this.requiresDemoLogin(targetUrl)) return;
+        if (this.loginPromise) return this.loginPromise;
+
+        const startedAt = Date.now();
+        this.loginPromise = this.loginInIsolatedPage()
+            .then(() => {
+                this.loggedIn = true;
+                log.info('GuidedTour credential login prepared', { loginMs: Date.now() - startedAt });
+            })
+            .finally(() => {
+                this.loginPromise = null;
+            });
+        return this.loginPromise;
+    }
+
+    /**
+     * Authenticates in a temporary page that shares the tour's BrowserContext.
+     * Cookies/storage therefore become available to the visitor-visible page,
+     * while a long-running background login can never race or overwrite that
+     * page's foreground navigation. The fallback supports backends/fakes that
+     * expose only one page.
+     */
+    async loginInIsolatedPage() {
+        const canCreateIsolatedPage = Boolean(this.context?.newPage);
+        const loginPage = canCreateIsolatedPage ? await this.context.newPage() : this.page;
+        try {
+            await this.login(loginPage);
+        } finally {
+            if (canCreateIsolatedPage && loginPage !== this.page) {
+                await loginPage.close().catch(() => {});
             }
         }
+    }
 
-        if (this.backend === 'playwright') {
-            let t = Date.now();
-            this.browser = await chromium.launch({ headless: true });
-            phase.launchMs = Date.now() - t;
-            activeBrowsers.add(this.browser);
+    /**
+     * The snapshot init script only needs to survive until the first document
+     * on its configured origin. Removing it then prevents a later navigation
+     * from overwriting a token that the product refreshed during the session.
+     */
+    async releaseSnapshotInitializerForCurrentOrigin() {
+        if (!this.snapshotInitScript) return;
+        let currentOrigin;
+        try {
+            currentOrigin = new URL(this.page.url()).origin;
+        } catch {
+            return;
+        }
+        if (currentOrigin !== this.snapshotInitScript.origin) return;
 
-            t = Date.now();
-            context = await this.browser.newContext({ viewport: this.viewport });
-            this.page = await context.newPage();
-            phase.contextMs = Date.now() - t;
-            log.info('GuidedTour open: browser ready', { launchMs: phase.launchMs, contextMs: phase.contextMs });
+        const initializer = this.snapshotInitScript;
+        this.snapshotInitScript = null;
+        await initializer.dispose().catch((error) => {
+            log.warn('GuidedTour snapshot init-script cleanup failed (non-fatal)', { error: error.message });
+        });
+    }
+
+    /**
+     * Opens the visitor-visible tour at exactly one destination. Browser launch
+     * and authentication may already be complete thanks to `prepare()`; no
+     * intermediate startUrl navigation is performed.
+     *
+     * @param {string} [targetUrl]
+     */
+    async open(targetUrl) {
+        if (this.opened) {
+            throw new Error('[GuidedTour] Already open. Call close() before opening again.');
         }
 
-        // Authenticate before the first navigation so the tour lands already
-        // logged in. Two distinct sources, two distinct shapes:
-        //  - Product.demoSession: seller-configured, long-lived demo account
-        //    -> logs into the real form fresh every time (see login()).
-        //  - Session.transientAuth: visitor's own live cookies/localStorage,
-        //    handed over for this one session only and deleted from the DB
-        //    right after being read (see agent-worker/src/agent.js) -> no
-        //    staleness concern, so the direct snapshot injection is fine.
-        const hasDemoCredentials = Boolean((this.auth?.username || this.auth?.email) && this.auth?.password);
-        const usedCredentialLogin = hasDemoCredentials && this.requiresDemoLogin(targetUrl);
-        if (hasDemoCredentials && !usedCredentialLogin) {
-            log.info('GuidedTour open: skipping demoSession login, first destination is outside its domain', {
-                loginDomain: trustKey(this.auth?.loginUrl || this.startUrl),
-                targetDomain: trustKey(targetUrl || this.startUrl)
-            });
-        }
-        if (usedCredentialLogin) {
-            const t = Date.now();
-            await this.login();
-            phase.loginMs = Date.now() - t;
-            log.info('GuidedTour open: credential login done', { loginMs: phase.loginMs });
-        } else if (this.auth?.cookies || this.auth?.localStorage) {
-            const t = Date.now();
-            await injectSessionSnapshot(context, this.page, this.startUrl, this.auth);
-            phase.snapshotMs = Date.now() - t;
-        }
-
-        if (this.startUrl && !usedCredentialLogin) {
-            // 'networkidle' hangs/crashes on SPAs that keep a live connection
-            // open (polling, websockets, dashboards) — they never go idle.
-            let t = Date.now();
-            await this.page.goto(this.startUrl, { waitUntil: 'domcontentloaded' });
-            phase.gotoMs = Date.now() - t;
-            log.info('GuidedTour open: initial navigation done', { url: this.startUrl, gotoMs: phase.gotoMs });
-
-            // Adaptive, not a fixed grace period — a real customer site
-            // (cyberverse.com.tr) has a ~4-5s fake-terminal boot animation
-            // before the actual content mounts; a fixed 3s wait opened the
-            // tour on that animation, and the agent would then narrate the
-            // page's real content while the customer was still watching it
-            // load. Same fix as the crawler's `waitForStableContent`
-            // (`apps/worker-ingestion/src/extractors/url.js`), now shared
-            // via `@repo/utils`.
-            t = Date.now();
-            await waitForStableContent(this.page);
-            phase.settleMs = Date.now() - t;
-        }
-        log.info('GuidedTour open: complete', { ...phase, totalMs: Date.now() - openStartedAt });
-        // When credential login redirects into an authenticated in-app route,
-        // keep that landed page instead of immediately bouncing back to the
-        // public marketing URL and losing the useful session context.
-        const landedKey = trustKey(this.page.url());
-        if (landedKey) this.trustedKeys.add(landedKey);
+        const destination = targetUrl || this.startUrl;
+        const openStartedAt = Date.now();
+        log.info('GuidedTour open: begin', { backend: this.backend, destination });
+        await this.prepare({ loginTargetUrl: destination });
+        if (destination) await this.goto(destination);
+        this.opened = true;
+        log.info('GuidedTour open: complete', {
+            destination,
+            totalMs: Date.now() - openStartedAt
+        });
         return this;
     }
 
@@ -322,15 +528,15 @@ export class GuidedTour {
      * localStorage snapshot approach, a fresh login has no expiry to go
      * stale against.
      */
-    async login() {
+    async login(page = this.page) {
         let lastError;
         for (let attempt = 1; attempt <= 3; attempt += 1) {
             try {
-                await loginWithCredentials(this.page, this.auth, this.startUrl);
+                await loginWithCredentials(page, this.auth, this.startUrl);
                 return;
             } catch (error) {
                 lastError = error;
-                if (attempt < 3) await this.page.waitForTimeout(500);
+                if (attempt < 3) await page.waitForTimeout(500);
             }
         }
         throw lastError;
@@ -345,11 +551,15 @@ export class GuidedTour {
         // relative link, before validating. The resolved absolute URL still
         // goes through the same trust-key check below, so this only adds
         // relative-path support — it doesn't weaken the SSRF guard.
+        await this.ensureBrowserReady();
+
         let target = url;
         try {
             new URL(url);
         } catch {
-            target = new URL(url, this.page.url()).href;
+            const currentUrl = this.page.url();
+            const baseUrl = currentUrl && currentUrl !== 'about:blank' ? currentUrl : this.startUrl;
+            target = new URL(url, baseUrl).href;
         }
 
         assertHttpUrl(target);
@@ -357,13 +567,42 @@ export class GuidedTour {
         if (!targetKey || !this.trustedKeys.has(targetKey)) {
             throw new Error(`[GuidedTour] Navigation outside the product's domain is not allowed: ${target}`);
         }
+
+        // `open()` only ever checked the tour's FIRST destination against
+        // demoSession's domain (see requiresDemoLogin's own docs) — correct
+        // for that one call, but it meant a tour that opens on the public
+        // site and only reaches the demo panel several nodes later (exactly
+        // this project's own reference playbook — see agent_flow.md) never
+        // logged in at all: goto() had no equivalent check of its own, so
+        // the visitor landed on a bare login screen instead of the actual
+        // dashboard. Same demoHost/hasDemoCredentials logic as open(),
+        // applied here too, gated on `this.loggedIn` so a tour that keeps
+        // returning to the demo domain only ever logs in once (see the
+        // constructor comment on `loggedIn` for why a plain boolean is
+        // enough). A failure here surfaces as a rejected goto() exactly like
+        // any other navigation failure — the existing [playbook:failed]
+        // handling in playbook-runtime.js already covers that, no new
+        // failure path needed.
+        await this.ensureDemoLogin(target);
+
+        const startedAt = Date.now();
         await this.page.goto(target, { waitUntil: 'domcontentloaded' });
-        // Adaptive wait, not a fixed one — see open()'s comment above for why.
-        await waitForStableContent(this.page);
-        // The check above only validated the requested URL; the site itself
-        // may then have redirected further (open-redirect abuse). Re-check
-        // where the browser actually ended up.
+        // Validate the redirect result before running any page-side readiness
+        // JavaScript. A second check after readiness catches late SPA redirects.
         await this.assertCurrentPageTrusted('navigate_to');
+        await this.releaseSnapshotInitializerForCurrentOrigin();
+        const readiness = await this.waitForReady(this.page);
+        // The check before goto only validated the requested URL; the site
+        // itself may redirect further (open-redirect abuse). Re-check after
+        // client rendering as well.
+        await this.assertCurrentPageTrusted('navigate_to');
+        log.info('GuidedTour navigation ready', {
+            url: target,
+            navigationMs: Date.now() - startedAt,
+            ready: readiness.ready,
+            readinessMs: readiness.waitMs
+        });
+        return readiness;
     }
 
     /**
@@ -565,6 +804,15 @@ export class GuidedTour {
     }
 
     async close() {
+        this.lifecycleEpoch += 1;
+        if (this.snapshotInitScript) {
+            await this.snapshotInitScript.dispose().catch(() => {});
+            this.snapshotInitScript = null;
+        }
+        if (this.browserReservation) {
+            activeBrowsers.delete(this.browserReservation);
+            this.browserReservation = null;
+        }
         if (this.backend === 'stagehand' && this.stagehand) {
             activeBrowsers.delete(this.stagehand);
             await this.stagehand.close();
@@ -574,7 +822,14 @@ export class GuidedTour {
             await this.browser.close();
             this.browser = null;
         }
+        this.context = null;
         this.page = null;
+        // A fresh `open()` after this is a fresh browser/context — no
+        // cookies survive close(), so whatever `loggedIn` meant for the old
+        // page no longer holds for the new one.
+        this.loggedIn = false;
+        this.opened = false;
+        this.loginPromise = null;
     }
 }
 

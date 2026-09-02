@@ -8,12 +8,21 @@ import {
     VideoSource, LocalVideoTrack, VideoBufferType, VideoStream, TrackKind, TrackSource, VideoFrame, RoomEvent
 } from '@livekit/rtc-node';
 import sharp from 'sharp';
-import { connectDB, Agent, Product, Session, Message, Playbook, KnowledgeSource } from '@repo/database';
+import {
+    connectDB,
+    Agent,
+    Product,
+    Session,
+    Message,
+    Playbook,
+    KnowledgeSource,
+    FollowUpTask,
+    SessionEvent
+} from '@repo/database';
 import {
     buildSystemPrompt,
     buildTools,
     buildIdleNudgeInstructions,
-    buildLookupBridgeInstructions,
     buildGreetingInstructions,
     classifyStartIntent,
     shouldStartMeeting,
@@ -34,10 +43,11 @@ import { withToolCallMetrics } from './tool-metrics.js';
 import { createSessionCostTracker } from './session-cost-tracker.js';
 import { createRealtimeGate } from './realtime-gate.js';
 import { createSilenceDriver } from './silence-driver.js';
+import { createSessionTimeline, withToolCallTimeline, TIMELINE_EVENTS } from './session-timeline.js';
+import { createTourFrameObserver } from './tour-frame-observer.js';
+import { isDirectivelessAdvanceStepFollowup } from './followup-guard.js';
 import { createPlaybookCursor } from './playbook-cursor.js';
 import { createPlaybookRuntime } from './playbook-runtime.js';
-import { withPlaybookProgress } from './playbook-progress.js';
-import { withToolBridge } from './tool-bridge.js';
 import { createUtteranceMemory } from './utterance-memory.js';
 import { createQuestionQueue } from './question-queue.js';
 import { createHandQueue } from './hand-queue.js';
@@ -247,6 +257,26 @@ async function runSession(ctx) {
     // see `silence` below.
     let activeSpeechCount = 0;
 
+    // Everything that happens from here on is also written to a single
+    // ordered stream, so a session can be reconstructed afterwards without
+    // having to be watching the terminal at the time — see
+    // session-timeline.js. Persisting is fire-and-forget and can never
+    // interrupt the call.
+    const timeline = createSessionTimeline({
+        sessionId: session._id,
+        log,
+        persist: (doc) => SessionEvent.create(doc)
+    });
+
+    timeline.emit(TIMELINE_EVENTS.SESSION_START, {
+        agentId: String(agentDoc._id),
+        productId: String(product._id),
+        roomName: ctx.room?.name ?? null,
+        agentName: agentDoc.name,
+        language: agentDoc.persona?.language ?? null,
+        archetype: agentDoc.persona?.archetype ?? null
+    });
+
     // Logged unconditionally, including the inactive case: "was a playbook
     // even running?" is otherwise unanswerable from the logs, and every
     // silent-agent report starts with that question.
@@ -256,6 +286,24 @@ async function runSession(ctx) {
         version: playbookDoc?.version ?? null,
         enabled: playbookDoc?.enabled ?? null,
         firstNodeHasUrl: Boolean(playbookNodes[0]?.url)
+    });
+    timeline.emit(TIMELINE_EVENTS.PLAYBOOK_LOADED, {
+        active: playbookActive,
+        nodeCount: playbookNodes.length,
+        version: playbookDoc?.version ?? null,
+        enabled: playbookDoc?.enabled ?? null,
+        // The whole plan, once, at the top of the stream: every later node
+        // event carries only an id/order, and correlating those back to what
+        // the marketer actually wrote otherwise means a second DB lookup
+        // against a Playbook that may have been edited since.
+        nodes: playbookNodes.map((n) => ({
+            id: n.id,
+            order: n.order,
+            mode: n.mode,
+            url: n.url ?? null,
+            directive: n.directive,
+            attach: n.attach ?? null
+        }))
     });
 
     const instructions = buildSystemPrompt({
@@ -301,6 +349,52 @@ async function runSession(ctx) {
         auth: tourAuth
     });
 
+    // Prewarm only when this session is guaranteed to use a guided-tour URL.
+    // Browser lifecycle belongs to GuidedTour; the playbook layer contributes
+    // only the policy decision and the first future demo-domain target. This
+    // keeps speculative resource use out of free-form sessions while hiding
+    // Chromium/context/login latency behind the opening conversation.
+    const shouldPrewarmTour = playbookActive
+        && screenModes.includes('guided-tour')
+        && playbookNodes.some((node) => Boolean(node.url));
+    const hasDemoCredentials = Boolean((tourAuth?.username || tourAuth?.email) && tourAuth?.password);
+    const prewarmLoginTargetUrl = hasDemoCredentials
+        ? playbookNodes.find((node) => node.url && tour.requiresDemoLogin(node.url))?.url ?? null
+        : null;
+    let tourPrewarmStarted = false;
+
+    const startTourPrewarm = () => {
+        if (!shouldPrewarmTour || tourPrewarmStarted) return;
+        tourPrewarmStarted = true;
+        const startedAt = Date.now();
+        const endPrewarm = timeline.span(
+            TIMELINE_EVENTS.SCREEN_TOUR_PREPARE_BEGIN,
+            TIMELINE_EVENTS.SCREEN_TOUR_PREPARE_END,
+            { includesDemoLogin: Boolean(prewarmLoginTargetUrl) }
+        );
+        log.info('GuidedTour prewarm scheduled', {
+            includesDemoLogin: Boolean(prewarmLoginTargetUrl)
+        });
+        // Deliberately detached from the realtime start path: browser/login
+        // failure must not prevent the agent from greeting the visitor. A later
+        // open() reuses successful preparation or retries failed work normally.
+        tour.prepare({ loginTargetUrl: prewarmLoginTargetUrl })
+            .then(() => {
+                endPrewarm({ status: 'ok' });
+                log.info('GuidedTour prewarm complete', {
+                    durationMs: Date.now() - startedAt,
+                    includesDemoLogin: Boolean(prewarmLoginTargetUrl)
+                });
+            })
+            .catch((error) => {
+                endPrewarm({ status: 'error', error: error.message });
+                log.warn('GuidedTour prewarm failed; will retry on demand', {
+                    error: error.message,
+                    durationMs: Date.now() - startedAt
+                });
+            });
+    };
+
     let isTourActive = false;
     let tourPublishTimer = null;
     let tourVideoSource = null;
@@ -309,6 +403,10 @@ async function runSession(ctx) {
     // isTourActive check and actually touching the native track — stopScreenShare
     // waits for this to clear before unpublishing (see the COST/CRASH note there).
     let tourCaptureInFlight = false;
+    let tourCapturePromise = null;
+    let tourCaptureVersion = -1;
+    let tourViewVersion = 0;
+    const tourFrameObserver = createTourFrameObserver({ timeline });
     // Latest tour frame as a downscaled JPEG data URL, kept in memory only
     // (never persisted) so `read_tour_screen` can hand the agent's own
     // guided-tour browser to the vision model on demand — mirrors the
@@ -321,47 +419,104 @@ async function runSession(ctx) {
     // can trigger an immediate frame too — they each reference it right after
     // acting so the visitor sees the result without waiting for the next
     // scheduled poll.
-    const captureAndPublishTourFrame = async () => {
-        if (!isTourActive || !tourVideoSource) return false;
-        tourCaptureInFlight = true;
-        try {
-            const pngBuffer = await tour.screenshot();
-            // Convert PNG → raw ARGB buffer via sharp
-            const { data, info } = await sharp(pngBuffer)
-                .resize({ width: 1280, height: 720, fit: 'contain', background: '#000' })
-                .ensureAlpha()
-                .raw()
-                .toBuffer({ resolveWithObject: true });
-
-            // *** CRASH WARNING — re-check right before touching the native
-            // track. stopScreenShare() may have unpublished it while we were
-            // awaiting the screenshot/resize above; calling captureFrame() on a
-            // source whose track is concurrently being unpublished is a native
-            // Rust panic in livekit-ffi (unwrap() on Err), which kills the whole
-            // agent-worker process — not a catchable JS error. ***
-            if (!isTourActive || !tourVideoSource) return false;
-
-            // Push to LiveKit VideoSource
-            const frame = new VideoFrame(data, info.width, info.height, VideoBufferType.RGBA);
-            const timestampUs = BigInt(Date.now()) * 1000n;
-            tourVideoSource.captureFrame(frame, timestampUs);
-
-            // Also keep a downscaled JPEG copy for read_tour_screen — cheap
-            // (just re-encoding the same PNG we already have), the actual
-            // vision-model cost only happens when the tool is called.
-            const jpegBuffer = await sharp(pngBuffer)
-                .resize({ width: 1024, withoutEnlargement: true })
-                .jpeg({ quality: 80 })
-                .toBuffer();
-            latestTourFrameBase64 = `data:image/jpeg;base64,${jpegBuffer.toString('base64')}`;
-            return true;
-        } catch (frameErr) {
-            // Non-fatal: log and skip this frame
-            log.warn('Tour frame capture failed', { error: frameErr.message });
-            return false;
-        } finally {
-            tourCaptureInFlight = false;
+    const captureAndPublishTourFrame = async (requiredViewVersion = null) => {
+        if (!isTourActive || !tourVideoSource) return Promise.resolve(false);
+        // Immediate captures and the periodic loop can be requested at the
+        // same time. Reuse the active operation instead of racing two native
+        // captureFrame() calls. If navigation changed the page after that
+        // operation started, serialize one fresh capture behind it so callers
+        // never mistake the previous page's frame for the action they await.
+        if (tourCapturePromise) {
+            const activeVersion = tourCaptureVersion;
+            const result = await tourCapturePromise;
+            if (
+                requiredViewVersion !== null
+                && activeVersion < requiredViewVersion
+                && isTourActive
+                && tourVideoSource
+            ) {
+                return captureAndPublishTourFrame(requiredViewVersion);
+            }
+            return result;
         }
+
+        tourCaptureVersion = tourViewVersion;
+        tourCapturePromise = (async () => {
+            tourCaptureInFlight = true;
+            const captureStartedAt = Date.now();
+            let captureStage = 'screenshot';
+            try {
+                const pngBuffer = await tour.screenshot();
+                const screenshotFinishedAt = Date.now();
+
+                captureStage = 'transform';
+                const { data, info } = await sharp(pngBuffer)
+                    .resize({ width: 1280, height: 720, fit: 'contain', background: '#000' })
+                    .ensureAlpha()
+                    .raw()
+                    .toBuffer({ resolveWithObject: true });
+                const transformFinishedAt = Date.now();
+
+                // *** CRASH WARNING — re-check right before touching the native
+                // track. stopScreenShare() may have unpublished it while we were
+                // awaiting the screenshot/resize above; calling captureFrame() on a
+                // source whose track is concurrently being unpublished is a native
+                // Rust panic in livekit-ffi (unwrap() on Err), which kills the whole
+                // agent-worker process — not a catchable JS error. ***
+                if (!isTourActive || !tourVideoSource) return false;
+
+                captureStage = 'capture_frame';
+                const frame = new VideoFrame(data, info.width, info.height, VideoBufferType.RGBA);
+                const submitStartedAt = Date.now();
+                const timestampUs = BigInt(submitStartedAt) * 1000n;
+                tourVideoSource.captureFrame(frame, timestampUs);
+                const submittedAt = Date.now();
+                tourFrameObserver.frameSubmitted({
+                    captureStartedAt,
+                    submittedAt,
+                    screenshotMs: screenshotFinishedAt - captureStartedAt,
+                    transformMs: transformFinishedAt - screenshotFinishedAt,
+                    submitMs: submittedAt - submitStartedAt,
+                    width: info.width,
+                    height: info.height,
+                    trackSid: tourVideoTrack?.sid ?? null
+                });
+
+                // Also keep a downscaled JPEG copy for read_tour_screen — cheap
+                // (just re-encoding the same PNG we already have), the actual
+                // vision-model cost only happens when the tool is called.
+                captureStage = 'vision_copy';
+                try {
+                    const jpegBuffer = await sharp(pngBuffer)
+                        .resize({ width: 1024, withoutEnlargement: true })
+                        .jpeg({ quality: 80 })
+                        .toBuffer();
+                    latestTourFrameBase64 = `data:image/jpeg;base64,${jpegBuffer.toString('base64')}`;
+                } catch (visionCopyErr) {
+                    // The visitor frame was already submitted successfully.
+                    // A secondary vision-cache failure must not report that
+                    // delivery as failed or trigger another screen capture.
+                    log.warn('Tour vision copy failed (visitor frame was still submitted)', {
+                        error: visionCopyErr.message
+                    });
+                }
+                return true;
+            } catch (frameErr) {
+                // Non-fatal: log and skip this frame, while retaining enough
+                // stage data to distinguish page, image and native failures.
+                log.warn('Tour frame capture failed', { error: frameErr.message });
+                tourFrameObserver.frameFailed({
+                    captureStartedAt,
+                    stage: captureStage,
+                    error: frameErr.message
+                });
+                return false;
+            } finally {
+                tourCaptureInFlight = false;
+                tourCapturePromise = null;
+            }
+        })();
+        return await tourCapturePromise;
     };
 
     // Schedule the next capture only after the current one finishes.
@@ -401,11 +556,28 @@ async function runSession(ctx) {
             try {
                 // If configured demo authentication fails, fail loudly instead
                 // of silently showing the public site as if login succeeded.
+                // open() now navigates directly to this target exactly once;
+                // browser/context/login work may already be complete via the
+                // session-start prewarm above.
                 await tour.open(url);
-                if (url) {
-                    await tour.goto(url);
-                }
-                log.info('GuidedTour started', { url, durationMs: Date.now() - openStartedAt });
+                const navigationReadyAt = Date.now();
+                const viewVersion = ++tourViewVersion;
+                const openedUrl = url || startUrl;
+                log.info('GuidedTour started', { url: openedUrl, durationMs: navigationReadyAt - openStartedAt });
+                // This now measures only the visible remainder after any
+                // successful session-start preparation: normally one real page
+                // navigation plus readiness, or the full cold path on fallback.
+                timeline.emit(
+                    TIMELINE_EVENTS.SCREEN_TOUR_OPENED,
+                    { url: openedUrl },
+                    navigationReadyAt - openStartedAt
+                );
+                tourFrameObserver.navigationReady({
+                    url: openedUrl,
+                    kind: 'initial',
+                    navigationStartedAt: openStartedAt,
+                    navigationReadyAt
+                });
 
                 // Create a LiveKit VideoSource and publish it as a screen-share track
                 tourVideoSource = new VideoSource(1280, 720);
@@ -414,13 +586,22 @@ async function runSession(ctx) {
                     await ctx.room.localParticipant.publishTrack(tourVideoTrack, { name: 'screen_share', source: TrackSource.SOURCE_SCREENSHARE });
                     log.info('Tour video track published to LiveKit room');
                 } catch (e) {
-                    console.error('Could not publish tour track to LiveKit:', e);
+                    log.error('Could not publish tour track to LiveKit', { error: e.message });
+                    tourFrameObserver.frameFailed({
+                        captureStartedAt: navigationReadyAt,
+                        stage: 'track_publish',
+                        error: e.message,
+                        terminal: true
+                    });
+                    tourVideoTrack = null;
+                    tourVideoSource = null;
+                    throw e;
                 }
 
                 scheduleTourFrame();
 
                 // Capture initial frame immediately
-                await captureAndPublishTourFrame();
+                await captureAndPublishTourFrame(viewVersion);
 
                 // Log screen action to messages meta
                 await Message.create({
@@ -433,6 +614,7 @@ async function runSession(ctx) {
                 return { ok: true, status: 'Tour started. Visitor can now see the browser. Use navigate_to or highlight next.' };
             } catch (e) {
                 log.error('GuidedTour open failed: ' + e.message, { error: e.message, durationMs: Date.now() - openStartedAt });
+                tourFrameObserver.abandonPending('tour_open_failed');
                 await tour.close().catch(() => {});
                 isTourActive = false;
                 latestTourFrameBase64 = null;
@@ -441,9 +623,18 @@ async function runSession(ctx) {
         },
         goto: async (url) => {
             if (!isTourActive) return { ok: false, error: 'Tour not active. Call start_guided_tour first.' };
+            const navigationStartedAt = Date.now();
             try {
                 await tour.goto(url);
-                await captureAndPublishTourFrame();
+                const navigationReadyAt = Date.now();
+                const viewVersion = ++tourViewVersion;
+                tourFrameObserver.navigationReady({
+                    url,
+                    kind: 'navigation',
+                    navigationStartedAt,
+                    navigationReadyAt
+                });
+                await captureAndPublishTourFrame(viewVersion);
                 scheduleTourFrame(800);
                 await Message.create({
                     sessionId: session._id,
@@ -461,7 +652,8 @@ async function runSession(ctx) {
             if (!isTourActive) return { ok: false, error: 'Tour not active.' };
             try {
                 await tour.highlight(selector);
-                await captureAndPublishTourFrame();
+                const viewVersion = ++tourViewVersion;
+                await captureAndPublishTourFrame(viewVersion);
                 scheduleTourFrame(800);
                 await Message.create({
                     sessionId: session._id,
@@ -479,7 +671,8 @@ async function runSession(ctx) {
             if (!isTourActive) return { ok: false, error: 'Tour not active.' };
             try {
                 await tour.click(selector);
-                await captureAndPublishTourFrame();
+                const viewVersion = ++tourViewVersion;
+                await captureAndPublishTourFrame(viewVersion);
                 scheduleTourFrame(800);
                 await Message.create({
                     sessionId: session._id,
@@ -498,7 +691,8 @@ async function runSession(ctx) {
             try {
                 const position = await tour.scroll(direction, amount, target);
                 // Immediately capture and push the new scrolled frame before returning to LLM!
-                await captureAndPublishTourFrame();
+                const viewVersion = ++tourViewVersion;
+                await captureAndPublishTourFrame(viewVersion);
                 scheduleTourFrame(800);
 
                 await Message.create({
@@ -555,6 +749,7 @@ async function runSession(ctx) {
         console.log('TRACK SUBSCRIBED:', { kind: track.kind, source: track.source, trackObj: track });
         if (track.kind !== TrackKind.KIND_VIDEO) return;
         log.info('Customer screen share detected', { participant: participant.identity });
+        timeline.emit(TIMELINE_EVENTS.SCREEN_SHARE_START, { participant: participant.identity });
 
         // Stop any previous sampling loop
         if (customerSampleInterval) clearInterval(customerSampleInterval);
@@ -601,6 +796,7 @@ async function runSession(ctx) {
             }
             latestCustomerFrameBase64 = null;
             log.info('Customer screen share ended');
+            timeline.emit(TIMELINE_EVENTS.SCREEN_SHARE_END);
         });
     });
 
@@ -618,6 +814,7 @@ async function runSession(ctx) {
                 // screenshot/sharp work re-checks this and bails before touching the
                 // native track (see the CRASH WARNING in scheduleTourFrame above).
                 isTourActive = false;
+                tourFrameObserver.abandonPending('tour_stopped');
                 if (tourPublishTimer) {
                     clearTimeout(tourPublishTimer);
                     tourPublishTimer = null;
@@ -783,28 +980,67 @@ async function runSession(ctx) {
         log.warn('site map load failed (non-fatal, find_page will return no candidates)', { error: err.message });
     }
 
-    // Bridge is the OUTERMOST decorator: the filler must wrap the whole call,
-    // while withToolCallMetrics still has to time only the real handler.
-    const tools = withToolBridge(
-        withToolCallMetrics(
-        withPlaybookProgress(
-            buildTools({
+    // Written only when the visitor has explicitly agreed to have a
+    // knowledge-gap question forwarded (see persona.js) — never a substitute
+    // for search_knowledge, and never fired just because a question was hard.
+    // Deliberately its own model, not folded into save_contact_info or Lead:
+    // Lead is one engagement score per session (unique sessionId), this is
+    // one row per unresolved question — a visitor can raise several in one
+    // call. `department` stays null until the routing infra referenced in
+    // md/backend/playbook_session_log.md exists; this write doesn't wait on it.
+    const flagFollowup = async (question) => {
+        await FollowUpTask.create({ sessionId: session._id, agentId: agentDoc._id, question: question.trim() });
+        await Message.create({
+            sessionId: session._id,
+            role: 'system',
+            text: `[followup:flagged] ${question}`,
+            meta: { action: 'followup_flagged', question }
+        }).catch(() => {});
+        return { ok: true };
+    };
+
+    // `click_element` succeeding used to also close out the current playbook
+    // node (via withPlaybookProgress, now removed) whenever that node had an
+    // `attach` target — the idea being "the one concrete action happened, so
+    // the node is done". Live testing proved this wrong: a node whose
+    // `attach` describes several elements (a marketer writing "click X, then
+    // Y, then Z" into one field — see md/backend/playbook_session_log.md
+    // item 6/15) closed the instant the FIRST click landed, before the
+    // model had said a word of the actual directive — the topic was silently
+    // never narrated. `advance_step` is the only thing that closes a node
+    // now, exactly as its own description already promised ("the moment you
+    // have finished saying everything you were just asked to cover") —
+    // clicking is something the model does WHILE covering the topic, not a
+    // substitute for having covered it.
+    // Two independent concerns, deliberately not merged (SRP): the metrics
+    // wrapper publishes a labelled duration to Prometheus and knows nothing
+    // about this session; the timeline wrapper writes this session's own
+    // narrative, arguments included. Neither alters the tool's return value.
+    const buildSessionTools = (playbookMode) =>
+        withToolCallTimeline(
+            withToolCallMetrics(buildTools({
                 productId: String(product._id),
                 tour: tourControls,
                 screen: screenControls,
                 stopScreenShare,
                 saveContactInfo,
                 siteMap,
-                playbookActive,
+                playbookActive: playbookMode,
                 multiParticipant: isMultiParty,
                 // Group session: hand the floor to the next raised hand.
                 nextParticipant: advanceToNextParticipant,
+                flagFollowup,
                 // Not yet awaitable at this point in the source (playbookRuntime
                 // is constructed further down, once agentSession exists) — this
                 // closure only reads it, and by the time the model can actually
-                // call the tool the runtime is long since assigned. Only wired
-                // up (and only exposed to the model at all — see buildTools'
-                // playbookActive gate) when a playbook is actually running.
+                // call the tool the runtime is assigned. buildTools exposes it
+                // only while playbookMode is true.
+                // MUST return a defined value — see the comment on the
+                // advance_step tool in packages/agent/src/tools.js. A
+                // suppressed reply here once left the SDK's agentState stuck
+                // in 'thinking' forever (@livekit/agents only clears it on
+                // the reply path), which also silently disarmed
+                // silence-driver.js.
                 advanceStep: () => {
                     playbookRuntime?.signal('advance_step');
                     return { ok: true };
@@ -819,36 +1055,16 @@ async function runSession(ctx) {
                     silence.expectResponse(7000);
                     return { ok: true };
                 }
-            }),
-            {
-                currentNode: () => playbookCursor?.current() ?? null,
-                onGoalReached: () => playbookRuntime?.signal('tool')
-            }
-            )
-        ),
-        {
-            // Lookups only. A bridge on click_element/scroll_page would fire
-            // mid-narration, which is the agent narrating its own machinery.
-            slowTools: ['search_knowledge', 'read_tour_screen', 'read_customer_screen'],
-            buildInstructions: buildLookupBridgeInstructions,
-            // Same forward-reference-in-a-closure situation as advanceStep
-            // above: agentSession is constructed just below, and this only runs
-            // once the model can actually call a tool.
-            speak: (instructions) => agentSession.generateReply({ instructions, toolChoice: 'none' }),
-            // Long enough that a retrieve() cache hit never triggers it — only
-            // a real wait does. Tune against SESSION_METRICS.TOOL_CALL_MS.
-            delayMs: Number(process.env.AGENT_TOOL_BRIDGE_MS ?? 1200),
-            intervalMs: Number(process.env.AGENT_TOOL_BRIDGE_INTERVAL_MS ?? 6000),
-            maxSteps: 2,
-            onBridge: ({ tool: toolName, step }) => log.info('tool bridge spoken', { tool: toolName, step }),
-            onError: (error, meta) => log.warn('tool bridge skipped', { error, ...meta })
-        }
-    ).map(t => tool({
+            })),
+            timeline
+        ).map(t => tool({
         name: t.name,
         description: t.description,
         parameters: t.parameters,
         execute: t.handler
     }));
+
+    let tools = buildSessionTools(playbookActive);
 
     // Speech-to-speech via the OpenAI Realtime API — one round trip per turn
     // instead of a chained STT -> LLM -> TTS pipeline, which is what keeps
@@ -887,6 +1103,15 @@ async function runSession(ctx) {
                 showUrl: async (url) => {
                     const startedAt = Date.now();
                     log.info('playbook showUrl: begin', { url, reusingOpenTour: isTourActive });
+                    // `reusingOpenTour` is the single most useful field here:
+                    // it distinguishes a cheap in-page goto() from a full
+                    // browser launch, which is the difference between a
+                    // sub-second transition and a ~9s one.
+                    const endSpan = timeline.span(
+                        TIMELINE_EVENTS.SCREEN_NAVIGATE_BEGIN,
+                        TIMELINE_EVENTS.SCREEN_NAVIGATE_END,
+                        { url, reusingOpenTour: isTourActive }
+                    );
                     const result = isTourActive ? await tourControls.goto(url) : await tourControls.openAt(url);
                     log.info('playbook showUrl: end', {
                         url,
@@ -894,13 +1119,19 @@ async function runSession(ctx) {
                         error: result?.error,
                         durationMs: Date.now() - startedAt
                     });
+                    endSpan({ ok: result?.ok !== false, error: result?.error });
                     return result;
                 },
                 hideScreen: async () => {
                     const startedAt = Date.now();
                     log.info('playbook hideScreen: begin');
+                    const endSpan = timeline.span(
+                        TIMELINE_EVENTS.SCREEN_HIDE_BEGIN,
+                        TIMELINE_EVENTS.SCREEN_HIDE_END
+                    );
                     const result = await stopScreenShare();
                     log.info('playbook hideScreen: end', { durationMs: Date.now() - startedAt });
+                    endSpan();
                     return result;
                 }
             },
@@ -934,12 +1165,83 @@ async function runSession(ctx) {
                     text: `[playbook:${phase}] order=${node.order} ${screenPart}`,
                     meta: { action: `playbook_node_${phase}`, nodeId: node.id, order: node.order, ...meta }
                 }).catch(() => {});
+
+                const timelineType = {
+                    enter: TIMELINE_EVENTS.PLAYBOOK_NODE_ENTER,
+                    redeliver: TIMELINE_EVENTS.PLAYBOOK_NODE_REDELIVER,
+                    exit: TIMELINE_EVENTS.PLAYBOOK_NODE_EXIT,
+                    failed: TIMELINE_EVENTS.PLAYBOOK_NODE_FAILED
+                }[phase];
+                if (timelineType) {
+                    timeline.emit(timelineType, {
+                        order: node.order,
+                        nodeId: node.id,
+                        mode: node.mode,
+                        // Carried on every node event, not just the plan dump
+                        // at the top: when reading a timeline you want to see
+                        // what the model was ASKED to cover right next to what
+                        // it actually said, without scrolling back.
+                        directive: node.directive,
+                        hasAttach: Boolean(node.attach),
+                        ...meta
+                    });
+                }
             },
             onCompleted: () => {
                 log.info('playbook completed', { sessionId: session._id });
+                timeline.emit(TIMELINE_EVENTS.PLAYBOOK_COMPLETED);
+                // `silence`'s consecutive-fire counter is shared between
+                // playbook advance signals and post-playbook idle nudges
+                // (see silence-driver.js's isCapExempt note) — whatever count
+                // accumulated advancing this playbook's nodes must not eat
+                // into the fresh nudge budget the rest of the call gets now
+                // that it isn't exempt from the cap anymore.
+                silence.resetConsecutive();
+                // playbookActive was baked into `instructions` once, at session
+                // start, and never revisited (see md/backend/playbook_session_log.md
+                // item 13) — the model stayed forbidden from calling
+                // `start_guided_tour`/`navigate_to` on its own initiative for the
+                // rest of the call, even after the scripted route was long over.
+                // `updateAgent` (confirmed present on this SDK version — see
+                // node_modules/@livekit/agents/src/voice/agent_session.ts) swaps
+                // the live agent's instructions without tearing down the
+                // session; rebuilding with playbookActive:false lifts that
+                // restriction the moment there's no more script for the model
+                // to race against. The tool list must switch at the same time:
+                // buildTools intentionally removes advance_step outside a
+                // playbook so ordinary answers cannot look like script nodes.
+                try {
+                    const postPlaybookInstructions = buildSystemPrompt({
+                        name: agentDoc.name,
+                        product: { name: product.name, description: product.description },
+                        persona: agentDoc.persona,
+                        playbookActive: false,
+                        multiParticipant: isMultiParty,
+                        preCallIntent
+                    });
+                    const postPlaybookTools = buildSessionTools(false);
+                    agentSession.updateAgent(new voice.Agent({
+                        instructions: postPlaybookInstructions,
+                        tools: postPlaybookTools
+                    }));
+                    tools = postPlaybookTools;
+                    log.info('post-playbook instructions and tools applied; model may now drive the screen on its own initiative', { sessionId: session._id });
+                } catch (err) {
+                    log.error('failed to apply post-playbook instructions (model stays playbook-restricted for the rest of the call)', { error: err.message, sessionId: session._id });
+                }
             },
             onError: (message, meta) => {
                 log.error('playbook runtime error', { error: message, ...meta });
+                timeline.emit(TIMELINE_EVENTS.ERROR, { source: 'playbook_runtime', error: message, ...meta });
+            },
+            onSignalIgnored: (node, kind, reason) => {
+                log.warn('playbook signal ignored', { order: node.order, nodeId: node.id, kind, reason });
+                timeline.emit(TIMELINE_EVENTS.PLAYBOOK_ADVANCE_IGNORED, {
+                    order: node.order,
+                    nodeId: node.id,
+                    kind,
+                    reason
+                });
             }
         });
     }
@@ -951,12 +1253,54 @@ async function runSession(ctx) {
     // visitor just gets no answer and the transcript holds only their own
     // turns.
     agentSession.on(voice.AgentSessionEventTypes.Error, (ev) => {
-        log.error('agent session error', {
+        const detail = {
             type: ev.error?.type,
             label: ev.error?.label,
             recoverable: ev.error?.recoverable,
             error: ev.error?.error?.message || String(ev.error?.error)
-        });
+        };
+        log.error('agent session error', detail);
+        // On the timeline too: a provider outage (quota exhausted, model
+        // rejecting every request) presents to the visitor as pure silence,
+        // and the only way to tell that apart from a logic bug afterwards is
+        // seeing the error sitting inline where the speech should have been.
+        timeline.emit(TIMELINE_EVENTS.ERROR, { source: 'agent_session', ...detail });
+    });
+
+    // *** WHY THIS EXISTS — read md/backend/playbook_session_log.md before
+    // touching it ***
+    // @livekit/agents auto-generates a follow-up speech turn after any tool
+    // call whose output is defined (voice/generation.ts:
+    // `replyRequired: toolOutput !== undefined`), and that follow-up carries
+    // NO per-response instructions — only the base system prompt
+    // (agent_activity.ts:~3987). When the turn that triggered it called
+    // nothing but `advance_step` (a bookkeeping-only tool with nothing to
+    // say), that follow-up has no topic to draw from and falls back on
+    // whatever was last genuinely said — verbatim, node after node. Live
+    // evidence: the same sentence repeating 4-6 times in one session.
+    //
+    // `emit()` runs listeners synchronously, so `interrupt(true)` here lands
+    // before @livekit/agents' own `createSpeechTask` for this handle has
+    // even started — the task's own first line (`if (speechHandle.
+    // interrupted) return;`) then skips calling `generateReply()` entirely:
+    // no audio, no API request, no cost. A bare interrupt alone would leave
+    // agentState stuck in 'thinking' forever (only a completed reply clears
+    // it — the exact regression a prior attempt at this fix produced), so
+    // this always follows through by asking playbookRuntime to redeliver the
+    // same node with its real directive: a genuine turn that completes
+    // normally and lets the SDK's own state cycle resolve itself.
+    //
+    // Deliberately narrow — see followup-guard.js's own warning — this must
+    // NOT fire for `search_knowledge`'s follow-up, which is the actual RAG
+    // answer, not noise.
+    agentSession.on(voice.AgentSessionEventTypes.SpeechCreated, (ev) => {
+        if (!playbookActive || !playbookRuntime) return;
+        if (!isDirectivelessAdvanceStepFollowup(ev)) return;
+        const nodeId = playbookRuntime.activeNode()?.id ?? null;
+        ev.speechHandle.interrupt(true);
+        log.info('suppressed directive-less advance_step follow-up; redelivering node', { nodeId });
+        timeline.emit(TIMELINE_EVENTS.PLAYBOOK_FOLLOWUP_SUPPRESSED, { nodeId });
+        playbookRuntime.signal('followup_suppressed');
     });
 
     // Phase 7 — first-audio latency: the framework's own realtime-model
@@ -1004,10 +1348,22 @@ async function runSession(ctx) {
             }
 
             if (text || item.role === 'tool') {
+                // Diagnostic only for now (md/backend/playbook_session_log.md —
+                // "sözü kesilince altyazıda tam cümle kalıyor"): the SDK's own
+                // truncate-on-interrupt protocol (conversation.item.truncate)
+                // is supposed to make `item.content` already reflect only the
+                // audio that actually played, but we had no way to tell
+                // whether a given saved message was ever interrupted at all —
+                // this flag alone doesn't fix a mistimed truncation, it just
+                // makes affected messages visible so the real question (is it
+                // a race between this event and the truncate round-trip, or
+                // something else) can be investigated from real transcripts
+                // instead of guessed at.
                 const msg = await Message.create({
                     sessionId: session._id,
                     role: item.role,
-                    text: text.trim()
+                    text: text.trim(),
+                    meta: { interrupted: !!item.interrupted }
                 });
 
                 await publishEvent(RT_EVENTS.SESSION_TRANSCRIPT, {
@@ -1015,8 +1371,19 @@ async function runSession(ctx) {
                     messageId: msg._id,
                     role: msg.role,
                     text: msg.text,
-                    createdAt: msg.createdAt
+                    createdAt: msg.createdAt,
+                    interrupted: !!item.interrupted
                 });
+
+                // Also on the timeline, even though Message already holds it:
+                // the whole point of the timeline is that ONE ordered stream
+                // answers "what happened", so what was said has to sit inline
+                // between the navigation and state events surrounding it,
+                // not in a second collection to be merged by timestamp.
+                timeline.emit(
+                    item.role === 'user' ? TIMELINE_EVENTS.TRANSCRIPT_USER : TIMELINE_EVENTS.TRANSCRIPT_AGENT,
+                    { role: item.role, text: text.trim(), interrupted: !!item.interrupted }
+                );
 
                 // Publish to LiveKit data channel for realtime mobile/web captions
                 if (text && (item.role === 'assistant' || item.role === 'agent')) {
@@ -1079,6 +1446,7 @@ async function runSession(ctx) {
                     })
                 });
                 log.info('idle nudge sent', { consecutive });
+                timeline.emit(TIMELINE_EVENTS.NUDGE_SENT, { consecutive });
             } catch (err) {
                 // generateReply THROWS synchronously (it does not reject) when
                 // the session isn't running yet or is already closing — the
@@ -1095,7 +1463,10 @@ async function runSession(ctx) {
         // call, producing a second concurrent turn that independently
         // re-did the same lookup and repeated "still loading" filler in a
         // real session).
-        isBusy: () => activeSpeechCount > 0 || (playbookRuntime?.busy ?? false),
+        // A multi-party waiting room has its own explicit start gate. Treat it
+        // as busy so the generic silence driver cannot advance a playbook or
+        // send an ordinary nudge before the meeting has actually begun.
+        isBusy: () => !presentationStarted || activeSpeechCount > 0 || (playbookRuntime?.busy ?? false),
         // silence-driver.js's own default (3) assumes each fire follows a
         // genuinely long silence — with idleMs≈0 each fire is just "one more
         // self-driven turn", so a real continuous walkthrough would hit the
@@ -1103,7 +1474,11 @@ async function runSession(ctx) {
         // ~30-45s of talking. Matches buildIdleNudgeInstructions' own
         // `consecutive >= 20` threshold for when it switches to that closing
         // message.
-        maxConsecutive: 20
+        maxConsecutive: 20,
+        // Playbook-driven advances should not consume the later free-form
+        // re-engagement budget. onCompleted resets the shared counter as an
+        // additional boundary between those two phases.
+        isCapExempt: () => Boolean(playbookActive && playbookRuntime && !playbookRuntime.completed)
     });
 
     // Closes the startup race at its source: `agentSession.start()` briefly
@@ -1115,9 +1490,11 @@ async function runSession(ctx) {
     // read of `agentState` is already past that blip.
     let greetingSent = false;
     agentSession.on(voice.AgentSessionEventTypes.AgentStateChanged, (ev) => {
+        timeline.emit(TIMELINE_EVENTS.AGENT_STATE, { from: ev.oldState, to: ev.newState });
         if (greetingSent) silence.handleAgentState(ev.newState);
     });
     agentSession.on(voice.AgentSessionEventTypes.UserStateChanged, (ev) => {
+        timeline.emit(TIMELINE_EVENTS.USER_STATE, { from: ev.oldState, to: ev.newState });
         if (greetingSent) silence.handleUserState(ev.newState);
     });
     // Ground truth for `activeSpeechCount` (declared above): every
@@ -1129,13 +1506,38 @@ async function runSession(ctx) {
     agentSession.on(voice.AgentSessionEventTypes.SpeechCreated, (ev) => {
         activeSpeechCount++;
         ev.speechHandle.addDoneCallback(() => {
-            activeSpeechCount--;
+            activeSpeechCount = Math.max(0, activeSpeechCount - 1);
             // Group session: the agent just finished a turn — answer anything
             // that piled up in the room while it was talking.
             if (activeSpeechCount === 0 && isMultiParty && presentationStarted && !questionQueue.isEmpty()) {
                 flushQuestionQueue();
             }
         });
+    });
+
+    // Mic on/off was completely invisible before: a visitor who muted, spoke
+    // to nobody, then unmuted looked identical in the logs to one who sat
+    // silently the whole time. `TrackMuted`/`TrackUnmuted` fire the instant
+    // the state flips, which is exactly when it needs recording.
+    ctx.room.on(RoomEvent.TrackMuted, (publication, participant) => {
+        if (publication?.kind !== TrackKind.KIND_AUDIO) return;
+        timeline.emit(TIMELINE_EVENTS.MIC_OFF, {
+            participant: participant?.identity,
+            trackSid: publication?.sid ?? null
+        });
+    });
+    ctx.room.on(RoomEvent.TrackUnmuted, (publication, participant) => {
+        if (publication?.kind !== TrackKind.KIND_AUDIO) return;
+        timeline.emit(TIMELINE_EVENTS.MIC_ON, {
+            participant: participant?.identity,
+            trackSid: publication?.sid ?? null
+        });
+    });
+    ctx.room.on(RoomEvent.ParticipantConnected, (participant) => {
+        timeline.emit(TIMELINE_EVENTS.PARTICIPANT_JOIN, { participant: participant?.identity });
+    });
+    ctx.room.on(RoomEvent.ParticipantDisconnected, (participant) => {
+        timeline.emit(TIMELINE_EVENTS.PARTICIPANT_LEAVE, { participant: participant?.identity });
     });
     // A completed visitor utterance is the clearest sign someone is still
     // there, so the nudge budget starts over.
@@ -1179,11 +1581,19 @@ async function runSession(ctx) {
     async function endSession(reason) {
         if (sessionEnded) return;
         sessionEnded = true;
+        // Emitted before the teardown below, not after: `tour.close()` and
+        // the DB update can both throw, and a timeline that just stops
+        // mid-stream tells you nothing about why the call ended.
+        timeline.emit(TIMELINE_EVENTS.SESSION_END, { reason, eventCount: timeline.count });
         try {
             // Cleanup: stop tour publish loop, heartbeat, and close browser
             silence.dispose();
             playbookRuntime?.stop();
-            if (tourPublishTimer) clearTimeout(tourPublishTimer);
+            tourFrameObserver.abandonPending('session_ended');
+            if (tourPublishTimer) {
+                clearTimeout(tourPublishTimer);
+                tourPublishTimer = null;
+            }
             if (customerSampleInterval) clearInterval(customerSampleInterval);
             if (meetingWaitInterval) clearInterval(meetingWaitInterval);
             if (meetingSafetyTimer) clearTimeout(meetingSafetyTimer);
@@ -1257,12 +1667,17 @@ async function runSession(ctx) {
         // the greeting itself (AgentGoals.jsx), so starting the runtime IS the
         // greeting — the worker holds no special case for it.
         if (playbookActive && playbookRuntime) {
-            // Görev #7 — warm the browser to the generated plan's first page
-            // now, so it's loaded by the time the runtime narrates step 1
-            // (its own showUrl then just goto()s the same URL, fast).
+            // The session-level prepare() has already warmed Chromium/context
+            // without navigating. Let the runtime own the one real first-page
+            // navigation: a detached openAt() here races showUrl() (openAt marks
+            // the tour active before its await), causing goto() to run against
+            // a browser that is still opening and reintroducing double nav.
             const firstUrl = generatedPlan?.screenMode === 'guided-tour' && playbookNodes[0]?.url;
-            if (firstUrl) tourControls.openAt(firstUrl).catch(() => {});
             log.info('playbook: starting run', { generated: Boolean(generatedPlan), firstUrl: firstUrl || null });
+            timeline.emit(TIMELINE_EVENTS.PLAYBOOK_START, {
+                generated: Boolean(generatedPlan),
+                firstUrl: firstUrl || null
+            });
             playbookRuntime.start();
         } else {
             log.info('no playbook; sending plain greeting');
@@ -1326,6 +1741,11 @@ async function runSession(ctx) {
     const realtimeGate = createRealtimeGate({
         onStart: () => {
             log.info('realtime gate opened; starting agent session');
+            // The moment billing starts — and the boundary before which no
+            // model output is possible at all, which makes it the first thing
+            // to check when a session "produced nothing".
+            timeline.emit(TIMELINE_EVENTS.REALTIME_GATE_OPEN);
+            startTourPrewarm();
             agentSession.start({
                 agent: new voice.Agent({ instructions, tools }),
                 room: ctx.room,
@@ -1657,6 +2077,7 @@ async function runSession(ctx) {
     // trains everyone to ignore the log when a real attach failure happens.
     const AVATAR_ATTACH_TIMEOUT_MS = 20_000;
     let avatarTimeoutTimer = null;
+    const avatarStartedAt = Date.now();
     try {
         await Promise.race([
             startAvatarWithFallback({
@@ -1670,10 +2091,20 @@ async function runSession(ctx) {
                         avatarProvider: agentDoc.avatarProvider,
                         timeoutMs: AVATAR_ATTACH_TIMEOUT_MS
                     });
+                    timeline.emit(
+                        TIMELINE_EVENTS.AVATAR_FAILED,
+                        { avatarProvider: agentDoc.avatarProvider, reason: 'timeout' },
+                        AVATAR_ATTACH_TIMEOUT_MS
+                    );
                     resolve();
                 }, AVATAR_ATTACH_TIMEOUT_MS);
             })
         ]);
+        timeline.emit(
+            TIMELINE_EVENTS.AVATAR_READY,
+            { avatarProvider: agentDoc.avatarProvider },
+            Date.now() - avatarStartedAt
+        );
     } finally {
         clearTimeout(avatarTimeoutTimer);
     }

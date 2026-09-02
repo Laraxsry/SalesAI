@@ -3,7 +3,6 @@ export { buildTools } from './tools.js';
 export {
     buildIdleNudgeInstructions,
     wrapDirective,
-    buildLookupBridgeInstructions,
     buildGreetingInstructions
 } from './proactive.js';
 export { classifyStartIntent, shouldStartMeeting, buildWaitingRoomPrompt } from './meeting.js';

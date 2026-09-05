@@ -178,12 +178,13 @@ export class MongoVectorStore {
      * knowledge audit, which needs the vectors themselves to find near-
      * duplicates without paying for a fresh embedding pass.
      *
-     * @param {{ productId:string, limit?:number }} q
+     * @param {{ productId:string, sourceId?:string, limit?:number }} q
      * @returns {Promise<Array<{id:string, sourceId:string, text:string, embedding:number[], audience?:string, createdAt?:Date}>>}
      */
-    async listByProduct({ productId, limit = 2000 }) {
+    async listByProduct({ productId, sourceId, limit = 2000 }) {
         const docs = await KnowledgeChunk.find({
             productId: new Types.ObjectId(productId),
+            ...(sourceId && { sourceId: new Types.ObjectId(sourceId) }),
             status: { $nin: [...RETIRED] }
         })
             .select('sourceId text embedding audience createdAt')

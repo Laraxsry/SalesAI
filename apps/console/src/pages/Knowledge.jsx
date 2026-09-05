@@ -90,9 +90,32 @@ function Dropzone({ file, accept, onFile }) {
 }
 
 /** A single knowledge source row; renders as a collapsible group header when `isGroup` is set (zip uploads). */
-function SourceRow({ source: s, icon, isGroup, expanded, onToggle, childCount, groupLabel, onDelete, onOpen }) {
+function SourceRow({ source: s, icon, isGroup, expanded, onToggle, childCount, childFailedCount, groupLabel, onDelete, onOpen }) {
     const typeInfo = TYPES.find((t) => t.value === s.type) ?? TYPES[0];
-    const statusInfo = STATUS[s.status] ?? STATUS.pending;
+    // A zip container's OWN `status` only ever tracks the archive-level step
+    // (extract -> done) — it goes 'ready' the moment ingestZipEntries()
+    // returns, regardless of how many individual members inside failed (each
+    // member is its own KnowledgeSource with its own status). Before this,
+    // a zip with a failed member still showed a plain green "Hazır" on its
+    // collapsed row — the only way to discover the failure was to expand the
+    // group and scroll to the specific child. Surface it on the row itself.
+    //
+    // Counted from the LIVE children list the parent already fetched, not
+    // from `meta.zipSummary.failed` — that field is a one-time snapshot
+    // written the moment `ingestZipEntries()` finishes and never touched
+    // again, so deleting the one failed child left this badge permanently
+    // stuck showing a failure that no longer exists. The live count self-
+    // corrects the moment the child list changes (delete, retry, etc.) since
+    // that already refetches the query this list comes from.
+    const zipFailedCount = isGroup ? childFailedCount || 0 : 0;
+    const statusInfo =
+        zipFailedCount > 0
+            ? {
+                  label: `Hazır · ${zipFailedCount} dosya başarısız`,
+                  icon: AlertCircle,
+                  className: 'text-amber-400 bg-amber-500/10'
+              }
+            : (STATUS[s.status] ?? STATUS.pending);
     const TypeIcon = icon || typeInfo.icon;
     const StatusIcon = statusInfo.icon;
 
@@ -267,6 +290,13 @@ function AddSourceModal({ productId, onClose, onCreated }) {
                 const { fileKey, mimeType } = await knowledgeApi.uploadFile(file);
                 payload.fileKey = fileKey;
                 payload.mimeType = mimeType;
+                // No title typed -> use the file's own name (extension and all,
+                // exactly as uploaded) instead of leaving it blank. Blank falls
+                // back to the generic type label in the list ("Doküman",
+                // "Video"...) — for a zip this also means the archive itself
+                // never showed its own filename, only "Zip · N dosya" beneath a
+                // blank title.
+                if (!payload.title) payload.title = file.name;
             }
             await knowledgeApi.create(payload);
             onCreated();
@@ -1001,6 +1031,7 @@ export function Knowledge() {
                                     expanded={expanded}
                                     onToggle={isGroup ? () => toggleGroup(s._id) : undefined}
                                     childCount={children.length}
+                                    childFailedCount={children.filter((c) => c.status === 'failed').length}
                                     groupLabel={groupLabel}
                                     onDelete={onDelete}
                                     onOpen={(src) => setDetailId(src._id)}

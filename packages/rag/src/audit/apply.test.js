@@ -14,9 +14,16 @@ vi.mock('@repo/ai', () => ({ embed: (...a) => embed(...a), getLLM: () => ({ comp
 vi.mock('@repo/logger', () => ({ Logger: { warn: vi.fn(), info: vi.fn(), error: vi.fn() } }));
 vi.mock('../stores/index.js', () => ({ getVectorStore: () => store }));
 vi.mock('../retrieve.js', () => ({ invalidateProductCache: (...a) => invalidateProductCache(...a) }));
+// Every existing chunk id in these tests is assumed to still exist unless a
+// test overrides this (see the staleness test below) — matches
+// applyAuditFindings' guard that a finding's chunks weren't wiped by a
+// re-ingestion since the audit ran.
+const countDocuments = vi.fn(async ({ _id }) => _id.$in.length);
+
 vi.mock('@repo/database', () => ({
     KnowledgeAudit: { findById: async (id) => audits.get(id) ?? null, findByIdAndUpdate: vi.fn() },
-    KnowledgeSource: { findOneAndUpdate: async () => ({ _id: 'curated-source' }) }
+    KnowledgeSource: { findOneAndUpdate: async () => ({ _id: 'curated-source' }) },
+    KnowledgeChunk: { countDocuments: (...a) => countDocuments(...a) }
 }));
 
 const { applyAuditFindings } = await import('./index.js');
@@ -137,6 +144,26 @@ describe('applyAuditFindings', () => {
 
         expect(store.setStatus).not.toHaveBeenCalled();
         expect(audit.findings[0].decision).toBe('rejected');
+    });
+
+    // A re-crawl between the audit running and the operator approving it
+    // wipes and recreates every KnowledgeChunk for that source with new ids
+    // (see ingestSource's deleteBySource+recreate) — the finding's chunkIds
+    // then point at nothing. Approving it must fail loudly rather than
+    // silently write a redundant curated chunk while `setStatus` on ghost
+    // ids retires nothing (observed live: exactly this happened after
+    // re-triggering a crawl following an audit run).
+    it('fails a finding whose chunks no longer exist, instead of writing a curated chunk over nothing', async () => {
+        const audit = makeAudit([{ ...contradiction }]);
+        countDocuments.mockResolvedValueOnce(0); // none of c1/c2 exist any more
+
+        const result = await applyAuditFindings({ auditId: 'audit-1', approvedKeys: [contradiction.key] });
+
+        expect(store.upsert).not.toHaveBeenCalled();
+        expect(store.setStatus).not.toHaveBeenCalled();
+        expect(result).toMatchObject({ applied: 0, failed: 1 });
+        expect(audit.findings[0].decision).toBe('failed');
+        expect(audit.findings[0].error).toMatch(/yeniden tarandı/);
     });
 
     // Re-applying would supersede the curated chunk written the first time,

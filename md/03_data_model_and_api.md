@@ -352,3 +352,32 @@ Worker extracts text by modality, then `ingestSource()` chunks, embeds, and
 upserts vectors, flipping `KnowledgeSource.status` to `ready` (or `failed`).
 For `url`/`api` sources this also runs the crawl-cache/synthesis pipeline
 described in Phase 1 (`md/backend/phase1_rag_ingestion.md`).
+
+**Reliability (added after a real source stayed `status:'processing'`
+indefinitely with no error):**
+- `handleIngestSource()`'s whole body (extraction + crawl) is capped at 10
+  minutes, `ingestSource()`'s embed/upsert phase at a further 3 minutes
+  (`@repo/resilience`'s `withTimeout`) — either timing out throws, which
+  surfaces as a normal `status:'failed'` with a real error instead of hanging.
+- `main.js`'s `worker.on('failed', ...)` also now treats a BullMQ-detected
+  *stalled* job (the worker process died mid-job, e.g. a dev `--watch`
+  restart) as terminal via `job.finishedOn`, not just `attemptsMade >=
+  attempts` — a stalled job can hit `maxStalledCount` on its very first
+  attempt, which the old check silently ignored, leaving the source's status
+  stuck at whatever it was before the crash forever.
+- A url/api crawl now checkpoints `meta.crawlIndex.pages` to Mongo after
+  *every* page (`extractFromUrl`'s `onProgress` callback), not just once at
+  the end — a retry (from either timeout above) resumes via `previousPages`
+  instead of re-crawling the whole site from scratch. See
+  `md/backend/phase1_rag_ingestion.md`'s ingestion-reliability entry for the
+  live numbers this was measured against.
+
+**Ingestion-time dedup (Katman 1/2)** — `ingestSource()` now collapses
+byte-identical chunks within a source before embedding (no LLM), then runs
+`autoDedupeSourceChunks()` (`packages/rag/src/audit/auto-dedupe.js`) over the
+newly-embedded chunks before marking the source `ready`: the same clustering
++ LLM review as a manual Knowledge Audit, but only a `"duplicate"` verdict is
+auto-applied — a `"contradiction"` verdict (e.g. two different prices) is
+never auto-resolved, it's recorded as a normal pending `KnowledgeAudit` for a
+person to review. See `md/backend/phase1_rag_ingestion.md` for why a
+similarity threshold alone can't safely decide this.

@@ -1,9 +1,30 @@
 import { embedBatch, getLLM } from '@repo/ai';
 import { KnowledgeSource } from '@repo/database';
 import { Logger } from '@repo/logger';
+import { withTimeout } from '@repo/resilience';
 import { chunkText } from './chunk.js';
 import { getVectorStore } from './stores/index.js';
 import { diffChunks, multisetEqual, matchTextsToIds } from './chunk-diff.js';
+import { autoDedupeSourceChunks } from './audit/auto-dedupe.js';
+
+/**
+ * Outer ceiling on one `ingestSource()` call. `embedBatch()` already has its
+ * own bounded timeout+retry (see @repo/ai's embeddings.js), but that only
+ * protects that one call — a source with several segments loops through it
+ * more than once, and every OTHER await in this function (`classifyAudience`,
+ * the vector store's `deleteBySource`/`upsert`) has no timeout of its own.
+ * Observed live: a zip archive where exactly one member (small, unremarkable
+ * text) stayed `status:'processing'` forever with no `error` — since
+ * `ingestZipEntries()` processes entries strictly sequentially, that one
+ * stuck call also permanently blocked the zip's own container from ever
+ * reaching 'ready', with no way to tell which specific await inside was the
+ * one that never settled. Rather than chase each individual chokepoint (and
+ * inevitably miss the next one a future change adds — this file already
+ * fixed exactly one such case in embeddings.js once), this wraps the whole
+ * call: whatever hangs, it fails out and the per-source status ends up
+ * 'failed' with a real error instead of 'processing' forever.
+ */
+const INGEST_TIMEOUT_MS = 3 * 60_000;
 
 /**
  * Classifies each chunk as 'general' or 'technical' in a single LLM call
@@ -59,41 +80,81 @@ export async function ingestSource({ sourceId, productId, text, modality = 'text
     await KnowledgeSource.findByIdAndUpdate(sourceId, { status: 'processing' });
 
     try {
-        await store.deleteBySource(sourceId);
+        return await withTimeout(async () => {
+            await store.deleteBySource(sourceId);
 
-        const segments = Array.isArray(text) ? text : [{ text, metadata: {} }];
-        const items = [];
+            const segments = Array.isArray(text) ? text : [{ text, metadata: {} }];
+            const items = [];
+            // Katman 1 — exact-duplicate collapse, across the whole source
+            // (not just within one page/segment): free, no embedding/LLM
+            // call spent comparing, and safe by construction — two chunks
+            // cannot be byte-identical AND state conflicting facts, so
+            // there is no "which one is true" judgment being skipped here,
+            // unlike the near-duplicate case Katman 2 (below) has to be
+            // careful about. Normalized on whitespace/case only, not
+            // punctuation — observed duplicates were the SAME rendered DOM
+            // content appearing twice on one page, not near-rewrites.
+            const seenText = new Set();
+            let exactDuplicatesDropped = 0;
 
-        for (const segment of segments) {
-            const chunks = chunkText(segment.text);
-            if (!chunks.length) continue;
+            for (const segment of segments) {
+                const rawChunks = chunkText(segment.text);
+                if (!rawChunks.length) continue;
 
-            const [embeddings, audiences] = await Promise.all([
-                embedBatch(chunks),
-                classifyAudience(chunks)
-            ]);
-            const segmentMetadata = { ...metadata, ...(segment.metadata || {}) };
-            chunks.forEach((c, i) => {
-                items.push({
-                    productId,
-                    sourceId,
-                    text: c,
-                    embedding: embeddings[i],
-                    modality,
-                    audience: audiences[i],
-                    metadata: segmentMetadata
+                const chunks = [];
+                for (const c of rawChunks) {
+                    const normalized = c.trim().replace(/\s+/g, ' ').toLowerCase();
+                    if (seenText.has(normalized)) {
+                        exactDuplicatesDropped++;
+                        continue;
+                    }
+                    seenText.add(normalized);
+                    chunks.push(c);
+                }
+                if (!chunks.length) continue;
+
+                const [embeddings, audiences] = await Promise.all([
+                    embedBatch(chunks),
+                    classifyAudience(chunks)
+                ]);
+                const segmentMetadata = { ...metadata, ...(segment.metadata || {}) };
+                chunks.forEach((c, i) => {
+                    items.push({
+                        productId,
+                        sourceId,
+                        text: c,
+                        embedding: embeddings[i],
+                        modality,
+                        audience: audiences[i],
+                        metadata: segmentMetadata
+                    });
                 });
-            });
-        }
+            }
 
-        if (!items.length) {
+            if (exactDuplicatesDropped) {
+                Logger.info(
+                    { sourceId, exactDuplicatesDropped },
+                    '[ingest] exact-duplicate chunks skipped before embedding'
+                );
+            }
+
+            if (!items.length) {
+                await KnowledgeSource.findByIdAndUpdate(sourceId, { status: 'ready' });
+                return { chunks: 0 };
+            }
+
+            await store.upsert(items);
+            // Katman 2 — near-duplicate/contradiction pass over this
+            // source's own chunks, BEFORE 'ready' — see auto-dedupe.js for
+            // why only "duplicate" verdicts are auto-applied and
+            // "contradiction" ones are left pending in a KnowledgeAudit for
+            // a person to resolve. Never fails ingestion (see its own
+            // try/catch) — worst case this is a missed cleanup, not a
+            // reason to mark an otherwise-successful ingestion 'failed'.
+            await autoDedupeSourceChunks({ productId, sourceId });
             await KnowledgeSource.findByIdAndUpdate(sourceId, { status: 'ready' });
-            return { chunks: 0 };
-        }
-
-        await store.upsert(items);
-        await KnowledgeSource.findByIdAndUpdate(sourceId, { status: 'ready' });
-        return { chunks: items.length };
+            return { chunks: items.length };
+        }, INGEST_TIMEOUT_MS);
     } catch (err) {
         await KnowledgeSource.findByIdAndUpdate(sourceId, {
             status: 'failed',

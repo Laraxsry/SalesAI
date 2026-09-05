@@ -5,6 +5,13 @@
  *
  * A "participant" here is `{ identity, name }`. `identity` is the LiveKit
  * `visitor_*` id; `name` is what the visitor typed on the join screen.
+ *
+ * Both builders below take an optional `languageDisplay` (spelled-out name,
+ * e.g. "Turkish" — see `proactive.js`'s doc comment for why) and append a
+ * reminder: these are one-shot `generateReply({instructions})` payloads,
+ * entirely in English, injected mid-conversation right when a group turn is
+ * being batched/attributed — exactly the pattern observed drifting a live
+ * multi-participant session into English.
  */
 
 function displayName(p) {
@@ -12,16 +19,27 @@ function displayName(p) {
 }
 
 /**
+ * @param {string} [languageDisplay]
+ * @returns {string}
+ */
+function languageLine(languageDisplay) {
+    return languageDisplay
+        ? ` Reply in ${languageDisplay}, regardless of what language this instruction itself is written in.`
+        : '';
+}
+
+/**
  * A one-line roster note for the model, or null when it's not a group (0 or 1
  * named participant — nothing to disambiguate).
  *
  * @param {Array<{identity?:string,name?:string}>} participants
+ * @param {string} [languageDisplay]
  * @returns {string|null}
  */
-export function buildRosterNote(participants) {
+export function buildRosterNote(participants, languageDisplay) {
     const names = (participants || []).map(displayName).filter(Boolean);
     if (names.length < 2) return null;
-    return `This is a group session. The people in the room are: ${names.join(', ')}. When you answer a question, address whoever asked it by name; if you don't know who asked, speak to the room.`;
+    return `This is a group session. The people in the room are: ${names.join(', ')}. When you answer a question, address whoever asked it by name; if you don't know who asked, speak to the room.${languageLine(languageDisplay)}`;
 }
 
 /**
@@ -31,10 +49,10 @@ export function buildRosterNote(participants) {
  * an open floor everyone is answered directly. Null when nothing meaningful is
  * buffered.
  *
- * @param {{ floor?: {identity?:string,name?:string}|null, items?: Array<{speaker?:string|null,text:string}>, hands?: Array<{identity?:string,name?:string}> }} input
+ * @param {{ floor?: {identity?:string,name?:string}|null, items?: Array<{speaker?:string|null,text:string}>, hands?: Array<{identity?:string,name?:string}>, languageDisplay?: string }} input
  * @returns {string|null}
  */
-export function buildTurnResponseInstruction({ floor, items, hands } = {}) {
+export function buildTurnResponseInstruction({ floor, items, hands, languageDisplay } = {}) {
     const qs = (items || []).filter((q) => q && String(q.text || '').trim());
     if (!qs.length) return null;
     const lines = qs
@@ -60,6 +78,7 @@ export function buildTurnResponseInstruction({ floor, items, hands } = {}) {
         parts.push(`Waiting with a raised hand (do NOT switch to them yet): ${waiting.join(', ')}.`);
     }
     parts.push('Do not read this list back or mention that questions were queued.');
+    if (languageDisplay) parts.push(`Reply in ${languageDisplay}, regardless of what language this instruction itself is written in.`);
     return parts.join('\n');
 }
 

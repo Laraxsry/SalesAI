@@ -1,4 +1,5 @@
 import { getLLM } from './llm/index.js';
+import { languageName } from '@repo/utils';
 
 /**
  * Pre-call adaptive survey (Görev #7). Before a 1-on-1 demo starts, the visitor
@@ -45,6 +46,11 @@ export async function nextSurveyQuestion({
 }) {
     // Hard stop — the loop never exceeds MAX_Q regardless of the model.
     const forceDone = answers.length >= MAX_Q;
+    // Raw ISO codes ("tr") are a weak signal for a text-completion model —
+    // spelled out ("Turkish") steers it far more reliably. See languageName's
+    // own doc comment; persona.js already does this for the live conversation,
+    // this call used to skip it and silently drifted to English.
+    const languageDisplay = languageName(language);
 
     const llm = getLLM(undefined, { timeoutMs: 25_000 });
     const sys = `You run a SHORT pre-demo intake for "${product.name}"${
@@ -52,11 +58,11 @@ export async function nextSurveyQuestion({
     }. Goal: in at most ${MAX_Q} questions — ideally 3-4 — find out what THIS visitor actually wants from the demo, so the agent can go straight to it.
 
 Rules:
-- One question at a time. The FIRST question is a broad but product-relevant one ("What are you hoping to get out of this?" / "What problem are you trying to solve?").
+- One question at a time. The FIRST question must name something concrete about THIS product — one of its themes below, or what it does — not a generic opener like "what are you hoping to get out of this?" that could apply to any product. Still broad enough to not presuppose their use case (e.g. "Are you looking at ${product.name} mainly for [theme A] or [theme B]?" using real themes from below).
 - Each next question follows from the visitor's last answer — drill into their situation, role, use case, what they use today, their priority.
-- Offer 2-5 concrete multiple-choice options when it helps them answer fast; still allow free text.
+- Offer 2-5 concrete multiple-choice options when it helps them answer fast; still allow free text. The options belong ONLY in the \`options\` array — never restate them inside \`text\` (no "(Options: A, B, C)" or "(Seçenekler: A, B, C)" tacked onto the question itself, in any language). \`text\` is just the question sentence, nothing else.
 - STOP as soon as you can describe what they want with confidence. Do not pad to ${MAX_Q}.
-- Questions and options must be written in ${language}. Keep them short.
+- Questions and options must be written in ${languageDisplay}, even though these rules are in English. Keep them short.
 
 Product themes: ${topicTitles.slice(0, 20).join(', ') || '(none)'}.
 ${canShowScreen ? `Pages available to demo: ${siteMap.slice(0, 25).map((p) => p.title || p.url).join(', ')}.` : 'This agent is voice-only (no screen sharing).'}
@@ -110,24 +116,28 @@ export async function buildTourPlan({
     language = 'the visitor\'s language'
 }) {
     const llm = getLLM(undefined, { timeoutMs: 45_000 });
+    const languageDisplay = languageName(language);
     const themeLines = topics
         .slice(0, 25)
         .map((t) => `- ${t.title}${t.body ? `: ${clip(t.body, 240)}` : ''}`)
         .join('\n');
     const pageLines = canShowScreen
-        ? siteMap.slice(0, 30).map((p) => `- ${p.url}${p.title ? ` (${p.title})` : ''}`).join('\n')
+        ? siteMap
+              .slice(0, 30)
+              .map((p) => `- ${p.url}${p.title ? ` (${p.title})` : ''}${p.snippet ? `: ${p.snippet}` : ''}`)
+              .join('\n')
         : '';
 
     const sys = `You build the plan a live AI sales agent will follow for ONE visitor of "${product.name}", based on what they told you they want. Output an ordered list of 3-6 steps.
 
 Each step:
 - "coverage": what this step is about (a few words, for the agent's own reference).
-- "narration": the actual words the agent will say for this step, ALREADY WRITTEN, in ${language}. 1-4 sentences. Dense and specific to THIS visitor's goal — no filler, no "let me set the stage", no agenda talk. Lead with the point.
+- "narration": the actual words the agent will say for this step, ALREADY WRITTEN, in ${languageDisplay} (even though these instructions are in English) — natural, fluent ${languageDisplay} throughout, no mixed-language sentences. 1-4 sentences. Dense and specific to THIS visitor's goal — no filler, no "let me set the stage", no agenda talk. Lead with the point. Write it as a finished thought the agent just says, never as the agent narrating its own plan or process — forbidden, exactly this shape: "bunu sizin akışınıza göre düşünelim", "en net faydaya bağlayacağım", "let's think about this together", "I'll connect this to the clearest benefit". If you cannot yet say something concrete and specific, write a real fact about the product instead of a vague transition sentence — never paper over "I don't have a specific point here" with process-talk.
 ${canShowScreen
-        ? '- "url": the page to show for this step, chosen ONLY from the "Pages available" list below (exact string). Omit "url" for a pure-talk step.'
+        ? '- "url": the page to show for this step, chosen ONLY from the "Pages available" list below (exact string), and ONLY when that page\'s own snippet genuinely relates to what this step is about — the URL slug or title sounding relevant is not enough, the snippet text must actually back it up. Omit "url" for a pure-talk step, including when nothing in the list is a real content match — talking without a matching screen is better than showing a page whose real content contradicts what you are saying.'
         : '- Do NOT include "url" on any step — this agent cannot share a screen.'}
 
-Step 1's narration opens the call: one short line acknowledging what they told you they want, then straight into the first substantive point — no "welcome to a demo of X" throat-clearing.
+Step 1's narration opens the call: a brief, warm greeting word first (in ${languageDisplay}), then in the same breath acknowledge what they told you they want, then straight into the first substantive point — no generic "welcome to a demo of X" pitch, but do not skip the greeting itself either; the visitor has heard nothing yet.
 
 Order the steps to get to what they care about fastest. Skip anything that does not serve this specific visitor.
 

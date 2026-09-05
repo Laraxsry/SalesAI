@@ -94,6 +94,10 @@ import { wrapDirective } from '@repo/agent';
  * @param {(instructions: string) => SpeechHandleLike} deps.speak throws
  *   synchronously if the session isn't running or is closing — the pump's
  *   own try/catch is what turns that into onError + stop(), not the caller
+ * @param {string} [deps.languageDisplay] spelled-out agent language (e.g.
+ *   "Turkish") threaded into every `wrapDirective()` call — see that
+ *   function's doc comment for why this reminder is needed on top of the
+ *   system prompt.
  * @param {(node: PlaybookNode, phase: 'enter'|'redeliver'|'exit'|'failed', meta?: {screenVisible?: boolean, url?: string|null, error?: string, reason?: string}) => void} [deps.onNodeEvent]
  *   `meta.url` is only meaningful when `meta.screenVisible` is true — it is
  *   "what's actually on screen right now" for enter/redeliver/exit, and "the
@@ -111,6 +115,7 @@ export function createPlaybookRuntime({
     cursor,
     screen,
     speak,
+    languageDisplay = null,
     /** What the agent last said out loud, for quoting back on a redelivery.
      *  Defaults to "nothing known", which reproduces the previous wording
      *  exactly — see utterance-memory.js. */
@@ -285,7 +290,8 @@ export function createPlaybookRuntime({
                 wrapDirective(node, {
                     screenVisible,
                     resuming,
-                    spokenSoFar: resuming ? interruptedText.get(node.id) ?? null : null
+                    spokenSoFar: resuming ? interruptedText.get(node.id) ?? null : null,
+                    languageDisplay
                 })
             );
             // Set before the await, not after — see the P0 note and

@@ -130,14 +130,16 @@ export class QdrantVectorStore {
     }
 
     /** @see MongoVectorStore#listByProduct */
-    async listByProduct({ productId, limit = 2000 }) {
+    async listByProduct({ productId, sourceId, limit = 2000 }) {
         const points = [];
         let offset;
+        const must = [{ key: 'productId', match: { value: productId } }];
+        if (sourceId) must.push({ key: 'sourceId', match: { value: sourceId } });
         // `scroll` rather than `search` — the vectors are what the audit
         // actually needs, so they must be asked for explicitly.
         do {
             const page = await this.client.scroll(COLLECTION, {
-                filter: { must: [{ key: 'productId', match: { value: productId } }] },
+                filter: { must },
                 with_payload: true,
                 with_vector: true,
                 limit: Math.min(256, limit - points.length),

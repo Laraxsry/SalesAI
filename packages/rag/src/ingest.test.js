@@ -19,9 +19,15 @@ const store = {
 };
 vi.mock('./stores/index.js', () => ({ getVectorStore: () => store }));
 
+// Katman 2 (near-duplicate/contradiction review) is exercised on its own in
+// auto-dedupe.test.js — mocked here so ingest.js's own tests aren't coupled
+// to it and stay silent instead of hitting a real, unmocked reviewCluster().
+const autoDedupeSourceChunks = vi.fn();
+vi.mock('./audit/auto-dedupe.js', () => ({ autoDedupeSourceChunks: (...a) => autoDedupeSourceChunks(...a) }));
+
 const { KnowledgeSource } = await import('@repo/database');
 const { embedBatch } = await import('@repo/ai');
-const { reingestSourceIncremental } = await import('./ingest.js');
+const { reingestSourceIncremental, ingestSource } = await import('./ingest.js');
 
 // Long enough per-sentence text that chunkText() (maxChars:1200) keeps each
 // sentence as its own chunk rather than merging them — makes the diff
@@ -98,5 +104,65 @@ describe('reingestSourceIncremental', () => {
         const embedded = embedBatch.mock.calls.flatMap((call) => call[0]);
         const { chunkText } = await import('./chunk.js');
         expect(embedded.length).toBe(chunkText(newText).length);
+    });
+});
+
+describe('ingestSource — Katman 1 (exact-duplicate collapse)', () => {
+    it('embeds a chunk that repeats verbatim across pages only once', async () => {
+        // Real observed shape: the same rendered DOM block (a repeated UI
+        // widget/section) shows up byte-identical on more than one crawled
+        // page — modeled here as its own segment appearing twice, alongside
+        // each page's genuinely unique content in a separate segment.
+        const shared = pad('This exact sentence is repeated verbatim on multiple pages');
+        const onlyOnA = pad('Something that only appears on page A');
+        const onlyOnB = pad('Something that only appears on page B');
+
+        await ingestSource({
+            sourceId: 'src1',
+            productId: 'prod1',
+            text: [
+                { text: shared, metadata: { pageUrl: '/a' } },
+                { text: onlyOnA, metadata: { pageUrl: '/a' } },
+                { text: shared, metadata: { pageUrl: '/b' } },
+                { text: onlyOnB, metadata: { pageUrl: '/b' } }
+            ]
+        });
+
+        const embedded = embedBatch.mock.calls.flatMap((call) => call[0]);
+        expect(embedded.filter((c) => c.includes('repeated verbatim')).length).toBe(1);
+        expect(embedded.some((c) => c.includes('only appears on page A'))).toBe(true);
+        expect(embedded.some((c) => c.includes('only appears on page B'))).toBe(true);
+
+        // The one surviving copy is still stored — this drops the embedding
+        // call for the repeat, not the knowledge itself.
+        const upserted = store.upsert.mock.calls[0][0];
+        expect(upserted.filter((i) => i.text.includes('repeated verbatim')).length).toBe(1);
+    });
+
+    it('is case/whitespace-insensitive but not a fuzzy match', async () => {
+        const original = pad('Please contact support for further assistance today');
+        const reworded = pad('Please reach out to support if you need more help');
+
+        await ingestSource({
+            sourceId: 'src1',
+            productId: 'prod1',
+            text: [
+                { text: original, metadata: { pageUrl: '/a' } },
+                { text: reworded, metadata: { pageUrl: '/b' } }
+            ]
+        });
+
+        // Genuinely different wording is never touched by Katman 1 — that is
+        // Katman 2's job (auto-dedupe.js), and only via an LLM verdict.
+        const embedded = embedBatch.mock.calls.flatMap((call) => call[0]);
+        expect(embedded.length).toBe(2);
+    });
+
+    it('runs the Katman 2 review before marking the source ready', async () => {
+        await ingestSource({ sourceId: 'src1', productId: 'prod1', text: pad('Some real content here') });
+
+        expect(autoDedupeSourceChunks).toHaveBeenCalledWith({ productId: 'prod1', sourceId: 'src1' });
+        const statusCalls = KnowledgeSource.findByIdAndUpdate.mock.calls.map((c) => c[1]?.status).filter(Boolean);
+        expect(statusCalls.at(-1)).toBe('ready');
     });
 });

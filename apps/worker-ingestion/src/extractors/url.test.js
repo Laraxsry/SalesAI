@@ -107,9 +107,12 @@ describe('extractFromUrl — previousPages cache', () => {
         expect(fakePage.goto).toHaveBeenCalledTimes(2);
         expect(fakePage.goto).toHaveBeenCalledWith('https://example.com/b', expect.objectContaining({ waitUntil: 'domcontentloaded' }));
 
-        // onProgress only fires for real fetches (fetchedCount), not cache hits.
+        // onProgress only fires for real fetches (fetchedCount), not cache hits,
+        // and carries the running pagesIndex so a caller can checkpoint it —
+        // this is what lets a retry resume instead of re-crawling everything.
         expect(onProgress).toHaveBeenCalledTimes(1);
-        expect(onProgress).toHaveBeenCalledWith(1, expect.any(Number));
+        const [, , pagesIndexSoFar] = onProgress.mock.calls[0];
+        expect(pagesIndexSoFar['https://example.com/b'].rawText).toBe('raw B text');
 
         const urls = result.pages.map((p) => p.url).sort();
         expect(urls).toEqual(['https://example.com/a', 'https://example.com/b']);

@@ -99,13 +99,18 @@ export function shouldStartMeeting({ visitorCount, maxParticipants, waitedMs, ma
  * minute while waiting. Content-instruction, not a literal line (same shape as
  * `buildIdleNudgeInstructions`).
  *
- * @param {{ visitorCount:number, maxParticipants:number }} ctx
+ * @param {{ visitorCount:number, maxParticipants:number, languageDisplay?:string }} ctx
  * @returns {string}
  */
-export function buildWaitingRoomPrompt({ visitorCount, maxParticipants }) {
+export function buildWaitingRoomPrompt({ visitorCount, maxParticipants, languageDisplay }) {
     return [
         `There are currently ${visitorCount} visitor(s) in the room and this session is for up to ${maxParticipants}.`,
-        'In one short, warm line in the conversation\'s language, ask whether they would like to begin now or wait a little longer for others to join.',
-        'Ask once, then stop — do not repeat it, do not add anything else, and do not call any tools.'
-    ].join(' ');
+        `In one short, warm line${languageDisplay ? ` in ${languageDisplay}` : " in the conversation's language"}, ask whether they would like to begin now or wait a little longer for others to join.`,
+        'Ask once, then stop — do not repeat it, do not add anything else, and do not call any tools.',
+        languageDisplay
+            ? `Reply in ${languageDisplay}, regardless of what language this instruction itself is written in.`
+            : ''
+    ]
+        .filter(Boolean)
+        .join(' ');
 }

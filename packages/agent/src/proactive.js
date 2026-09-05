@@ -6,6 +6,20 @@
  * the system prompt: a standing rule would have the model reasoning about when
  * to be proactive on every single turn, which is exactly the judgement we are
  * taking away from it. The worker decides *when*; these decide *what shape*.
+ *
+ * Every builder below takes an optional `languageDisplay` (a spelled-out name
+ * like "Turkish", from `@repo/utils`'s `languageName()` — never a raw ISO
+ * code, which is too weak a signal on its own; see that function's doc
+ * comment) and, when given one, appends an explicit reminder to answer in it.
+ * The system prompt already states the language once at the very start and
+ * once at the very end (persona.js), but these payloads are separate
+ * `generateReply()` calls injected mid-conversation — entirely in English,
+ * and the LAST text the model sees before composing, which live sessions
+ * showed is enough recency weight to pull a reply into English even with the
+ * system prompt correctly set to another language (observed after a
+ * playbook/topic change and in multi-participant turn-batching, both driven
+ * from here). The reminder is redundant when the model already gets it right
+ * — the point is not needing to rely on luck.
  */
 
 /**
@@ -21,6 +35,15 @@
  * @param {string} [text]
  * @returns {string|null} a quoted reminder, or null when there is nothing to quote
  */
+/**
+ * @param {string} [languageDisplay] spelled-out language name, e.g. "Turkish"
+ * @returns {string|null}
+ */
+function languageLine(languageDisplay) {
+    if (!languageDisplay) return null;
+    return `Reply in ${languageDisplay}, regardless of what language this instruction itself is written in — never switch languages mid-conversation.`;
+}
+
 function alreadySaidLine(text) {
     const trimmed = String(text || '').trim();
     if (!trimmed) return null;
@@ -52,15 +75,16 @@ function alreadySaidLine(text) {
  * Only once the count gets genuinely large does "nobody is listening" become
  * the likelier explanation over "they're still watching".
  *
- * @param {{ consecutive?: number, lastUtterance?: string }} [ctx]
+ * @param {{ consecutive?: number, lastUtterance?: string, languageDisplay?: string }} [ctx]
  *   `consecutive` — how many back-to-back self-driven turns have gone out with
  *   no response from the visitor, this one included. `lastUtterance` — what the
  *   agent actually said last, quoted back so the anti-repetition rule has a
  *   referent; omit it and the wording falls back to the blind form.
  * @returns {string}
  */
-export function buildIdleNudgeInstructions({ consecutive = 1, lastUtterance } = {}) {
+export function buildIdleNudgeInstructions({ consecutive = 1, lastUtterance, languageDisplay } = {}) {
     const alreadySaid = alreadySaidLine(lastUtterance);
+    const langLine = languageLine(languageDisplay);
 
     // Guards the one real exception to "never wait" (persona.js's contact-info
     // confirmation rule) — this instruction is injected independently of the
@@ -79,8 +103,11 @@ export function buildIdleNudgeInstructions({ consecutive = 1, lastUtterance } = 
             'You have been carrying this conversation on your own for a long stretch with no response at all.',
             'Say one short, warm closing line that leaves the door open — offer to continue whenever they are ready.',
             'Do not ask another question. Do not call any tools.',
-            confirmationGuard
-        ].join(' ');
+            confirmationGuard,
+            langLine
+        ]
+            .filter(Boolean)
+            .join(' ');
     }
 
     if (consecutive === 2) {
@@ -90,7 +117,8 @@ export function buildIdleNudgeInstructions({ consecutive = 1, lastUtterance } = 
             'Do not repeat or rehash anything you already covered, even in other words.',
             alreadySaid || 'Do not repeat what you already said.',
             'Do not remark on the silence itself, and do not ask permission before continuing.',
-            confirmationGuard
+            confirmationGuard,
+            langLine
         ]
             .filter(Boolean)
             .join(' ');
@@ -102,7 +130,8 @@ export function buildIdleNudgeInstructions({ consecutive = 1, lastUtterance } = 
         'Do not repeat or rehash anything you already said, even in different words; if nothing new is left about what is on screen, move to a different page or topic instead of describing the same thing again.',
         'Do not remark on the silence, do not ask if they are still there, and do not ask permission before continuing — just continue.',
         alreadySaid || 'Do not repeat your previous message.',
-        confirmationGuard
+        confirmationGuard,
+        langLine
     ]
         .filter(Boolean)
         .join(' ');
@@ -132,9 +161,17 @@ export function buildIdleNudgeInstructions({ consecutive = 1, lastUtterance } = 
  * @param {string} [opts.spokenSoFar] what the agent actually got out before it
  *   was cut off — only meaningful together with `resuming`. Without it, "do not
  *   start over" is an instruction with nothing to anchor to.
+ * @param {string} [opts.languageDisplay] spelled-out language name — see the
+ *   module doc comment. Matters most for the `node.narration` branch: that
+ *   text was pre-generated by a separate LLM call (pre-call-survey's
+ *   `buildTourPlan`) which can itself have drifted language; this gives the
+ *   model a chance to correct it even when the source text didn't.
  * @returns {string}
  */
-export function wrapDirective(node, { screenVisible = false, resuming = false, spokenSoFar = null } = {}) {
+export function wrapDirective(
+    node,
+    { screenVisible = false, resuming = false, spokenSoFar = null, languageDisplay = null } = {}
+) {
     const lines = node.narration
         ? [
               'Say the following now, as a natural part of the conversation. It is already written for this specific visitor — deliver it in your own voice, keep it this tight, adapt the tone to how the conversation feels, but keep the meaning and the length. Do not read it robotically, and never mention that you were handed anything.',
@@ -173,6 +210,9 @@ export function wrapDirective(node, { screenVisible = false, resuming = false, s
         if (alreadySaid) lines.push(alreadySaid);
     }
 
+    const langLine = languageLine(languageDisplay);
+    if (langLine) lines.push(langLine);
+
     return lines.join('\n');
 }
 
@@ -189,17 +229,36 @@ export function wrapDirective(node, { screenVisible = false, resuming = false, s
  * pause after this turn (idleMs≈0, see agent.js), so it must not end on a
  * question it will never hear answered.
  *
- * @param {{ productName?: string, productDescription?: string }} [ctx]
+ * @param {{ productName?: string, productDescription?: string, languageDisplay?: string }} [ctx]
  * @returns {string}
  */
-export function buildGreetingInstructions({ productName, productDescription } = {}) {
+export function buildGreetingInstructions({ productName, productDescription, languageDisplay } = {}) {
+    // A literal "an AI assistant that shows people around X" template turned
+    // out to be exactly what the model repeats back almost word-for-word —
+    // live sessions showed the same stiff, job-title-reading construction
+    // every time ("Merhaba, ben X içinde gezdiren bir yapay zeka
+    // asistanıyım"), not a natural self-introduction. Describing the TONE
+    // and giving a real good/bad example pair (not an English phrase to
+    // translate) is what actually gets a warm, professional-sounding open —
+    // the persona's forbidden-phrase examples elsewhere in this codebase use
+    // the same real-language-example approach for the same reason.
+    const tr = languageDisplay === 'Turkish';
+    const goodExample = tr
+        ? `"Merhaba, hoş geldiniz! ${productName || 'Ürünü'} sizinle hemen keşfetmeye başlayalım."`
+        : `"Hi there, welcome! Let's dive right into ${productName || 'the product'} and see what it can do for you."`;
+    const badExample = tr
+        ? `"Merhaba, ben ${productName || 'ürün'} içinde gezdiren bir yapay zeka asistanıyım"`
+        : `"Hello, I am an AI assistant that shows people around ${productName || 'the product'}"`;
     const place = productName
-        ? `In the same breath, say who you are — an AI assistant that shows people around ${productName}${productDescription ? ` (${productDescription})` : ''} — because they arrived from a link with no context yet. Do not give yourself a human name.`
+        ? `In the same breath, place them in ${productName}${productDescription ? ` (${productDescription})` : ''} by name, because they arrived from a link with no context yet — the way a warm, professional rep who's genuinely excited to show this product off would, not by reciting a job title. Never use a stiff "I am an AI assistant that shows people around X" construction (avoid, exactly this shape: ${badExample}) — aim for the confident, welcoming energy of something like ${goodExample}. You may still be honest about being an AI guide somewhere natural in the call if it comes up, but the opening line itself should read as a warm welcome, not a role announcement. Do not give yourself a human name.`
         : 'Do not announce your job title, do not read out a list of what you can help with, and do not sound like a script.';
     return [
-        'Open the conversation: one short, warm line — start with an actual greeting word in the language you are speaking.',
+        `Open the conversation: one short, warm line — start with an actual greeting word${languageDisplay ? ` in ${languageDisplay}` : ' in the language you are speaking'}.`,
         place,
         'Then say you will show them around now — do not ask an open-ended question or wait for an answer.',
-        'Do not call any tools.'
-    ].join(' ');
+        'Do not call any tools.',
+        languageLine(languageDisplay)
+    ]
+        .filter(Boolean)
+        .join(' ');
 }

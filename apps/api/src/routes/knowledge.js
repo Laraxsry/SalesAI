@@ -753,10 +753,17 @@ knowledgeRouter.get('/audit/:auditId', requireAuth, async (req, res, next) => {
         res.json({
             ...audit,
             id: String(audit._id),
-            findings: audit.findings.map((f) => ({
-                ...f,
-                chunks: f.chunkIds.map((id) => chunkById.get(String(id))).filter(Boolean)
-            }))
+            findings: audit.findings.map((f) => {
+                const chunks = f.chunkIds.map((id) => chunkById.get(String(id))).filter(Boolean);
+                // Some (or all) of this finding's chunks no longer exist —
+                // the source was re-ingested since this audit ran, so the
+                // evidence the operator would be approving is gone (see
+                // applyAuditFindings' own guard against acting on this).
+                // Surfaced here too so the UI can warn BEFORE an approve
+                // attempt, not just report a failure after one.
+                const stale = f.decision === 'pending' && chunks.length < f.chunkIds.length;
+                return { ...f, chunks, stale };
+            })
         });
     } catch (err) {
         next(err);

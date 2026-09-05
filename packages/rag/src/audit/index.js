@@ -1,6 +1,6 @@
 import { createHash } from 'node:crypto';
 import { embed } from '@repo/ai';
-import { KnowledgeAudit, KnowledgeSource } from '@repo/database';
+import { KnowledgeAudit, KnowledgeChunk, KnowledgeSource } from '@repo/database';
 import { Logger } from '@repo/logger';
 import { getVectorStore } from '../stores/index.js';
 import { invalidateProductCache } from '../retrieve.js';
@@ -67,7 +67,7 @@ async function mapWithConcurrency(items, limit, task) {
  * knowledge produces the same keys and the console can tell an old proposal
  * from a new one.
  */
-function findingKey(type, chunkIds) {
+export function findingKey(type, chunkIds) {
     const digest = createHash('sha1').update([...chunkIds].sort().join(',')).digest('hex');
     return `${type}:${digest.slice(0, 12)}`;
 }
@@ -261,6 +261,26 @@ export async function applyAuditFindings({ auditId, approvedKeys = [], rejectedK
         if (!approved.has(finding.key) || finding.decision === 'applied') continue;
 
         try {
+            // A finding's `chunkIds` are a snapshot of specific KnowledgeChunk
+            // documents at scan time. If the source they came from was
+            // re-ingested since (a re-crawl, a manual retry, `deleteBySource`
+            // + recreate) those exact documents no longer exist — the
+            // duplicate/contradiction the finding describes may well still be
+            // there, but under brand-new ids the scan never saw. Silently
+            // "succeeding" here would create a new curated chunk (a real
+            // write, real cost) while `setStatus` on ghost ids is a no-op
+            // that retires nothing — the operator would see "applied" and
+            // believe the duplicate is gone when it is not. Fail loudly
+            // instead and point at the fix (re-run the audit).
+            const stillExists = await KnowledgeChunk.countDocuments({ _id: { $in: finding.chunkIds } });
+            if (stillExists < finding.chunkIds.length) {
+                finding.decision = 'failed';
+                finding.error =
+                    'Bu bulgunun referans verdiği chunk\'lar artık yok — kaynak bu denetimden sonra yeniden tarandı. Denetimi tekrar çalıştır.';
+                failed++;
+                continue;
+            }
+
             if (finding.type === 'junk') {
                 await store.setStatus({ ids: finding.chunkIds, status: 'excluded' });
             } else if (finding.canonicalText) {

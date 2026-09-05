@@ -80,8 +80,17 @@ describe('buildSystemPrompt — navigation ownership', () => {
     it('omits the navigate_to-specific guidance when a playbook is active (the model never calls it)', () => {
         const withPlaybook = buildSystemPrompt({ ...baseCfg, playbookActive: true });
         const without = buildSystemPrompt(baseCfg);
-        expect(without).toContain('For `navigate_to` specifically');
-        expect(withPlaybook).not.toContain('For `navigate_to` specifically');
+        expect(without).toContain('For the rare `navigate_to` that is genuinely needed');
+        expect(withPlaybook).not.toContain('For the rare `navigate_to` that is genuinely needed');
+    });
+
+    it('tells the model to prefer clicking over navigate_to, both as guidance and as a hard rule, only outside a playbook', () => {
+        const withPlaybook = buildSystemPrompt({ ...baseCfg, playbookActive: true });
+        const without = buildSystemPrompt(baseCfg);
+        expect(without).toContain('Prefer clicking over jumping straight to a URL');
+        expect(without).toContain('NEVER call `navigate_to` for something you could instead reach by clicking');
+        expect(withPlaybook).not.toContain('Prefer clicking over jumping straight to a URL');
+        expect(withPlaybook).not.toContain('NEVER call `navigate_to` for something you could instead reach by clicking');
     });
 });
 
@@ -201,6 +210,27 @@ describe('buildSystemPrompt — conversational behavior rules', () => {
         expect(withPlaybook).not.toContain("Don't call `read_tour_screen` in that same breath");
     });
 
+    it('tells the model not to narrate or promise around a page still visibly loading, only outside a playbook', () => {
+        const withoutPlaybook = buildSystemPrompt(baseCfg);
+        const withPlaybook = buildSystemPrompt({ ...baseCfg, playbookActive: true });
+        expect(withoutPlaybook).toContain('still loading or rendering');
+        expect(withoutPlaybook).toContain("once it's done loading I'll show you X");
+        expect(withPlaybook).not.toContain('still loading or rendering');
+    });
+
+    it('tells the model not to re-navigate/re-click/re-confirm a page or tab it is already on, only outside a playbook', () => {
+        const withoutPlaybook = buildSystemPrompt(baseCfg);
+        const withPlaybook = buildSystemPrompt({ ...baseCfg, playbookActive: true });
+        expect(withoutPlaybook).toContain("you're already there");
+        expect(withoutPlaybook).toContain('check your own recent actions in this conversation first');
+        expect(withPlaybook).not.toContain("you're already there");
+    });
+
+    it('gives loading-state narration as a forbidden self-narration example, in the agent\'s own language', () => {
+        const prompt = buildSystemPrompt({ ...baseCfg, persona: { ...baseCfg.persona, language: 'tr' } });
+        expect(prompt).toContain('yükleniyor, yüklenince gösteririm');
+    });
+
     it('tells the model that contact-info confirmation is the one exception where it actually waits for a real answer', () => {
         const prompt = buildSystemPrompt(baseCfg);
         expect(prompt).toContain('the ONE place where you genuinely wait for a real answer');
@@ -217,8 +247,13 @@ describe('buildSystemPrompt — conversational behavior rules', () => {
     it('tells the model to resume the prior thread after an interruption, only outside a playbook', () => {
         const withoutPlaybook = buildSystemPrompt(baseCfg);
         const withPlaybook = buildSystemPrompt({ ...baseCfg, playbookActive: true });
-        expect(withoutPlaybook).toContain("picking back up where you left off");
-        expect(withPlaybook).not.toContain("picking back up where you left off");
+        expect(withoutPlaybook).toContain('silently pick the original thread back up');
+        expect(withPlaybook).not.toContain('silently pick the original thread back up');
+    });
+
+    it('explicitly forbids announcing the resume out loud (this contradicted the no-self-narration hard rule until fixed)', () => {
+        const prompt = buildSystemPrompt(baseCfg);
+        expect(prompt).toContain('Do NOT announce that you\'re resuming');
     });
 
     it('tells the model to verify a visual claim with read_tour_screen instead of assuming it from knowledge-base text', () => {
@@ -227,19 +262,13 @@ describe('buildSystemPrompt — conversational behavior rules', () => {
         expect(prompt).toContain('call `read_tour_screen`');
     });
 
-    it('tells the model to keep the screen in sync and navigate to a search_knowledge result\'s pageUrl before describing it, only outside a playbook', () => {
+    it('tells the model to answer from search_knowledge immediately, syncing the screen only AFTER speaking, only outside a playbook', () => {
         const withoutPlaybook = buildSystemPrompt(baseCfg);
         const withPlaybook = buildSystemPrompt({ ...baseCfg, playbookActive: true });
-        expect(withoutPlaybook).toContain('Keep the screen in sync with your own words');
-        expect(withoutPlaybook).toContain('`navigate_to` it FIRST');
-        expect(withoutPlaybook).toContain('Never narrate specifics of a page the visitor cannot currently see');
-        expect(withPlaybook).not.toContain('Keep the screen in sync with your own words');
-    });
-
-    it('tells the model this screen-sync rule applies to short factual answers too, not just long walkthroughs', () => {
-        const prompt = buildSystemPrompt(baseCfg);
-        expect(prompt).toContain('This applies to short factual answers too');
-        expect(prompt).toContain("don't just recite the fact from memory over voice");
+        expect(withoutPlaybook).toContain('Answer-first ordering');
+        expect(withoutPlaybook).toContain('SAY the answer right away');
+        expect(withoutPlaybook).toContain('The answer is never gated on the screen');
+        expect(withPlaybook).not.toContain('Answer-first ordering');
     });
 
     it('tells the model never to narrate its own actions/plans out loud, in either mode', () => {
@@ -251,10 +280,11 @@ describe('buildSystemPrompt — conversational behavior rules', () => {
         }
     });
 
-    it('tells the model to click a search_knowledge result\'s tabLabel before expecting to see its content, only outside a playbook', () => {
+    it('tells the model a search_knowledge result\'s tabLabel does not delay the answer either, only outside a playbook', () => {
         const withoutPlaybook = buildSystemPrompt(baseCfg);
         const withPlaybook = buildSystemPrompt({ ...baseCfg, playbookActive: true });
         expect(withoutPlaybook).toContain('`tabLabel`, its content is behind a specific tab/panel selector');
+        expect(withoutPlaybook).toContain('does NOT delay your answer');
         expect(withPlaybook).not.toContain('`tabLabel`, its content is behind a specific tab/panel selector');
     });
 

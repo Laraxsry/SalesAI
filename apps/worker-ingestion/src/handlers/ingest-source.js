@@ -14,6 +14,7 @@ import { presignDownload } from '@repo/storage';
 import { publishEvent, RT_EVENTS } from '@repo/realtime';
 import { extractFromUrl } from '../extractors/url.js';
 import { decryptField, languageName, mapWithConcurrency } from '@repo/utils';
+import { withTimeout } from '@repo/resilience';
 import AdmZip from 'adm-zip';
 import ffmpeg from 'fluent-ffmpeg';
 import fs from 'node:fs/promises';
@@ -23,6 +24,12 @@ import os from 'node:os';
 import { pipeline } from 'node:stream/promises';
 
 const VIDEO_MAX_KEYFRAMES = Number(process.env.VIDEO_MAX_KEYFRAMES || 6);
+
+// See handleIngestSource()'s own comment at its `withTimeout` call. 10 minutes
+// is a ceiling for the slowest realistic case (a large video's download +
+// transcription + keyframe vision analysis, or a many-page crawl with tab
+// discovery on each page), not a target for the common case.
+const HANDLE_INGEST_TIMEOUT_MS = 10 * 60_000;
 
 // fluent-ffmpeg resolves plain `ffmpeg`/`ffprobe` off PATH, which on a dev
 // machine with multiple installs (e.g. an old Anaconda ffmpeg shadowing a
@@ -371,6 +378,20 @@ export async function handleIngestSource({ sourceId, productId, generation }) {
     };
 
     try {
+        // Outer ceiling on the WHOLE extraction+ingest pipeline for one
+        // source — same defense-in-depth reasoning as @repo/rag's
+        // `ingestSource()` (see that file's own `INGEST_TIMEOUT_MS` comment,
+        // which fixed the same class of bug for the final embed/upsert
+        // phase only). This covers everything BEFORE that: the url/api
+        // crawl (BFS across pages, tab discovery, per-page LLM topic
+        // classification), video download/transcription/frame analysis, etc.
+        // Observed live: a url source stuck 'processing' with zero crawled
+        // pages recorded for 15+ minutes and no error — nothing in this
+        // range had its own timeout, so nothing could ever fail it out.
+        // Generous on purpose (a real multi-page crawl with tab discovery,
+        // or a large video transcription, can legitimately take several
+        // minutes) — the point is a ceiling, not a target.
+        return await withTimeout(async () => {
         await emitProgress(sourceId, 'Başlatılıyor…', 5);
 
         switch (source.type) {
@@ -406,9 +427,19 @@ export async function handleIngestSource({ sourceId, productId, generation }) {
                 const crawl = await extractFromUrl(
                     source.url,
                     urlAuth,
-                    (current, max) => {
+                    async (current, max, pagesIndexSoFar) => {
                         const pct = 15 + Math.round((current / max) * 35); // 15%..50%
                         emitProgress(sourceId, `Sayfa ${current}/${max} taranıyor…`, pct).catch(() => {});
+                        // Checkpoint after every page — see extractFromUrl's
+                        // own doc comment on `onProgress`. This is what makes
+                        // a retry (this handler's own timeout, or a crashed
+                        // worker) resume from here via `previousPages` above
+                        // instead of re-crawling the whole site from scratch.
+                        // Awaited (not fire-and-forget) so writes can't land
+                        // out of order and regress the checkpoint.
+                        await KnowledgeSource.findByIdAndUpdate(sourceId, {
+                            'meta.crawlIndex.pages': pagesIndexSoFar
+                        }).catch(() => {});
                     },
                     previousPages
                 );
@@ -733,6 +764,7 @@ export async function handleIngestSource({ sourceId, productId, generation }) {
 
         await cleanup();
         return result;
+        }, HANDLE_INGEST_TIMEOUT_MS);
 
     } catch (err) {
         await cleanup();

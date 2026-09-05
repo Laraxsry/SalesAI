@@ -32,7 +32,18 @@ async function loadPlanContext(agent) {
         }).select('meta.crawlIndex');
         for (const src of sources) {
             for (const [url, page] of Object.entries(src.meta?.crawlIndex?.pages || {})) {
-                siteMap.push({ url, title: page.components?.headings?.[0] || null });
+                // `headings[0]` is `{level, text}`, not a string — passing the
+                // object itself into a template literal (as this used to)
+                // stringifies to the literal text "[object Object]" for
+                // EVERY page, so buildTourPlan's LLM had no real page title
+                // to judge relevance from at all, only the URL slug. `title`
+                // now carries the actual heading text; `snippet` adds a
+                // short excerpt of the page's real crawled content so page
+                // selection and narration can be grounded in what a page
+                // actually says, not just what its URL sounds like.
+                const title = page.components?.headings?.[0]?.text || null;
+                const snippet = (page.rawText || '').replace(/\s+/g, ' ').trim().slice(0, 220) || null;
+                siteMap.push({ url, title, snippet });
             }
         }
     }

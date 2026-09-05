@@ -335,10 +335,14 @@ function FindingCard({ finding, decision, onDecide, readOnly }) {
                         <button
                             type="button"
                             onClick={() => onDecide('approved')}
+                            disabled={finding.stale}
+                            title={finding.stale ? 'Bu bulgu geçersiz — onaylanamaz' : undefined}
                             className={`h-8 rounded-[var(--radius-input)] px-3 text-xs font-medium ${
-                                decision === 'approved'
-                                    ? 'bg-brand text-white'
-                                    : 'border border-border text-text-muted hover:text-text'
+                                finding.stale
+                                    ? 'cursor-not-allowed border border-border text-text-muted opacity-50'
+                                    : decision === 'approved'
+                                      ? 'bg-brand text-white'
+                                      : 'border border-border text-text-muted hover:text-text'
                             }`}
                         >
                             Onayla
@@ -346,6 +350,13 @@ function FindingCard({ finding, decision, onDecide, readOnly }) {
                     </div>
                 )}
             </div>
+
+            {finding.stale && (
+                <p className="mt-3 rounded-[var(--radius-input)] border border-amber-500/40 bg-amber-500/5 px-3 py-2 text-xs text-amber-400">
+                    Bu bulgu artık geçersiz — kaynak bu denetimden sonra yeniden tarandı, referans verdiği metinler
+                    değişti. Onaylamak hiçbir şeyi düzeltmez; Bilgi Denetimi&apos;ni tekrar çalıştır.
+                </p>
+            )}
 
             {finding.rationale && <p className="mt-3 text-xs text-text-muted">{finding.rationale}</p>}
 

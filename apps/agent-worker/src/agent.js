@@ -36,7 +36,7 @@ import { startAvatarWithFallback } from '@repo/avatar';
 import { roomService } from '@repo/livekit';
 import { GuidedTour, analyzeFrame } from '@repo/screen';
 import { getLogger, runWithContext } from '@repo/logger';
-import { decryptField } from '@repo/utils';
+import { decryptField, languageName } from '@repo/utils';
 import { publishEvent, publishMetric, publishUsage, RT_EVENTS, SESSION_METRICS } from '@repo/realtime';
 import { extractParentContext } from './trace-context.js';
 import { withToolCallMetrics } from './tool-metrics.js';
@@ -94,6 +94,17 @@ async function runSession(ctx) {
         log.error('agent-worker: missing agent/product for room', { roomName });
         return;
     }
+
+    // Spelled-out language name (e.g. "Turkish"), threaded into every one-shot
+    // `generateReply({instructions})` payload this file issues mid-conversation
+    // (idle nudge, greeting, waiting-room check, playbook directive, queued
+    // group-question reply). The system prompt already states the language
+    // once at the start and once at the end (persona.js), but those separate
+    // calls are entirely English and are the LAST text the model sees before
+    // composing — live sessions showed that's enough to pull a reply into
+    // English even with the system prompt correctly set. See proactive.js's
+    // module doc comment.
+    const languageDisplay = languageName(agentDoc.persona?.language);
 
     // Heartbeat: keeps Session.lastActivityAt fresh while this worker is
     // attached to the room, so close-stale-sessions (worker-general) can tell
@@ -206,9 +217,10 @@ async function runSession(ctx) {
                 ? { identity: currentFloorIdentity, name: nameOfIdentity(currentFloorIdentity) }
                 : null,
             items,
-            hands: handQueue.list().map((id) => ({ identity: id, name: nameOfIdentity(id) }))
+            hands: handQueue.list().map((id) => ({ identity: id, name: nameOfIdentity(id) })),
+            languageDisplay
         });
-        const instructions = [buildRosterNote(rosterList()), turn].filter(Boolean).join('\n\n');
+        const instructions = [buildRosterNote(rosterList(), languageDisplay), turn].filter(Boolean).join('\n\n');
         if (!instructions) return;
         agentSession
             .generateReply({ instructions, allowInterruptions: false })
@@ -1075,7 +1087,17 @@ async function runSession(ctx) {
     const agentSession = new voice.AgentSession({
         llm: new openai.realtime.RealtimeModel({
             model: process.env.OPENAI_REALTIME_MODEL || 'gpt-realtime-2',
-            voice: 'cedar'
+            voice: 'cedar',
+            // Without an explicit `language`, the transcription model
+            // (visitor speech -> text, separate from the realtime voice
+            // itself) has to auto-detect it turn by turn — observed live as
+            // a real mis-transcription for a short Turkish utterance
+            // ("Manuel alıyoruz" -> "Buonerileri alıyoruz"). We already know
+            // the configured language; giving the SDK's default
+            // (`gpt-4o-mini-transcribe`, see @livekit/agents-plugin-openai)
+            // an ISO-639-1 hint instead of guessing costs nothing and only
+            // ever helps accuracy.
+            inputAudioTranscription: { model: 'gpt-4o-mini-transcribe', language: agentDoc.persona?.language || 'en' }
         }),
         // Disables the SDK's own quiet-detector so it doesn't run on a second,
         // differently-timed clock against the same silence our driver is
@@ -1095,6 +1117,7 @@ async function runSession(ctx) {
     if (playbookActive) {
         playbookRuntime = createPlaybookRuntime({
             cursor: playbookCursor,
+            languageDisplay,
             lastSpoken: () => utterances.last(),
             screen: {
                 // Timed and logged on both sides: the pump awaits this before
@@ -1442,7 +1465,8 @@ async function runSession(ctx) {
                 agentSession.generateReply({
                     instructions: buildIdleNudgeInstructions({
                         consecutive,
-                        lastUtterance: utterances.last()?.text
+                        lastUtterance: utterances.last()?.text,
+                        languageDisplay
                     })
                 });
                 log.info('idle nudge sent', { consecutive });
@@ -1686,13 +1710,42 @@ async function runSession(ctx) {
             // off-putting), and not a generic "hi, how can I help" — the
             // visitor arrives cold via a shared link with no context. No
             // open-ended question: there's no wait after this turn.
-            agentSession.generateReply({
-                instructions: buildGreetingInstructions({
-                    productName: product.name,
-                    productDescription: product.description
-                }),
-                toolChoice: 'none'
-            });
+            //
+            // Retried with backoff, unlike a bare call: `generateReply()`
+            // throws SYNCHRONOUSLY (not a rejected promise) if the realtime
+            // session isn't fully ready yet, even after `agentSession.start()`
+            // has already resolved (see the AgentStateChanged comment above —
+            // a documented few-microtask blip). Every other `generateReply()`
+            // call in this file is guarded against that; this one — the very
+            // first thing the agent ever says — was not, and a live session
+            // showed the failure mode: the throw was swallowed by the outer
+            // `.catch()` on `agentSession.start()`, logged as a generic
+            // "failed to start realtime session", and the agent then sat
+            // completely silent for the rest of the call — nothing else ever
+            // re-triggers a greeting, so a visitor who doesn't speak first
+            // gets no agent at all.
+            const sendGreeting = (attempt = 1) => {
+                try {
+                    agentSession.generateReply({
+                        instructions: buildGreetingInstructions({
+                            productName: product.name,
+                            productDescription: product.description,
+                            languageDisplay
+                        }),
+                        toolChoice: 'none'
+                    });
+                } catch (err) {
+                    log.warn('greeting generateReply failed, retrying', { attempt, error: err.message });
+                    if (attempt < 3) {
+                        setTimeout(() => sendGreeting(attempt + 1), 300);
+                    } else {
+                        log.error('greeting failed after retries; agent will stay silent until the visitor speaks first', {
+                            error: err.message
+                        });
+                    }
+                }
+            };
+            sendGreeting();
         }
     }
 
@@ -1723,7 +1776,8 @@ async function runSession(ctx) {
                 .generateReply({
                     instructions: buildWaitingRoomPrompt({
                         visitorCount: countVisitors(),
-                        maxParticipants
+                        maxParticipants,
+                        languageDisplay
                     }),
                     toolChoice: 'none'
                 })
@@ -1950,7 +2004,7 @@ async function runSession(ctx) {
             if (presentationStarted) {
                 agentSession
                     .generateReply({
-                        instructions: `${returning.name || 'A visitor'} has rejoined this session — you were already talking with them earlier. Say a short "welcome back" by name and continue naturally; do not restart or recap. Do not call any tools.`,
+                        instructions: `${returning.name || 'A visitor'} has rejoined this session — you were already talking with them earlier. Say a short "welcome back" by name and continue naturally; do not restart or recap. Do not call any tools.${languageDisplay ? ` Reply in ${languageDisplay}, regardless of what language this instruction itself is written in.` : ''}`,
                         toolChoice: 'none'
                     })
                     .catch(() => {});
@@ -1971,7 +2025,7 @@ async function runSession(ctx) {
             // Latecomer during a live meeting — a short, single welcome line.
             agentSession
                 .generateReply({
-                    instructions: `A new visitor${name ? ` (${name})` : ''} just joined the ongoing session. Greet them by name in one short line and briefly say what you're currently showing, then carry on — do not restart, do not recap everything, do not call any tools.`,
+                    instructions: `A new visitor${name ? ` (${name})` : ''} just joined the ongoing session. Greet them by name in one short line and briefly say what you're currently showing, then carry on — do not restart, do not recap everything, do not call any tools.${languageDisplay ? ` Reply in ${languageDisplay}, regardless of what language this instruction itself is written in.` : ''}`,
                     toolChoice: 'none'
                 })
                 .catch(() => {});

@@ -31,10 +31,27 @@ async function main() {
             stack: err?.stack
         });
 
-        // Only mark the source failed once BullMQ has exhausted all retry attempts —
-        // this handler also fires after each intermediate retry.
+        // Only mark the source failed once this failure is actually terminal —
+        // this handler also fires after each intermediate retry that will
+        // still be reprocessed, so a naive "always sync" would flip status to
+        // 'failed' for a job about to succeed on attempt 2.
+        //
+        // `attemptsMade >= attempts` catches an ordinary retry cycle running
+        // out. It does NOT catch a job BullMQ gives up on via its OWN stalled-
+        // job detection ("job stalled more than allowable limit" — the worker
+        // holding the lock died, e.g. a dev-server restart mid-job): that path
+        // moves the job straight to permanently 'failed' without ever
+        // incrementing attemptsMade through the normal retry mechanism, so a
+        // job stalled on its very first attempt (attemptsMade:1 of 3) looked
+        // "not exhausted" here and the source was left stuck at its last
+        // real status forever — observed live on two separate sources whose
+        // worker died mid-crawl/mid-zip, both showing "pending"/"processing"
+        // in the Console with no way to tell they had actually failed.
+        // `job.finishedOn` is BullMQ's own signal for "this job's outcome is
+        // final, it will not be retried" regardless of which path got it
+        // there — checking that in addition covers both.
         const sourceId = job?.data?.sourceId;
-        const exhausted = job && job.attemptsMade >= (job.opts?.attempts ?? 1);
+        const exhausted = Boolean(job) && (Boolean(job.finishedOn) || job.attemptsMade >= (job.opts?.attempts ?? 1));
         if (sourceId && exhausted) {
             await KnowledgeSource.findByIdAndUpdate(sourceId, {
                 status: 'failed',

@@ -551,7 +551,16 @@ export function stripRepeatedBoilerplate(pages) {
  *   `loginWithCredentials`) — logs in via the product's own login form before
  *   crawling. Without it, auth-gated pages are scraped anonymously and only
  *   the public/login view gets indexed.
- * @param {(current:number, max:number) => void} [onProgress]
+ * @param {(current:number, max:number, pagesIndexSoFar:object) => void|Promise<void>} [onProgress]
+ *   `pagesIndexSoFar` is the SAME in-progress index object being built by
+ *   this call, passed so the caller can checkpoint it (e.g. to Mongo) after
+ *   every page — otherwise a long crawl interrupted partway through (a
+ *   caller-side timeout, a crashed worker) has nothing durable to resume
+ *   from and a retry re-crawls every page from scratch, including the
+ *   expensive tab-discovery reload cycles. Awaited before continuing to the
+ *   next page specifically so a slow/fire-and-forget checkpoint write can
+ *   never land out of order and overwrite a later page's entry with an
+ *   earlier, smaller snapshot.
  * @param {Map<string, {rawText:string, links:(string|{targetUrl:string,label?:string,kind?:string})[], parentUrl?:string|null, components?:object}>} [previousPages] -
  *   URLs already crawled/chunked in a prior ingestion of this same source.
  *   Such a URL is NOT re-navigated — its cached text/links are reused
@@ -625,11 +634,13 @@ export async function extractFromUrl(urlStr, auth = null, onProgress = null, pre
                 continue; // one broken page shouldn't kill the whole crawl
             }
             fetchedCount++;
-            onProgress?.(fetchedCount, MAX_CRAWL_PAGES);
 
             // 404/5xx — don't index the error page, and it has no real links
             // to follow (its "not found" boilerplate isn't a route map).
-            if (!result.ok) continue;
+            if (!result.ok) {
+                await onProgress?.(fetchedCount, MAX_CRAWL_PAGES, pagesIndex);
+                continue;
+            }
 
             pages.push({ url: next, text: result.text });
             pagesIndex[next] = {
@@ -640,6 +651,7 @@ export async function extractFromUrl(urlStr, auth = null, onProgress = null, pre
                 ...(result.tabVariants ? { tabVariants: result.tabVariants } : {})
             };
             enqueueLinks(result.links, queue, visited, rootOrigin, next);
+            await onProgress?.(fetchedCount, MAX_CRAWL_PAGES, pagesIndex);
         }
 
         const cleanedPages = stripRepeatedBoilerplate(pages);

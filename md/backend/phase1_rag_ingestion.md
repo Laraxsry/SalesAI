@@ -452,6 +452,55 @@
    - [x] Per-(product, normalized query) retrieval cache in Redis — `retrieve` fonksiyonunda `rag:cache:{productId}:{normalizedQuery}:{topK}` formatında 24 saatlik önbellek eklendi.
    - [x] Golden-set grounding eval — `packages/rag/scripts/eval.js` scripti eklendi (faithfulness ve relevancy testleri yapıyor).
 
+7. **Ingestion reliability + dedup** *(bu turda eklendi — canlı bir kaynağın saatlerce
+   `status:'processing'`de donmasından sonra)*
+   - [x] **Üç katmanlı timeout**: `embedBatch()` zaten korumalıydı (30sn + 3 deneme,
+     `packages/ai/src/embeddings.js`). `ingestSource()`'un TÜMÜ (embed/upsert fazı) artık
+     3 dakikada, `handleIngestSource()`'un TÜMÜ (crawl/extraction fazı, embed'e ulaşmadan
+     önceki her şey) artık 10 dakikada `withTimeout` (`@repo/resilience`) ile kesiliyor —
+     hangi await'in içeride donduğu önemli değil, sonuçta gerçek bir hata ile `failed`'e
+     düşüyor.
+   - [x] **BullMQ "stalled" job'ların Mongo'ya senkronu** (`apps/worker-ingestion/src/main.js`) —
+     worker process'i job ortasında ölürse (ör. dev `--watch` restart) BullMQ bunu kendi
+     `maxStalledCount` mekanizmasıyla yakalayıp job'ı kalıcı `failed` yapıyor, ama eski
+     `worker.on('failed', ...)` kontrolü (`attemptsMade >= attempts`) bunu "henüz tükenmedi"
+     sanıp Mongo'ya hiç yazmıyordu — kaynak sonsuza kadar eski durumunda kalıyordu.
+     `job.finishedOn` (BullMQ'nun kendi "bu job kesin bitti" sinyali) kontrolü eklendi.
+   - [x] **Crawl'ın kendi içinde checkpoint** (`extractFromUrl`'in `onProgress` callback'i artık
+     o ana kadarki `pagesIndex`'i taşıyor, `handleIngestSource` her sayfa bitince
+     `meta.crawlIndex.pages`'e yazıyor) — önceden bu SADECE crawl'ın sonunda tek seferde
+     yazılıyordu, yani üstteki timeout'lardan biri tetiklenirse retry sıfırdan başlıyordu.
+     Gerçek ölçüm: 49 sayfalık bir site 4 denemede (her biri kaldığı yerden devam ederek:
+     9→26→34→49 sayfa) tamamlandı, tek seferde denenen ilk hâli hiç bitmiyordu.
+   - [x] **Katman 1 — birebir aynı metin tekilleştirme** (`packages/rag/src/ingest.js`) —
+     chunk'lama sonrası, embed'den ÖNCE, kaynağın tamamında (case/whitespace normalize)
+     birebir aynı chunk'lar eleniyor. LLM/embedding maliyeti yok, risk sıfır. Gerçek bir
+     sitede (edge.cyberverse) 1718 chunk içinde **4.470 çift tam 1.0 benzerlik** bulundu,
+     hepsi aynı sayfanın kendi içinde (muhtemelen DOM'da gizli/görünür iki kez render
+     edilen bir bileşen).
+   - [x] **Katman 2 — otomatik near-duplicate/çelişki denetimi** (`packages/rag/src/audit/
+     auto-dedupe.js`, yeni) — embed+kaydet bitince, `status:'ready'` yazılmadan önce, aynı
+     kaynağın chunk'ları üzerinde mevcut Knowledge Audit'in AYNI mekanizması (`clusterChunks`
+     0.88 eşik + `reviewCluster` LLM) otomatik çalışıyor. **Sadece `"duplicate"` verdict'i
+     otomatik uygulanır** — `"contradiction"` (ör. iki farklı fiyat) ASLA otomatik silinmez,
+     normal bir `KnowledgeAudit` kaydı olarak beklemede bırakılır. Bilinçli tasarım kararı:
+     benzerlik eşiği TEK BAŞINA "sil" kararı için güvenli değil — `cluster.js`'in kendi
+     kalibrasyonu bir fiyat çelişkisinin (0.947) gerçek bir tekrardan (0.918) DAHA YÜKSEK
+     benzerlik skoru aldığını gösteriyor, yani düz bir eşik çelişkiyi tekrardan ayıramaz.
+   - [x] `getVectorStore().listByProduct()`'a opsiyonel `sourceId` filtresi eklendi (hem Mongo
+     hem Qdrant) — Katman 2 tüm ürünü değil sadece ilgili kaynağı tarasın diye.
+   - [x] **Denetim bulgularının "hayalet" olma riski** (`packages/rag/src/audit/index.js`,
+     `apps/api/src/routes/knowledge.js`) — bir bulgunun `chunkIds`'i, kaynak denetimden SONRA
+     yeniden taranırsa (chunk'lar silinip yeni ID'lerle yaratılır) artık yok oluyor.
+     `applyAuditFindings()` artık onaylamadan önce chunk'ların hâlâ var olup olmadığını
+     kontrol ediyor (yoksa `failed` + açık hata, sessizce gereksiz bir curated chunk
+     yazmıyor); Console bu durumu `stale:true` ile önceden (onay denemesinden ÖNCE) uyarıyor.
+   - [x] Console: zip container'ın kendi başlığı artık dosya adını gösteriyor (önceden boştu,
+     kullanıcı yükleme sırasında başlık girmezse tip etiketi — "Doküman" vb. — görünüyordu;
+     artık `file.name` varsayılan oluyor). Zip'teki "başarısız" rozeti artık `meta.zipSummary`
+     donmuş anlık görüntüsünden değil, canlı children listesinden hesaplanıyor (bir çocuk
+     silinince/düzelince rozet otomatik güncelleniyor).
+
 ---
 
 ## Acceptance criteria
@@ -475,4 +524,6 @@
   ~2x LLM çağrısı ekliyor (bkz. madde 1'in "Site Bilgisi" girişi). Reduce-fazı önbelleklemesi
   (sadece değişen konular) sonraki re-ingest'lerde bunu ciddi azaltıyor ama İLK crawl'da tam
   maliyet kaçınılmaz. Çok sayfalı (40'a yakın) bir site için ilk taramanın süresi de buna
-  bağlı olarak uzuyor — henüz gerçek bir crawl'da ölçülmedi.
+  bağlı olarak uzuyor — **artık ölçüldü**: 49 sayfalık gerçek bir site (sekme keşfi dahil)
+  tek bir denemede 10 dakikayı aşıyor, bu yüzden madde 7'nin checkpoint/resume mekanizması
+  eklendi (aksi halde her timeout'ta sıfırdan başlayıp asla bitmiyordu).

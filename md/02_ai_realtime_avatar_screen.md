@@ -89,11 +89,35 @@ do any of these"** block. Two prompt themes matter for how the agent feels:
 - **No self-narration** — the agent never voices its own actions, plans or
   thinking ("let me switch over", *"şimdi oraya geçiyorum"*, *"şunu inceleyip
   döneceğim"*, "first I'll show you X then Y"). Forbidden examples are given in
-  the agent's own language. It acts silently and speaks finished thoughts.
+  the agent's own language. It acts silently and speaks finished thoughts. This
+  keeps surfacing new phrasings live (a "now I'll show you X" announcement, a
+  page-still-loading commentary, an "I'll come back to this" promise, even
+  announcing a RESUME after an interruption — one round found the resume rule
+  itself telling the model to say "picking back up where we left off",
+  directly contradicting this hard rule; it now resumes silently instead) —
+  each is added to `persona.js`'s `planTalkExamples` as a concrete example in
+  the agent's own language, not just the general rule, because a generic
+  prohibition alone repeatedly failed to stop a close-but-not-identical
+  phrasing.
 - **Dense, tailored turns** — every turn must land a concrete point / show
   something / advance the goal; no warm-up, answer in the first sentence,
   reshape the demo around what the visitor signalled they care about, "never
   pad". Regression lock: `backend_tests/unit/system-prompt-structure.mjs`.
+- **Click over navigate** — before `navigate_to`, the agent is told to check
+  whether the destination is reachable by clicking something already on the
+  current screen (a nav link/tab/button, or `find_element`) instead —
+  `navigate_to` is a full page reload the visitor sits through every time,
+  clicking usually isn't. It's also told to check its own recent actions
+  first and skip a redundant `navigate_to`/re-click/re-`read_tour_screen` for
+  a page/tab it's already on and hasn't left.
+- **Answer-first ordering** — a `search_knowledge` answer is spoken
+  immediately, not gated on the screen catching up first (the old rule made
+  every answer wait through a full `find_page`→`navigate_to`→`find_element`→
+  `click_element`→`read_tour_screen` chain before saying anything, measured
+  live at 13-39s of dead air per turn). The screen syncs as the very next
+  beat while the agent keeps talking; only an explicit VISUAL claim ("here it
+  is on screen") still waits for `read_tour_screen` confirmation — the fact
+  itself never does.
 
 ### 2.2 LLM strategy
 
@@ -107,6 +131,20 @@ Two interchangeable modes:
 
 Selected via env (`LLM_PROVIDER`, `OPENAI_REALTIME_MODEL`, `STT_PROVIDER`,
 `TTS_PROVIDER`).
+
+The Realtime `RealtimeModel` is now given an explicit `inputAudioTranscription
+.language` (the agent's configured ISO code, `agentDoc.persona.language`)
+instead of leaving the transcription model to auto-detect it per utterance —
+observed live as a real mis-transcription of a short Turkish utterance
+("Manuel alıyoruz" → "Buonerileri alıyoruz") with no hint set.
+
+The agent-worker's own automatic opening `generateReply()` call (the plain,
+no-playbook greeting) is now retried with backoff on failure — it was the one
+`generateReply()` call in the file with no guard against the SDK throwing
+synchronously when the realtime session isn't fully ready yet a few
+microtasks after `agentSession.start()` resolves (every other call already
+had one); a session was observed where this silently ate the throw and the
+agent never spoke until the visitor spoke first.
 
 ### 2.3 Tools (function calling)
 
@@ -264,6 +302,38 @@ one participant — and `GET /prejoin` only reports `surveyEnabled:true` for a
 - **Cost** — ~7 cheap `gpt-4o-mini` question calls + 1 plan call per surveyed
   visitor; `chatRateLimit` + `blockSuspiciousBots` + `PRECALL_SURVEY_DAILY_LIMIT`
   per share link. All non-fatal: any failure → survey skipped, normal flow.
+
+**Fixes from a live test with real, on-topic survey answers:**
+- `nextSurveyQuestion`/`buildTourPlan` (`packages/ai/src/pre-call-survey.js`)
+  now convert `language` through `languageName()` (`"tr"` → `"Turkish"`)
+  before it reaches the prompt, same as `persona.js` already did for the live
+  conversation — the raw ISO code alone was too weak a signal and both the
+  survey questions and generated narration were drifting to English even
+  when the agent's language was correctly set to Turkish.
+  `nextSurveyQuestion`'s first-question rule also no longer offers a generic
+  example ("what are you hoping to get out of this?") — it must now name a
+  real theme of the product being demoed.
+- `prejoin.js`'s `loadPlanContext()` was passing a page's first heading as a
+  **JS object** (`{level, text}`, not `.text`) into `buildTourPlan`'s prompt
+  — it silently stringified to the literal text `"[object Object]"` for
+  every page, so the plan-builder had no real page title to judge relevance
+  from at all, only the URL slug. Fixed to pass the actual heading text plus
+  a short content snippet, and the prompt now requires a page's own snippet
+  to genuinely match the step's topic before its URL is used — this was the
+  direct cause of a live session where the agent navigated to a KVKK/
+  compliance page while narrating generic CRM/backup-process talk that had
+  nothing to do with what was on screen (confirmed live: the agent itself
+  admitted the mismatch when asked what was on screen).
+- Step 1's narration rule ("no throat-clearing") had gone too far and
+  produced sessions with **zero greeting at all** — `generatedPlan` sessions
+  skip `buildGreetingInstructions()` entirely (their playbook runtime starts
+  immediately), so the plan's own step-1 narration was the visitor's only
+  chance at a greeting. It's now required to open with a brief warm word
+  before getting to the point, not skip straight to a cold question.
+- `nextSurveyQuestion`'s question `text` was including the multiple-choice
+  options inline ("...? (Seçenekler: A, B, C)") in addition to the separate
+  `options` array the UI already renders them from — the prompt now
+  explicitly forbids restating them in `text`.
 
 ---
 

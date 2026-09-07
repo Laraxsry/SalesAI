@@ -156,6 +156,7 @@ export const agentsApi = {
     getEmbed: (id) => apiFetch(`/agents/${id}/embed`),
     saveEmbed: (id, payload) => apiFetch(`/agents/${id}/embed`, { method: 'POST', body: payload }),
     getPlaybook: (id) => apiFetch(`/agents/${id}/playbook`),
+    generatePlaybook: (id, payload) => apiFetch(`/agents/${id}/playbook/generate`, { method: 'POST', body: payload }),
     savePlaybook: (id, payload) => apiFetch(`/agents/${id}/playbook`, { method: 'POST', body: payload })
 };
 

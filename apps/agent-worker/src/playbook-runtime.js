@@ -1,4 +1,4 @@
-import { wrapDirective } from '@repo/agent';
+import { buildSurveyAcknowledgementInstructions, wrapDirective } from '@repo/agent';
 
 /**
  * Drives one session's playbook: navigate → narrate → wait → advance, one
@@ -91,6 +91,7 @@ import { wrapDirective } from '@repo/agent';
  * @param {object} deps
  * @param {ReturnType<import('./playbook-cursor.js').createPlaybookCursor>} deps.cursor
  * @param {ScreenPort} deps.screen
+ * @param {{show:(node:PlaybookNode)=>Promise<void>|void, hide:(node:PlaybookNode)=>void}} [deps.survey]
  * @param {(instructions: string) => SpeechHandleLike} deps.speak throws
  *   synchronously if the session isn't running or is closing — the pump's
  *   own try/catch is what turns that into onError + stop(), not the caller
@@ -114,6 +115,7 @@ import { wrapDirective } from '@repo/agent';
 export function createPlaybookRuntime({
     cursor,
     screen,
+    survey = { show: () => {}, hide: () => {} },
     speak,
     languageDisplay = null,
     /** What the agent last said out loud, for quoting back on a redelivery.
@@ -159,6 +161,10 @@ export function createPlaybookRuntime({
      *  back as "you already said this, continue from there" would make the
      *  repetition worse, not better. */
     const interruptedText = new Map();
+    // A UI answer is not part of the realtime model's audio transcript. Keep
+    // it for a short serialized acknowledgement and the following node's
+    // private instruction, without manufacturing a fake user utterance.
+    let pendingSurveyAnswer = null;
 
     /** The SpeechHandle `pump()` is currently (or was most recently)
      *  dispatching — same lifecycle as `activeNode` (set once, the instant a
@@ -238,6 +244,19 @@ export function createPlaybookRuntime({
                 }
                 return;
             }
+            // Receipt comes before navigation, so a visible UI choice feels
+            // conversational instead of disappearing into a page-load pause.
+            // Keep activeNode on the already-satisfied survey until this
+            // handle finishes: even if the model ignores the no-tool rule,
+            // an accidental progress signal cannot close the next node.
+            if (pendingSurveyAnswer) {
+                const acknowledgement = speak(
+                    buildSurveyAcknowledgementInstructions(pendingSurveyAnswer, languageDisplay)
+                );
+                activeHandle = acknowledgement;
+                await acknowledgement.waitForPlayout();
+                if (stopped || generation !== epoch) return;
+            }
             // Fixed here, before anything async happens below — this is the
             // one place `activeNode` is ever assigned. See the P0 note atop
             // this file for why `signal()` must resolve 'tool'/'advance_step'
@@ -275,6 +294,20 @@ export function createPlaybookRuntime({
                 screenVisible = false;
             }
 
+            // Survey presentation is a UI side effect, kept behind its own
+            // port so this runtime knows nothing about LiveKit or React. Show
+            // it before asking the question: the spoken prompt and visible
+            // choices must describe the same active node.
+            if (node.type === 'survey' && node.survey) {
+                await survey.show(node);
+                if (stopped || generation !== epoch) return;
+                // A fast visitor can answer while the reliable publish awaits.
+                // Do not ask a question that has already been completed; let
+                // the pending pump dispatch the following node with the answer
+                // context instead.
+                if (cursor.isSatisfied(node.id)) return;
+            }
+
             // ── 2. NARRATE — one node's directive, nothing else. ────────────
             const resuming = redelivered.has(node.id);
             // `url` is only meaningful alongside `screenVisible:true` — a
@@ -291,9 +324,11 @@ export function createPlaybookRuntime({
                     screenVisible,
                     resuming,
                     spokenSoFar: resuming ? interruptedText.get(node.id) ?? null : null,
-                    languageDisplay
+                    languageDisplay,
+                    surveyAnswer: pendingSurveyAnswer
                 })
             );
+            pendingSurveyAnswer = null;
             // Set before the await, not after — see the P0 note and
             // `hasSpoken()`'s comment: 'advance_step'/'tool' can call into
             // `signal()` while this exact await is still pending, and it
@@ -339,7 +374,7 @@ export function createPlaybookRuntime({
         },
 
         /**
-         * @param {'tool'|'advance_step'|'silence'|'answered'|'followup_suppressed'} kind
+         * @param {'tool'|'advance_step'|'silence'|'answered'|'followup_suppressed'|'survey_answer'} kind
          * @param {object} [meta]
          */
         signal(kind, meta) {
@@ -349,8 +384,21 @@ export function createPlaybookRuntime({
             // not the cursor's live position (see the P0 note atop this
             // file). 'silence'/'answered' are real-time observations, so
             // they still ask the cursor what's current right now.
-            const node = (kind === 'tool' || kind === 'advance_step' || kind === 'followup_suppressed') ? activeNode : cursor.current();
+            const node = (kind === 'tool' || kind === 'advance_step' || kind === 'followup_suppressed' || kind === 'survey_answer') ? activeNode : cursor.current();
             if (!node) return;
+
+            // A survey is completed only by its matching UI answer. In
+            // particular, the model's habitual advance_step and the generic
+            // silence driver must never skip a question that is still on
+            // screen. Empty narration retries remain allowed so a provider
+            // glitch does not leave a silent card behind.
+            if (node.type === 'survey' && kind !== 'survey_answer' && kind !== 'followup_suppressed') {
+                if (kind !== 'silence' || hasSpoken() || interruptedIds.has(node.id)) {
+                    onSignalIgnored(node, kind, 'survey_waiting_for_answer');
+                    return;
+                }
+            }
+            if (kind === 'survey_answer' && node.type !== 'survey') return;
 
             // 'silence' only makes sense once the agent has actually stopped
             // talking — the real caller (silence-driver) already vetoes on
@@ -453,6 +501,20 @@ export function createPlaybookRuntime({
             if (kind === 'answered' && node.mode !== 'skip-if-no-answer') return;
 
             if (!cursor.satisfy(node.id, kind)) return; // already satisfied — idempotent
+            if (kind === 'survey_answer') {
+                pendingSurveyAnswer = typeof meta?.answer === 'string' ? meta.answer : null;
+            }
+            // Unconditional on node type, not just the 'survey_answer' kind:
+            // a survey node can also close via the exhausted-empty-retry
+            // fallthrough above (P2, kind 'silence') when the question was
+            // never actually narrated. That path never sends 'survey_answer',
+            // so gating hide() on the kind left the visitor's card on screen
+            // for a node the runtime had already moved past — the next
+            // legitimate answer they submitted then failed instantly with
+            // "no longer matches the active question" (normalizeSurveyAnswer
+            // resolving against the new activeNode). Hiding here instead,
+            // keyed only on node.type, covers every path off a survey node.
+            if (node.type === 'survey') survey.hide(node);
             // Reports whatever was on screen for this node's own narration —
             // `lastShownUrl` cannot have changed since that node's `pump()`
             // call finished (single-flight: nothing else runs mid-node).

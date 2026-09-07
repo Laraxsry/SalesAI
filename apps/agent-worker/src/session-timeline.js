@@ -63,6 +63,8 @@ export const TIMELINE_EVENTS = {
     // redeliver the node it belongs to instead.
     PLAYBOOK_FOLLOWUP_SUPPRESSED: 'playbook.followup.suppressed',
     PLAYBOOK_COMPLETED: 'playbook.completed',
+    SURVEY_SHOWN: 'survey.shown',
+    SURVEY_ANSWERED: 'survey.answered',
 
     // ── Ekran / Playwright ───────────────────────────────────────────────
     SCREEN_NAVIGATE_BEGIN: 'screen.navigate.begin',

@@ -14,7 +14,16 @@ export async function createAccessToken({ roomName, identity, name, metadata }) 
         name,
         metadata: metadata ? JSON.stringify(metadata) : undefined
     });
-    at.addGrant({ roomJoin: true, room: roomName, canPublish: true, canSubscribe: true });
+    at.addGrant({
+        roomJoin: true,
+        room: roomName,
+        canPublish: true,
+        canSubscribe: true,
+        // Survey answers and the hand-raise protocol travel over LiveKit data
+        // packets. Keep this explicit so a future grant-default change cannot
+        // silently turn interactive meetings into read-only ones.
+        canPublishData: true
+    });
     return at.toJwt();
 }
 

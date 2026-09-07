@@ -13,6 +13,11 @@ const PlaybookNodeSchema = new Schema(
     {
         id: { type: String, required: true },
         order: { type: Number, required: true },
+        type: {
+            type: String,
+            enum: ['narrative', 'survey'],
+            default: 'narrative'
+        },
         /** Page to show for this step; null means stay on whatever is already
          *  on screen (or show nothing, for a pure-narration step). */
         url: { type: String, default: null },
@@ -27,6 +32,35 @@ const PlaybookNodeSchema = new Schema(
             type: String,
             enum: ['important', 'situational', 'skip-if-no-answer'],
             default: 'situational'
+        },
+        survey: {
+            type: new Schema(
+                {
+                    question: { type: String, required: true },
+                    // Stable machine-readable meaning of the answer. The
+                    // visitor-facing question remains the display label.
+                    fieldKey: { type: String, default: null },
+                    answerType: {
+                        type: String,
+                        enum: ['single-choice', 'text'],
+                        default: 'single-choice'
+                    },
+                    options: {
+                        type: [new Schema(
+                            {
+                                value: { type: String, required: true },
+                                label: { type: String, required: true }
+                            },
+                            { _id: false }
+                        )],
+                        default: []
+                    },
+                    allowFreeText: { type: Boolean, default: false },
+                    required: { type: Boolean, default: true }
+                },
+                { _id: false }
+            ),
+            default: null
         }
     },
     { _id: false } // subdocuments are addressed by their own `id`, not Mongo's;

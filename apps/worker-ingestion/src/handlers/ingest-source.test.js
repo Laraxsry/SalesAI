@@ -376,6 +376,48 @@ describe('handleIngestSource — url/api synthesis segments', () => {
         ]);
     });
 
+    it('adds hidden toggle content as an element-scoped segment without embedding its selector', async () => {
+        synthesizePage.mockResolvedValue('');
+        synthesizeOverview.mockResolvedValue('');
+        extractFromUrl.mockResolvedValue({
+            text: '[Page: https://example.com/faq]\nfaq',
+            pages: [{ url: 'https://example.com/faq', text: 'faq' }],
+            pagesIndex: {
+                'https://example.com/faq': {
+                    rawText: 'faq',
+                    links: [],
+                    components: {
+                        toggles: [{
+                            label: 'Midas ekstresini nasıl yüklerim?',
+                            selector: '[aria-controls="faq-midas"]',
+                            elementKey: 'el_0123456789abcdef',
+                            elementPath: 'sss/midas-ekstresi',
+                            revealedText: 'Yatırım Hesabı bölümündeki doküman ikonuna basın.'
+                        }]
+                    }
+                }
+            }
+        });
+
+        await handleIngestSource({ sourceId: 'src-1', productId: 'prod-1' });
+
+        const { text: segments } = ingestSource.mock.calls[0][0];
+        expect(segments).toEqual([
+            { text: 'faq', metadata: { pageUrl: 'https://example.com/faq' } },
+            {
+                text: 'Midas ekstresini nasıl yüklerim?\nYatırım Hesabı bölümündeki doküman ikonuna basın.',
+                metadata: {
+                    pageUrl: 'https://example.com/faq',
+                    elementKey: 'el_0123456789abcdef',
+                    elementPath: 'sss/midas-ekstresi',
+                    elementType: 'toggle',
+                    heading: 'Midas ekstresini nasıl yüklerim?'
+                }
+            }
+        ]);
+        expect(JSON.stringify(segments)).not.toContain('aria-controls');
+    });
+
     it('never feeds tab/panel variant text into the site-topics (classifyPageTopics) pass', async () => {
         synthesizePage.mockResolvedValue('');
         synthesizeOverview.mockResolvedValue('');

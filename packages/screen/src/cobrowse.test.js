@@ -125,12 +125,20 @@ function makeFakeLocator({ waitForError = null, element = {} } = {}) {
     };
 }
 
-function makeFakeElement({ tagName = 'DIV', type = null } = {}) {
+function makeFakeElement({ tagName = 'DIV', type = null, expanded = null, controlsId = null, visibleText = '' } = {}) {
+    const attributes = new Map();
+    if (type !== null) attributes.set('type', type);
+    if (expanded !== null) attributes.set('aria-expanded', String(expanded));
+    if (controlsId !== null) attributes.set('aria-controls', controlsId);
     return {
         tagName,
-        getAttribute: (name) => (name === 'type' ? type : null),
+        getAttribute: (name) => attributes.get(name) ?? null,
+        ownerDocument: { getElementById: () => ({ innerText: visibleText }) },
+        parentElement: { innerText: visibleText },
+        closest: () => null,
         style: {},
-        scrollIntoView: vi.fn()
+        scrollIntoView: vi.fn(),
+        _setAttribute: (name, value) => attributes.set(name, String(value))
     };
 }
 
@@ -481,9 +489,10 @@ describe('GuidedTour#click', () => {
         page.locator = vi.fn(() => locator);
         const tour = makeTour(page);
 
-        await tour.click('text=Ürünler');
+        const result = await tour.click('text=Ürünler');
 
         expect(page.click).toHaveBeenCalledWith('text=Ürünler');
+        expect(result).toEqual({ ok: true, found: true, clicked: true });
     });
 
     it.each([
@@ -502,14 +511,63 @@ describe('GuidedTour#click', () => {
         expect(page.click).not.toHaveBeenCalled();
     });
 
-    it('propagates a not-visible timeout instead of clicking blind', async () => {
+    it('returns a soft not-found result for a not-visible selector instead of clicking blind', async () => {
         const locator = makeFakeLocator({ waitForError: new Error('timeout waiting for locator') });
         const page = makeFakePage('https://salesai.example/dashboard');
         page.locator = vi.fn(() => locator);
         const tour = makeTour(page);
 
-        await expect(tour.click('text=Ghost')).rejects.toThrow(/timeout waiting for locator/);
+        await expect(tour.click('text=Ghost')).resolves.toEqual({ ok: false, found: false, reason: 'not_visible' });
         expect(page.click).not.toHaveBeenCalled();
+    });
+
+    it('does not collapse an already-expanded toggle when ensureExpanded is true', async () => {
+        const element = makeFakeElement({
+            tagName: 'BUTTON',
+            expanded: true,
+            controlsId: 'faq-answer',
+            visibleText: 'Midas uygulamasında Yatırım Hesabı bölümünü açın.'
+        });
+        const locator = makeFakeLocator({ element });
+        const page = makeFakePage('https://salesai.example/faq');
+        page.locator = vi.fn(() => locator);
+        const tour = makeTour(page);
+
+        const result = await tour.click('[aria-controls="faq-answer"]', { ensureExpanded: true });
+
+        expect(page.click).not.toHaveBeenCalled();
+        expect(result).toEqual({
+            ok: true,
+            found: true,
+            clicked: false,
+            expanded: true,
+            visibleText: 'Midas uygulamasında Yatırım Hesabı bölümünü açın.'
+        });
+    });
+
+    it('opens a collapsed toggle and returns its post-click state', async () => {
+        const element = makeFakeElement({
+            tagName: 'BUTTON',
+            expanded: false,
+            controlsId: 'faq-answer',
+            visibleText: 'PDF yalnızca hesaplama sırasında işlenir.'
+        });
+        const locator = makeFakeLocator({ element });
+        const page = makeFakePage('https://salesai.example/faq');
+        page.locator = vi.fn(() => locator);
+        page.click = vi.fn(async () => element._setAttribute('aria-expanded', 'true'));
+        const tour = makeTour(page);
+
+        const result = await tour.click('[aria-controls="faq-answer"]', { ensureExpanded: true });
+
+        expect(page.click).toHaveBeenCalledWith('[aria-controls="faq-answer"]');
+        expect(result).toEqual({
+            ok: true,
+            found: true,
+            clicked: true,
+            expanded: true,
+            visibleText: 'PDF yalnızca hesaplama sırasında işlenir.'
+        });
     });
 
     it('throws if the click lands the page outside the trusted domain', async () => {

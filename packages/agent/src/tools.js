@@ -101,10 +101,28 @@ function searchSiteMap(siteMap, query) {
  * selector — a proper attribute selector, more reliable for a whole
  * container than a `text=` substring match would be.
  *
- * @param {{url:string, components?:{interactiveElements?:{label:string,kind:string,selector:string}[], sections?:{tag:string,ariaLabel:string|null}[]}}[]} siteMap
+ * @param {{url:string, components?:{interactiveElements?:{label:string,kind:string,selector:string}[], sections?:{tag:string,ariaLabel:string|null}[], toggles?:{elementKey:string,elementPath?:string,label:string,kind:string,selector:string}[]}}[]} siteMap
  * @param {string} query
+ * @param {string} elementKey
  */
-function searchSiteElements(siteMap, query) {
+function searchSiteElements(siteMap, query, elementKey) {
+    if (elementKey) {
+        for (const page of siteMap) {
+            const toggle = (page.components?.toggles || []).find((item) => item.elementKey === elementKey);
+            if (toggle) {
+                return [{
+                    pageUrl: page.url,
+                    selector: toggle.selector,
+                    kind: toggle.kind || 'toggle',
+                    label: toggle.label,
+                    elementKey: toggle.elementKey,
+                    ...(toggle.elementPath && { elementPath: toggle.elementPath })
+                }];
+            }
+        }
+        return [];
+    }
+
     const queryWords = tokenize(query);
     if (!queryWords.length) return [];
     const results = [];
@@ -115,6 +133,19 @@ function searchSiteElements(siteMap, query) {
     const seenSelectors = new Set();
 
     for (const page of siteMap) {
+        for (const toggle of page.components?.toggles || []) {
+            if (textMentions(`${toggle.label} ${toggle.elementPath || ''}`, queryWords) && !seenSelectors.has(toggle.elementKey)) {
+                seenSelectors.add(toggle.elementKey);
+                results.push({
+                    pageUrl: page.url,
+                    selector: toggle.selector,
+                    kind: toggle.kind || 'toggle',
+                    label: toggle.label,
+                    elementKey: toggle.elementKey,
+                    ...(toggle.elementPath && { elementPath: toggle.elementPath })
+                });
+            }
+        }
         for (const el of page.components?.interactiveElements || []) {
             if (textMentions(el.label, queryWords) && !seenSelectors.has(el.selector)) {
                 seenSelectors.add(el.selector);
@@ -179,7 +210,7 @@ export function buildTools({
         {
             name: 'search_knowledge',
             description:
-                "Look up a verified fact about the product before answering — silent, the visitor never hears about this. A result may include `pageUrl` — the real page this fact was crawled from. When you want to SHOW something a result just told you about, prefer navigating straight to its `pageUrl` over guessing via find_page: it's a genuine content match, not a guess from a nav label (nav labels are often generic/marketing wording that has nothing to do with what's actually on the page). A result may also include `tabLabel` — that content lives behind a specific tab/panel selector on that page, not on the page's default view; after navigating to `pageUrl`, use `find_element` for that `tabLabel` text and `click_element` it before expecting to see this on screen.",
+                "Look up a verified fact about the product before answering — silent, the visitor never hears about this. A result may include `pageUrl`, `tabLabel`, or `elementKey`. To SHOW an element-scoped fact: navigate to its pageUrl, call find_element with the exact elementKey, then click_element with that elementKey and ensureExpanded=true. Never invent an elementKey or selector.",
             parameters: {
                 type: 'object',
                 properties: {
@@ -216,7 +247,11 @@ export function buildTools({
                     // tab than whichever one happened to be showing. Omitted
                     // (not `tabLabel: undefined`) when the chunk isn't
                     // tab-scoped, same convention as `pageUrl` above.
-                    ...(c.metadata?.tabLabel && { tabLabel: c.metadata.tabLabel })
+                    ...(c.metadata?.tabLabel && { tabLabel: c.metadata.tabLabel }),
+                    ...(c.metadata?.elementKey && { elementKey: c.metadata.elementKey }),
+                    ...(c.metadata?.elementPath && { elementPath: c.metadata.elementPath }),
+                    ...(c.metadata?.elementType && { elementType: c.metadata.elementType }),
+                    ...(c.metadata?.heading && { heading: c.metadata.heading })
                 }));
             }
         },
@@ -253,13 +288,15 @@ export function buildTools({
         {
             name: 'find_element',
             description:
-                "Look up the real selector for a specific button/link/form on a page by what it's about (e.g. \"fiyatlandırma butonu\", \"iletişim formu\") — call this BEFORE click_element/highlight whenever you're not already certain of the exact selector, instead of guessing one. find_page resolves a PAGE; this resolves an ELEMENT on a page. Returns real candidates found while the site was crawled, each tied to the page it's on.",
+                "Resolve a crawled page element. When search_knowledge returns an elementKey, pass that exact key for deterministic lookup. Otherwise use query for fuzzy discovery. Never invent an elementKey or selector.",
             parameters: {
                 type: 'object',
-                properties: { query: { type: 'string' } },
-                required: ['query']
+                properties: {
+                    query: { type: 'string', description: 'Natural-language element description for fuzzy discovery.' },
+                    elementKey: { type: 'string', description: 'Exact opaque key returned by search_knowledge.' }
+                }
             },
-            handler: async ({ query }) => ({ candidates: searchSiteElements(siteMap, query) })
+            handler: async ({ query = '', elementKey }) => ({ candidates: searchSiteElements(siteMap, query, elementKey) })
         },
         {
             name: 'highlight',
@@ -274,13 +311,29 @@ export function buildTools({
         {
             name: 'click_element',
             description:
-                'Click an element on the shown dashboard (buttons, nav links). Use a Playwright selector; prefer visible-text selectors like "text=Ücretler" for links and buttons.',
+                'Click a shown dashboard element. Prefer an exact elementKey returned by search_knowledge/find_element; use ensureExpanded=true for accordions so an already-open item is not accidentally closed. Legacy selector clicks remain supported.',
             parameters: {
                 type: 'object',
-                properties: { selector: { type: 'string' } },
-                required: ['selector']
+                properties: {
+                    selector: { type: 'string' },
+                    elementKey: { type: 'string', description: 'Exact opaque key returned by search_knowledge/find_element.' },
+                    ensureExpanded: { type: 'boolean', description: 'If true, do not click an accordion that is already open.' }
+                }
             },
-            handler: async ({ selector }) => tour?.click?.(selector) ?? { ok: false }
+            handler: async ({ selector, elementKey, ensureExpanded = false }) => {
+                let resolvedSelector = selector;
+                if (elementKey) {
+                    const [match] = searchSiteElements(siteMap, '', elementKey);
+                    if (!match) return { ok: false, found: false, reason: 'element_key_not_found' };
+                    resolvedSelector = match.selector;
+                }
+                if (!resolvedSelector) return { ok: false, found: false, reason: 'selector_required' };
+                if (!tour?.click) return { ok: false };
+                if (elementKey || ensureExpanded) {
+                    return tour.click(resolvedSelector, { ensureExpanded }) ?? { ok: false };
+                }
+                return tour.click(resolvedSelector) ?? { ok: false };
+            }
         },
         {
             name: 'scroll_page',

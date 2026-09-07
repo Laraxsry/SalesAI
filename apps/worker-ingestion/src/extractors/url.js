@@ -1,6 +1,7 @@
 import { checkSSRFUrl, waitForStableContent as waitForStableContentShared } from '@repo/utils';
 import { loginWithCredentials } from '@repo/screen';
 import { chromium } from 'playwright';
+import { createHash } from 'node:crypto';
 
 // Same-origin pages only, capped by count (not depth) — simplest bound on
 // crawl cost/time regardless of how the site's link graph is shaped. Large
@@ -58,6 +59,7 @@ const NAV_DISCOVERY_ACTION_WORDS =
 // expensive (see discoverTabVariants' own docstring), this just guards
 // against a pathological page with a huge sibling-button group.
 const MAX_TAB_DISCOVERY_CLICKS = Number(process.env.URL_CRAWL_MAX_TAB_CLICKS || 8);
+const MAX_TOGGLE_DISCOVERY_CLICKS = Number(process.env.URL_CRAWL_MAX_TOGGLE_CLICKS || 20);
 // Below this many sibling candidates, it's not a meaningful "tab group"
 // signal — a single button next to unrelated content would otherwise be
 // mistaken for one.
@@ -82,6 +84,11 @@ const BOILERPLATE_MIN_PAGES = 3;
 // as chrome (sidebar nav, header, logged-in-user info) rather than real
 // content.
 const BOILERPLATE_THRESHOLD = Number(process.env.URL_CRAWL_BOILERPLATE_THRESHOLD || 0.6);
+
+// Bump when persisted page-index semantics change. Cache entries without
+// this version are deliberately fetched once more so newly introduced
+// element discovery is not permanently absent from older knowledge sources.
+const CRAWL_PAGE_INDEX_VERSION = 2;
 
 /** Strips the hash fragment so '#/tab-a' and '#/tab-b' anchors on the same
  * route don't get treated as distinct pages; returns null for unparsable URLs. */
@@ -124,7 +131,12 @@ function enqueueLinks(rawLinks, queue, visited, rootOrigin, parentUrl) {
  */
 async function expandCollapsedNav(page) {
     for (let i = 0; i < MAX_EXPAND_CLICKS; i++) {
-        const toggle = page.locator('[aria-expanded="false"]').first();
+        // Navigation expansion is deliberately scoped away from ordinary
+        // page content. FAQ/accordion toggles are discovered independently
+        // by discoverToggleVariants(), which snapshots and restores each one.
+        const toggle = page.locator(
+            'nav [aria-expanded="false"], header [aria-expanded="false"], [role="navigation"] [aria-expanded="false"], aside [aria-expanded="false"]'
+        ).first();
         if ((await toggle.count()) === 0) break;
         try {
             await toggle.click({ timeout: 2000 });
@@ -133,6 +145,118 @@ async function expandCollapsedNav(page) {
             break; // not clickable (covered/detached) — stop rather than retry forever
         }
     }
+}
+
+function slugPart(value, fallback) {
+    const slug = String(value || '')
+        .replace(/[ıİ]/g, 'i')
+        .replace(/[şŞ]/g, 's')
+        .replace(/[ğĞ]/g, 'g')
+        .replace(/[üÜ]/g, 'u')
+        .replace(/[öÖ]/g, 'o')
+        .replace(/[çÇ]/g, 'c')
+        .normalize('NFKD')
+        .replace(/[\u0300-\u036f]/g, '')
+        .toLocaleLowerCase('en-US')
+        .replace(/[^a-z0-9]+/g, '-')
+        .replace(/^-+|-+$/g, '')
+        .slice(0, 64);
+    return slug || fallback;
+}
+
+function buildElementIdentity(pageUrl, sectionLabel, label, duplicateIndex = 0) {
+    const basePath = `${slugPart(sectionLabel, 'page')}/${slugPart(label, 'toggle')}`;
+    const elementPath = duplicateIndex > 0 ? `${basePath}--${duplicateIndex + 1}` : basePath;
+    const digest = createHash('sha256').update(`${normalizeUrl(pageUrl) || pageUrl}|${elementPath}|toggle`).digest('hex').slice(0, 16);
+    return { elementKey: `el_${digest}`, elementPath };
+}
+
+/**
+ * Discovers expandable, non-navigation content without flattening it into the
+ * page-level component lists. Each toggle is snapshotted independently and
+ * restored to its initial state, so single-open accordions retain every answer
+ * and the base page scrape remains representative of its normal visible state.
+ */
+export async function discoverToggleVariants(page, pageUrl) {
+    let candidates;
+    try {
+        candidates = await page.evaluate(
+            ({ maxTextChars }) => [...document.querySelectorAll('[aria-expanded]')]
+                .filter((el) => !el.closest('nav, header, aside'))
+                .map((el, index) => {
+                    const label = (el.getAttribute('aria-label') || el.textContent || '').trim();
+                    const controlsId = el.getAttribute('aria-controls') || null;
+                    const section = el.closest('section, main, [aria-label]');
+                    const sectionLabel = section?.getAttribute('aria-label') ||
+                        section?.querySelector?.('h1, h2, h3, h4, h5, h6')?.textContent?.trim() ||
+                        null;
+                    return {
+                        index,
+                        label,
+                        controlsId,
+                        sectionLabel,
+                        initialExpanded: el.getAttribute('aria-expanded') === 'true'
+                    };
+                })
+                .filter((item) => item.label && item.label.length <= maxTextChars),
+            { maxTextChars: INTERACTIVE_ELEMENT_MAX_TEXT_CHARS }
+        );
+    } catch {
+        return [];
+    }
+    if (!Array.isArray(candidates)) return [];
+
+    const safeCandidates = candidates
+        .filter((item) => !NAV_DISCOVERY_ACTION_WORDS.test(item.label))
+        .slice(0, MAX_TOGGLE_DISCOVERY_CLICKS);
+    const duplicateCounts = new Map();
+    const variants = [];
+
+    for (const candidate of safeCandidates) {
+        const selector = candidate.controlsId
+            ? `[aria-controls=${JSON.stringify(candidate.controlsId)}]`
+            : `text=${candidate.label}`;
+        const locator = page.locator(selector).first();
+        try {
+            await locator.waitFor({ state: 'visible', timeout: 2000 });
+            if (!candidate.initialExpanded) {
+                await locator.click({ timeout: 2000 });
+                await waitForStableContent(page);
+            }
+            const snapshot = await locator.evaluate((el) => {
+                const controlsId = el.getAttribute('aria-controls');
+                const controlled = controlsId ? el.ownerDocument?.getElementById(controlsId) : null;
+                const container = controlled || el.closest('details, section, article, li, div') || el.parentElement;
+                return {
+                    expanded: el.getAttribute('aria-expanded') === 'true',
+                    revealedText: (controlled?.innerText || container?.innerText || '').trim().slice(0, 4000)
+                };
+            });
+
+            const basePath = `${slugPart(candidate.sectionLabel, 'page')}/${slugPart(candidate.label, 'toggle')}`;
+            const duplicateIndex = duplicateCounts.get(basePath) || 0;
+            duplicateCounts.set(basePath, duplicateIndex + 1);
+            const identity = buildElementIdentity(pageUrl, candidate.sectionLabel, candidate.label, duplicateIndex);
+            variants.push({
+                ...identity,
+                label: candidate.label,
+                selector,
+                controlsId: candidate.controlsId,
+                sectionLabel: candidate.sectionLabel,
+                kind: 'toggle',
+                expanded: snapshot?.expanded === true,
+                revealedText: snapshot?.revealedText || ''
+            });
+
+            if (!candidate.initialExpanded && snapshot?.expanded === true) {
+                await locator.click({ timeout: 2000 });
+            }
+        } catch {
+            // A detached or animated toggle is an expected crawl miss. Keep
+            // crawling the rest of the page instead of failing the source.
+        }
+    }
+    return variants;
 }
 
 /**
@@ -429,6 +553,11 @@ async function extractPage(page, urlStr, rootOrigin) {
         return { ok: false, status: response.status() };
     }
 
+    // Capture ordinary page accordions while they are still in their natural
+    // initial state. The discovery pass restores every toggle it opens, so
+    // hidden answers become separately indexable without contaminating the
+    // base page text with a synthetic "everything expanded" state.
+    const toggles = await discoverToggleVariants(page, urlStr);
     await expandCollapsedNav(page);
     const clientRoutedLinks = await discoverClientRoutedLinks(page, rootOrigin);
     // discoverClientRoutedLinks() navigates away and back per candidate —
@@ -436,6 +565,7 @@ async function extractPage(page, urlStr, rootOrigin) {
     // final scrape below.
     await expandCollapsedNav(page);
     const components = await extractPageComponents(page);
+    if (toggles.length) components.toggles = toggles;
 
     const { text, links } = await page.evaluate(() => {
         document.querySelectorAll('script, style, noscript, iframe, link, meta').forEach((el) => el.remove());
@@ -563,13 +693,15 @@ export function stripRepeatedBoilerplate(pages) {
  *   earlier, smaller snapshot.
  * @param {Map<string, {rawText:string, links:(string|{targetUrl:string,label?:string,kind?:string})[], parentUrl?:string|null, components?:object}>} [previousPages] -
  *   URLs already crawled/chunked in a prior ingestion of this same source.
- *   Such a URL is NOT re-navigated — its cached text/links are reused
+ *   A URL with the current `indexVersion` is NOT re-navigated — its cached text/links are reused
  *   as-is and it doesn't count against `MAX_CRAWL_PAGES`, so the budget of
  *   real page loads goes entirely to URLs not yet indexed (e.g. pages only
  *   reachable after a login that wasn't configured on the first crawl).
  *   `links` entries may be plain URL strings (a source crawled before the
  *   `{label,targetUrl,kind}` shape existed) — `enqueueLinks` accepts both.
- *   Known trade-off: a reused page's content is never refreshed by this
+ *   Entries from an older index shape are fetched once to backfill newly
+ *   introduced crawl semantics (such as element-aware toggles).
+ *   Known trade-off: a current-version reused page's content is never refreshed by this
  *   mechanism even if the live site changed — only a `websiteUrl` change
  *   (a different root/crawl) or a manually forced full re-crawl would pick
  *   that up. Defaults to an empty Map (first-ever crawl of a source).
@@ -607,7 +739,7 @@ export async function extractFromUrl(urlStr, auth = null, onProgress = null, pre
             visited.add(next);
 
             const cached = previousPages.get(next);
-            if (cached) {
+            if (cached?.indexVersion === CRAWL_PAGE_INDEX_VERSION) {
                 // Already crawled/chunked in a prior run of this source —
                 // reuse its text/links (and parentUrl, if the cache predates
                 // that field, it's simply absent — degrades to an unparented
@@ -644,6 +776,7 @@ export async function extractFromUrl(urlStr, auth = null, onProgress = null, pre
 
             pages.push({ url: next, text: result.text });
             pagesIndex[next] = {
+                indexVersion: CRAWL_PAGE_INDEX_VERSION,
                 rawText: result.text,
                 links: result.links,
                 parentUrl,

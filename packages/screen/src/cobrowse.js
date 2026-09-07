@@ -631,25 +631,45 @@ export class GuidedTour {
      * comes from the page's own DOM, not an argument we can pre-validate,
      * so this is a post-hoc check.
      */
-    async click(selector) {
+    async click(selector, { ensureExpanded = false } = {}) {
         // Selector'ı Playwright'ın locator API'siyle çözüyoruz (document.querySelector
         // değil) — aksi halde LLM'in kullandığı `text=`/`role=` gibi Playwright-özel
         // selector motorları çıplak DOM API'sinde geçersiz sayılıp hata fırlatıyordu.
         const locator = this.page.locator(selector).first();
-        await locator.waitFor({ state: 'visible', timeout: 5000 });
+        try {
+            await locator.waitFor({ state: 'visible', timeout: 5000 });
+        } catch {
+            return { ok: false, found: false, reason: 'not_visible' };
+        }
 
         // Güvenlik Katmanı: Read-Only Mode (Zararlı işlemleri engelle)
-        const isDangerous = await locator.evaluate((el) => {
+        const before = await locator.evaluate((el) => {
             const tag = el.tagName.toLowerCase();
             const type = el.getAttribute('type')?.toLowerCase();
             // Form elemanlarına ve submit butonlarına tıklamayı engelle
-            if (tag === 'input' || tag === 'textarea' || tag === 'select') return true;
-            if (tag === 'button' && type === 'submit') return true;
-            return false;
+            const dangerous = tag === 'input' || tag === 'textarea' || tag === 'select' ||
+                (tag === 'button' && type === 'submit');
+            const expandedAttr = el.getAttribute('aria-expanded');
+            return {
+                dangerous,
+                expanded: expandedAttr === null ? null : expandedAttr === 'true'
+            };
         });
 
-        if (isDangerous) {
+        if (before.dangerous) {
             throw new Error(`[GuidedTour] Security constraint: Clicking on form inputs or submit buttons is disabled in read-only mode.`);
+        }
+
+        const readVisibleText = (el) => {
+            const controlsId = el.getAttribute('aria-controls');
+            const controlled = controlsId ? el.ownerDocument?.getElementById(controlsId) : null;
+            const container = controlled || el.closest?.('details, section, article, li') || el.parentElement;
+            return (controlled?.innerText || container?.innerText || '').trim().slice(0, 1500);
+        };
+
+        if (ensureExpanded && before.expanded === true) {
+            const visibleText = await locator.evaluate(readVisibleText);
+            return { ok: true, found: true, clicked: false, expanded: true, ...(visibleText && { visibleText }) };
         }
 
         await this.page.click(selector);
@@ -660,6 +680,29 @@ export class GuidedTour {
         // ordinary in-page clicks.
         await waitForStableContent(this.page);
         await this.assertCurrentPageTrusted('click');
+        // A normal link/button may have navigated away, in which case the
+        // original locator no longer exists on the destination page. Only
+        // re-read DOM state for actual aria-expanded controls.
+        if (before.expanded === null) {
+            return { ok: true, found: true, clicked: true };
+        }
+        const after = await locator.evaluate((el) => {
+            const expandedAttr = el.getAttribute('aria-expanded');
+            const controlsId = el.getAttribute('aria-controls');
+            const controlled = controlsId ? el.ownerDocument?.getElementById(controlsId) : null;
+            const container = controlled || el.closest?.('details, section, article, li') || el.parentElement;
+            return {
+                expanded: expandedAttr === null ? null : expandedAttr === 'true',
+                visibleText: (controlled?.innerText || container?.innerText || '').trim().slice(0, 1500)
+            };
+        });
+        return {
+            ok: true,
+            found: true,
+            clicked: true,
+            ...(after.expanded !== null && { expanded: after.expanded }),
+            ...(after.visibleText && { visibleText: after.visibleText })
+        };
     }
 
     /**

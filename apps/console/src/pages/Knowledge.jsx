@@ -35,6 +35,7 @@ import { productsApi, knowledgeApi } from '../lib/api.js';
 import { useAuthStore } from '../store/auth.js';
 import { getSocket } from '../lib/socket.js';
 import '../lib/pdfWorker.js';
+import { productSelectionKey, rememberSelection, resolveRememberedSelection } from '../lib/selectionMemory.js';
 
 const TYPES = [
     { value: 'text', label: 'Metin', icon: FileText },
@@ -818,10 +819,9 @@ export function Knowledge() {
     });
 
     useEffect(() => {
-        if (!productId && products?.[0]) {
-            setSearchParams({ product: products[0].id }, { replace: true });
-        }
-    }, [productId, products, setSearchParams]);
+        const resolved = resolveRememberedSelection({ currentId: productId, items: products, storageKey: productSelectionKey(workspace?.id) });
+        if (resolved && resolved !== productId) setSearchParams({ product: resolved }, { replace: true });
+    }, [productId, products, setSearchParams, workspace?.id]);
 
     const { data: sources } = useQuery({
         queryKey: ['knowledge', productId],
@@ -966,7 +966,10 @@ export function Knowledge() {
                     {products && products.length > 1 && (
                         <select
                             value={productId ?? ''}
-                            onChange={(e) => setSearchParams({ product: e.target.value })}
+                            onChange={(e) => {
+                                rememberSelection(productSelectionKey(workspace?.id), e.target.value);
+                                setSearchParams({ product: e.target.value });
+                            }}
                             className="h-10 rounded-[var(--radius-input)] border border-border bg-surface px-3 text-sm text-text outline-none focus:border-brand"
                         >
                             {products.map((p) => (

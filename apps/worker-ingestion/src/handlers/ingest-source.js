@@ -478,6 +478,34 @@ export async function handleIngestSource({ sourceId, productId, generation }) {
                             });
                         }
                     }
+
+                    // Hidden accordion/FAQ content is indexed as a distinct
+                    // element-scoped segment. The opaque key is the durable
+                    // join between RAG and the crawl index; the selector stays
+                    // in crawlIndex as an execution detail and is never copied
+                    // into embeddings or exposed as the identity itself.
+                    for (const toggle of crawlPagesIndex?.[p.url]?.components?.toggles || []) {
+                        const label = toggle.label?.trim() || '';
+                        const revealedText = toggle.revealedText?.trim() || '';
+                        const answerAlreadyContainsLabel = label && revealedText
+                            .toLocaleLowerCase('tr')
+                            .includes(label.toLocaleLowerCase('tr'));
+                        const toggleText = [answerAlreadyContainsLabel ? '' : label, revealedText]
+                            .filter(Boolean)
+                            .join('\n');
+                        if (toggleText && toggle.elementKey) {
+                            ingestSegments.push({
+                                text: toggleText,
+                                metadata: {
+                                    pageUrl: p.url,
+                                    elementKey: toggle.elementKey,
+                                    elementPath: toggle.elementPath,
+                                    elementType: 'toggle',
+                                    heading: label
+                                }
+                            });
+                        }
+                    }
                 }
 
                 // Previously-synthesized chunks for this source, keyed by

@@ -117,6 +117,29 @@ describe('createPlaybookRuntime — order and isolation', () => {
         expect(h.screen.showUrl).not.toHaveBeenCalled();
         expect(h.speak).toHaveBeenCalledTimes(1);
     });
+
+    it('keeps executing consecutive steps on the same page without reloading it', async () => {
+        const h = makeHarness();
+        const url = 'https://salesai.example/faq';
+        const cursor = createPlaybookCursor([
+            node('first', 1, { url }),
+            node('second', 2, { url, attach: 'Tahvil vergisi' })
+        ]);
+        const runtime = createPlaybookRuntime({ cursor, screen: h.screen, speak: h.speak });
+
+        runtime.start();
+        await flush();
+        await h.finishSpeaking();
+        h.markSpoken();
+        runtime.signal('advance_step');
+        await flush();
+
+        expect(h.screen.showUrl).toHaveBeenCalledTimes(1);
+        expect(h.screen.showUrl).toHaveBeenCalledWith(url);
+        expect(h.speak.mock.calls[1][0]).toContain('TOPIC_second');
+        expect(h.speak.mock.calls[1][0]).toContain('Tahvil vergisi');
+        expect(h.speak.mock.calls[1][0]).toContain('already open');
+    });
 });
 
 describe('createPlaybookRuntime — advancing', () => {
@@ -1024,5 +1047,106 @@ describe('createPlaybookRuntime — P2: followup_suppressed redelivers the same 
         await flush();
 
         expect(cursor.current()?.id).toBe('b');
+    });
+});
+
+describe('createPlaybookRuntime — in-call survey', () => {
+    it('shows the card before speaking and advances only after its UI answer', async () => {
+        const h = makeHarness();
+        const survey = {
+            show: vi.fn(async (current) => h.log.push(`survey:show:${current.id}`)),
+            hide: vi.fn((current) => h.log.push(`survey:hide:${current.id}`))
+        };
+        const cursor = createPlaybookCursor([
+            node('question', 1, {
+                type: 'survey',
+                directive: 'Hangi aracı kurumu kullanıyorsunuz?',
+                survey: {
+                    question: 'Hangi aracı kurumu kullanıyorsunuz?',
+                    answerType: 'single-choice',
+                    options: [
+                        { value: 'midas', label: 'Midas' },
+                        { value: 'papara', label: 'Papara' }
+                    ],
+                    required: true
+                }
+            }),
+            node('followup', 2)
+        ]);
+        const onSignalIgnored = vi.fn();
+        const runtime = createPlaybookRuntime({
+            cursor,
+            screen: h.screen,
+            survey,
+            speak: h.speak,
+            languageDisplay: 'Turkish',
+            onSignalIgnored
+        });
+
+        runtime.start();
+        await flush();
+        expect(h.log[0]).toBe('survey:show:question');
+        expect(h.log[1]).toContain('speak:');
+
+        h.markSpoken();
+        await h.finishSpeaking();
+        runtime.signal('advance_step');
+        runtime.signal('silence');
+        expect(cursor.current()?.id).toBe('question');
+        expect(onSignalIgnored).toHaveBeenCalledWith(
+            expect.objectContaining({ id: 'question' }),
+            'advance_step',
+            'survey_waiting_for_answer'
+        );
+
+        runtime.signal('survey_answer', { answer: 'Midas' });
+        await flush();
+        expect(survey.hide).toHaveBeenCalledWith(expect.objectContaining({ id: 'question' }));
+        expect(cursor.current()?.id).toBe('followup');
+        expect(h.speak.mock.calls[1][0]).toContain('one very short');
+        expect(h.speak.mock.calls[1][0]).toContain('Midas');
+        expect(h.speak.mock.calls[1][0]).toContain('Reply in Turkish');
+        await h.finishSpeaking();
+        await flush();
+        expect(h.speak.mock.calls[2][0]).toContain('Midas');
+        expect(h.speak.mock.calls[2][0]).toContain('Reply in Turkish');
+    });
+
+    it('does not speak a survey that was answered while its show publish was awaiting', async () => {
+        const h = makeHarness();
+        let finishShow;
+        const survey = {
+            show: vi.fn(() => new Promise((resolve) => { finishShow = resolve; })),
+            hide: vi.fn()
+        };
+        const cursor = createPlaybookCursor([
+            node('question', 1, {
+                type: 'survey',
+                survey: {
+                    question: 'Seçiminiz?',
+                    answerType: 'single-choice',
+                    options: [
+                        { value: 'a', label: 'A' },
+                        { value: 'b', label: 'B' }
+                    ]
+                }
+            }),
+            node('followup', 2)
+        ]);
+        const runtime = createPlaybookRuntime({ cursor, screen: h.screen, survey, speak: h.speak });
+
+        runtime.start();
+        await flush();
+        runtime.signal('survey_answer', { answer: 'A' });
+        finishShow();
+        await flush();
+
+        expect(h.speak).toHaveBeenCalledTimes(1);
+        expect(h.speak.mock.calls[0][0]).toContain('one very short');
+        await h.finishSpeaking();
+        await flush();
+        expect(h.speak).toHaveBeenCalledTimes(2);
+        expect(h.speak.mock.calls[1][0]).toContain('TOPIC_followup');
+        expect(h.speak.mock.calls[1][0]).toContain('"A"');
     });
 });

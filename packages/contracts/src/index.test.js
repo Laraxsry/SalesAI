@@ -7,7 +7,9 @@ import {
     matchesEmbedDomain,
     PlaybookNodeInput,
     PlaybookInput,
+    PlaybookGenerationInput,
     normalizePlaybook,
+    normalizePlaybookSurveyFieldKey,
     isTourNavigableUrl
 } from './index.js';
 
@@ -202,12 +204,49 @@ describe('EmbedSessionInput', () => {
 describe('PlaybookNodeInput', () => {
     const base = { id: 'n1', order: 1, directive: 'Şirketi kısaca tanıt' };
 
-    it('accepts a minimal node and defaults url/attach to null, mode to situational', () => {
+    it('accepts a minimal node and defaults it to a narrative step', () => {
         const result = PlaybookNodeInput.safeParse(base);
         expect(result.success).toBe(true);
+        expect(result.data.type).toBe('narrative');
         expect(result.data.url).toBeNull();
         expect(result.data.attach).toBeNull();
+        expect(result.data.survey).toBeNull();
         expect(result.data.mode).toBe('situational');
+    });
+
+    it('accepts a configured single-choice survey node', () => {
+        const result = PlaybookNodeInput.safeParse({
+            ...base,
+            type: 'survey',
+            survey: {
+                question: 'Hangi aracı kurumu kullanıyorsunuz?',
+                options: [
+                    { value: 'midas', label: 'Midas' },
+                    { value: 'papara', label: 'Papara' }
+                ],
+                answerType: 'single-choice'
+            }
+        });
+        expect(result.success).toBe(true);
+        expect(result.data.survey.required).toBe(true);
+        expect(result.data.survey.allowFreeText).toBe(false);
+    });
+
+    it('rejects a survey node without survey configuration', () => {
+        expect(PlaybookNodeInput.safeParse({ ...base, type: 'survey' }).success).toBe(false);
+    });
+
+    it('rejects a single-choice survey with fewer than two options', () => {
+        const result = PlaybookNodeInput.safeParse({
+            ...base,
+            type: 'survey',
+            survey: {
+                question: 'Seçiminiz?',
+                answerType: 'single-choice',
+                options: [{ value: 'only', label: 'Tek' }]
+            }
+        });
+        expect(result.success).toBe(false);
     });
 
     it('accepts a full node with url, attach, and an explicit mode', () => {
@@ -261,6 +300,29 @@ describe('PlaybookInput', () => {
     });
 });
 
+describe('PlaybookGenerationInput', () => {
+    it('provides bounded AI-generation defaults', () => {
+        expect(PlaybookGenerationInput.parse({})).toEqual({
+            source: 'ai',
+            brief: '',
+            strategy: 'consultative',
+            preset: null,
+            includeSurvey: true,
+            maxNodes: 6
+        });
+    });
+
+    it('requires a named preset in preset mode', () => {
+        expect(PlaybookGenerationInput.safeParse({ source: 'preset' }).success).toBe(false);
+        expect(PlaybookGenerationInput.safeParse({ source: 'preset', preset: 'guided-demo' }).success).toBe(true);
+    });
+
+    it('rejects unbounded prompts and node counts', () => {
+        expect(PlaybookGenerationInput.safeParse({ brief: 'x'.repeat(1501) }).success).toBe(false);
+        expect(PlaybookGenerationInput.safeParse({ maxNodes: 11 }).success).toBe(false);
+    });
+});
+
 describe('normalizePlaybook', () => {
     it('sorts by order and renumbers densely from 1', () => {
         const result = normalizePlaybook([
@@ -293,12 +355,28 @@ describe('normalizePlaybook', () => {
     it('defaults a missing mode to situational', () => {
         const result = normalizePlaybook([{ id: 'a', order: 1, directive: 'x' }]);
         expect(result[0].mode).toBe('situational');
+        expect(result[0].type).toBe('narrative');
+        expect(result[0].survey).toBeNull();
     });
 
     it('returns an empty array for an empty or undefined input', () => {
         expect(normalizePlaybook([])).toEqual([]);
         expect(normalizePlaybook()).toEqual([]);
     });
+});
+
+describe('normalizePlaybookSurveyFieldKey', () => {
+    it('keeps a valid machine key and trims surrounding whitespace', () => {
+        expect(normalizePlaybookSurveyFieldKey('  qualification.priority  '))
+            .toBe('qualification.priority');
+    });
+
+    it.each(['müşteri.öncelik', 'qualification priority', '', null, undefined])(
+        'drops invalid generator metadata without rejecting the playbook: %s',
+        (value) => {
+            expect(normalizePlaybookSurveyFieldKey(value)).toBeNull();
+        }
+    );
 });
 
 /**

@@ -80,6 +80,8 @@ export function planToPlaybookNodes(plan) {
         directive: s.coverage || s.narration || '',
         narration: s.narration || null,
         attach: null,
+        type: 'narrative',
+        survey: null,
         mode: 'important'
     }));
 }

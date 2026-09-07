@@ -410,9 +410,65 @@ export const EmbedConfigInput = z.object({
 
 export const PlaybookNodeMode = z.enum(['important', 'situational', 'skip-if-no-answer']);
 
+export const PlaybookNodeType = z.enum(['narrative', 'survey']);
+
+export const PlaybookSurveyFieldKeyInput = z
+    .string()
+    .trim()
+    .regex(/^[a-zA-Z][a-zA-Z0-9_.-]{0,63}$/);
+
+/** Converts optional, untrusted generator output into a safe machine key.
+ * Invalid keys are metadata loss, not a reason to discard an otherwise valid
+ * playbook draft. The persistence boundary still validates non-null keys. */
+export function normalizePlaybookSurveyFieldKey(value) {
+    const parsed = PlaybookSurveyFieldKeyInput.safeParse(value);
+    return parsed.success ? parsed.data : null;
+}
+
+export const PlaybookSurveyOptionInput = z.object({
+    value: z.string().trim().min(1).max(64).regex(/^[a-zA-Z0-9_-]+$/),
+    label: z.string().trim().min(1).max(120)
+});
+
+export const PlaybookSurveyInput = z
+    .object({
+        question: z.string().trim().min(1).max(400),
+        /** Optional CRM destination for the canonical answer. */
+        fieldKey: PlaybookSurveyFieldKeyInput.nullable().default(null),
+        answerType: z.enum(['single-choice', 'text']).default('single-choice'),
+        options: z.array(PlaybookSurveyOptionInput).max(8).default([]),
+        allowFreeText: z.boolean().default(false),
+        required: z.boolean().default(true)
+    })
+    .superRefine((survey, ctx) => {
+        if (survey.answerType === 'single-choice' && survey.options.length < 2) {
+            ctx.addIssue({
+                code: z.ZodIssueCode.custom,
+                path: ['options'],
+                message: 'single-choice surveys require at least two options'
+            });
+        }
+        if (survey.answerType === 'text' && survey.options.length > 0) {
+            ctx.addIssue({
+                code: z.ZodIssueCode.custom,
+                path: ['options'],
+                message: 'text surveys cannot define options'
+            });
+        }
+        const values = survey.options.map((option) => option.value);
+        if (new Set(values).size !== values.length) {
+            ctx.addIssue({
+                code: z.ZodIssueCode.custom,
+                path: ['options'],
+                message: 'survey option values must be unique'
+            });
+        }
+    });
+
 export const PlaybookNodeInput = z.object({
     id: z.string().min(1).max(64),
     order: z.number().int().min(1),
+    type: PlaybookNodeType.default('narrative'),
     /** Page to put on screen for this step. Null means "stay on whatever is
      *  showing" — and if nothing is showing, the agent simply talks. */
     url: z
@@ -426,13 +482,50 @@ export const PlaybookNodeInput = z.object({
     /** Natural-language description of an element to click, e.g. "Rapor Ekle
      *  butonu". Resolved at runtime by the model, not by a stored selector. */
     attach: z.string().trim().max(200).nullable().default(null),
-    mode: PlaybookNodeMode.default('situational')
+    mode: PlaybookNodeMode.default('situational'),
+    survey: PlaybookSurveyInput.nullable().default(null)
+}).superRefine((node, ctx) => {
+    if (node.type === 'survey' && !node.survey) {
+        ctx.addIssue({
+            code: z.ZodIssueCode.custom,
+            path: ['survey'],
+            message: 'survey nodes require survey configuration'
+        });
+    }
+    if (node.type === 'narrative' && node.survey) {
+        ctx.addIssue({
+            code: z.ZodIssueCode.custom,
+            path: ['survey'],
+            message: 'narrative nodes cannot carry survey configuration'
+        });
+    }
 });
 
 export const PlaybookInput = z.object({
     nodes: z.array(PlaybookNodeInput).max(40).default([]),
     enabled: z.boolean().default(true)
 });
+
+/** Draft-generation intent. Generation never persists; its output must still
+ * pass PlaybookInput before the editor is allowed to preview/apply it. */
+export const PlaybookGenerationInput = z
+    .object({
+        source: z.enum(['ai', 'preset']).default('ai'),
+        brief: z.string().trim().max(1500).default(''),
+        strategy: z.enum(['consultative', 'storytelling', 'sector-aware']).default('consultative'),
+        preset: z.enum(['discovery', 'guided-demo', 'qualification']).nullable().default(null),
+        includeSurvey: z.boolean().default(true),
+        maxNodes: z.coerce.number().int().min(3).max(10).default(6)
+    })
+    .superRefine((input, ctx) => {
+        if (input.source === 'preset' && !input.preset) {
+            ctx.addIssue({
+                code: z.ZodIssueCode.custom,
+                path: ['preset'],
+                message: 'preset source requires a preset'
+            });
+        }
+    });
 
 /**
  * Turns the authored form into the executable form: drop steps with no
@@ -456,9 +549,11 @@ export function normalizePlaybook(nodes = []) {
         .map((n, i) => ({
             ...n,
             order: i + 1,
+            type: n.type || 'narrative',
             directive: n.directive.trim(),
             url: n.url || null,
             attach: n.attach?.trim() || null,
+            survey: n.type === 'survey' ? n.survey : null,
             mode: n.mode || 'situational'
         }));
 }

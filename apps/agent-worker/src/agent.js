@@ -48,6 +48,8 @@ import { createTourFrameObserver } from './tour-frame-observer.js';
 import { isDirectivelessAdvanceStepFollowup } from './followup-guard.js';
 import { createPlaybookCursor } from './playbook-cursor.js';
 import { createPlaybookRuntime } from './playbook-runtime.js';
+import { buildSurveyAnswerRecord, normalizeSurveyAnswer } from './survey-answer.js';
+import { clickAndSyncTour } from './tour-click.js';
 import { createUtteranceMemory } from './utterance-memory.js';
 import { createQuestionQueue } from './question-queue.js';
 import { createHandQueue } from './hand-queue.js';
@@ -679,10 +681,10 @@ async function runSession(ctx) {
                 return { ok: false, error: e.message };
             }
         },
-        click: async (selector) => {
+        click: async (selector, options = {}) => {
             if (!isTourActive) return { ok: false, error: 'Tour not active.' };
             try {
-                await tour.click(selector);
+                return await clickAndSyncTour(tour, selector, options, async (result) => {
                 const viewVersion = ++tourViewVersion;
                 await captureAndPublishTourFrame(viewVersion);
                 scheduleTourFrame(800);
@@ -690,9 +692,9 @@ async function runSession(ctx) {
                     sessionId: session._id,
                     role: 'system',
                     text: `[screen:click] selector=${selector}`,
-                    meta: { action: 'click', selector }
+                    meta: { action: 'click', selector, clicked: result.clicked, expanded: result.expanded }
                 }).catch(() => {});
-                return { ok: true };
+                });
             } catch (e) {
                 log.error('GuidedTour click failed', { error: e.message });
                 return { ok: false, error: e.message };
@@ -1114,6 +1116,27 @@ async function runSession(ctx) {
     // methods, not the full tourControls surface — navigation is data the
     // runtime can act on by itself; clicking/highlighting/scrolling stay the
     // model's judgment call (ISP, see md/backend/agent_flow.md).
+    let activeSurveyPayload = null;
+    const surveyNodes = playbookNodes.filter((node) => node.type === 'survey');
+    function publishSurveyPayload(payload) {
+        const encoded = new TextEncoder().encode(JSON.stringify(payload));
+        return ctx.room.localParticipant.publishData(encoded, { reliable: true, topic: 'salesai' });
+    }
+    function publishSurveyAnswerAck(participant, answerId, ok, error = null) {
+        if (!answerId) return Promise.resolve();
+        const encoded = new TextEncoder().encode(JSON.stringify({
+            type: 'salesai:survey_answer_ack', answerId, ok, error
+        }));
+        return ctx.room.localParticipant.publishData(encoded, {
+            reliable: true,
+            topic: 'salesai',
+            // @livekit/rtc-node uses the protobuf-style snake_case option.
+            // `destinationIdentities` belongs to livekit-client (browser) and
+            // was silently ignored here, preventing a targeted ACK.
+            ...(participant?.identity ? { destination_identities: [participant.identity] } : {})
+        });
+    }
+
     if (playbookActive) {
         playbookRuntime = createPlaybookRuntime({
             cursor: playbookCursor,
@@ -1156,6 +1179,35 @@ async function runSession(ctx) {
                     log.info('playbook hideScreen: end', { durationMs: Date.now() - startedAt });
                     endSpan();
                     return result;
+                }
+            },
+            survey: {
+                show: async (node) => {
+                    activeSurveyPayload = {
+                        type: 'salesai:survey',
+                        action: 'show',
+                        nodeId: node.id,
+                        question: node.survey.question,
+                        fieldKey: node.survey.fieldKey || null,
+                        answerType: node.survey.answerType,
+                        options: node.survey.options || [],
+                        allowFreeText: Boolean(node.survey.allowFreeText),
+                        required: node.survey.required !== false,
+                        position: surveyNodes.findIndex((candidate) => candidate.id === node.id) + 1,
+                        total: surveyNodes.length
+                    };
+                    await publishSurveyPayload(activeSurveyPayload);
+                    timeline.emit(TIMELINE_EVENTS.SURVEY_SHOWN, {
+                        nodeId: node.id,
+                        answerType: node.survey.answerType,
+                        optionCount: node.survey.options?.length || 0,
+                        required: node.survey.required !== false
+                    });
+                },
+                hide: (node) => {
+                    if (activeSurveyPayload?.nodeId === node.id) activeSurveyPayload = null;
+                    publishSurveyPayload({ type: 'salesai:survey', action: 'hide', nodeId: node.id })
+                        .catch((err) => log.warn('survey hide publish failed', { nodeId: node.id, error: err.message }));
                 }
             },
             speak: (instructions) => agentSession.generateReply({ instructions }),
@@ -1852,6 +1904,68 @@ async function runSession(ctx) {
         try {
             const raw = new TextDecoder().decode(payload);
             const data = JSON.parse(raw);
+            if (data.type === 'salesai:survey_ready') {
+                if (activeSurveyPayload) {
+                    publishSurveyPayload(activeSurveyPayload).catch((err) =>
+                        log.warn('survey resync publish failed', { error: err.message })
+                    );
+                }
+                return;
+            }
+            if (data.type === 'salesai:survey_answer') {
+                const answerId = typeof data.answerId === 'string' ? data.answerId.slice(0, 128) : null;
+                if (answerId && await Session.exists({ _id: session._id, 'surveyAnswers.answerId': answerId })) {
+                    publishSurveyAnswerAck(participant, answerId, true).catch((err) =>
+                        log.warn('duplicate survey answer ack failed', { answerId, error: err.message })
+                    );
+                    return;
+                }
+                const node = playbookRuntime?.activeNode();
+                const normalized = normalizeSurveyAnswer(node, data);
+                if (!normalized) {
+                    // Was silent before (the old fire-and-forget path had no
+                    // ack, so a mismatch here left zero trace anywhere). Log
+                    // exactly what was expected vs what arrived so a repeat
+                    // of this rejection is diagnosable from one log line
+                    // instead of a full code read.
+                    log.warn('survey answer rejected: does not match active node', {
+                        answerId,
+                        receivedNodeId: data?.nodeId ?? null,
+                        activeNodeId: node?.id ?? null,
+                        activeNodeType: node?.type ?? null,
+                        hasActiveSurvey: Boolean(node?.survey)
+                    });
+                    publishSurveyAnswerAck(participant, answerId, false, 'Answer no longer matches the active question').catch(() => {});
+                    return;
+                }
+                const answerRecord = buildSurveyAnswerRecord(node, normalized, {
+                    answerId,
+                    participant: participant?.identity || null
+                });
+                const { nodeId, ...answerMeta } = answerRecord;
+                try {
+                    await Session.updateOne(
+                        { _id: session._id, ...(answerId ? { 'surveyAnswers.answerId': { $ne: answerId } } : {}) },
+                        { $push: { surveyAnswers: answerRecord } }
+                    );
+                    await Message.create({
+                        sessionId: session._id,
+                        role: 'system',
+                        text: normalized.skipped ? '[survey:skipped]' : `[survey:answer] ${normalized.answer}`,
+                        meta: { action: normalized.skipped ? 'survey_skipped' : 'survey_answered', nodeId, ...answerMeta }
+                    }).catch((err) => log.warn('survey transcript audit write failed', { answerId, error: err.message }));
+                    log.info('survey answer persisted and delivered', { nodeId, ...answerMeta });
+                    timeline.emit(TIMELINE_EVENTS.SURVEY_ANSWERED, { nodeId, ...answerMeta });
+                    playbookRuntime.signal('survey_answer', answerMeta);
+                    publishSurveyAnswerAck(participant, answerId, true).catch((err) =>
+                        log.warn('survey answer ack publish failed', { answerId, error: err.message })
+                    );
+                } catch (err) {
+                    log.error('survey answer persistence failed', { nodeId: node.id, answerId, error: err.message });
+                    publishSurveyAnswerAck(participant, answerId, false, 'Answer could not be saved').catch(() => {});
+                }
+                return;
+            }
             if (data.type === 'salesai:hand' && isMultiParty) {
                 const id = participant?.identity;
                 if (id?.startsWith('visitor_')) {

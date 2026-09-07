@@ -4,6 +4,7 @@ import { useQuery } from '@tanstack/react-query';
 import { BarChart3, Bot, MessageSquare, Clock, TrendingUp, AlertTriangle } from 'lucide-react';
 import { analyticsApi, agentsApi, productsApi } from '../lib/api.js';
 import { useAuthStore } from '../store/auth.js';
+import { agentSelectionKey, productSelectionKey, rememberSelection, resolveRememberedSelection } from '../lib/selectionMemory.js';
 
 function formatDuration(seconds) {
     if (!seconds) return '0:00';
@@ -24,25 +25,68 @@ function KpiCard({ icon: Icon, label, value }) {
     );
 }
 
-function SessionsChart({ timeSeries }) {
-    if (!timeSeries?.length) {
+function SessionsChart({ dailyActivity }) {
+    if (!dailyActivity?.length) {
         return <p className="text-sm text-text-muted">Henüz veri yok.</p>;
     }
-    const max = Math.max(...timeSeries.map((t) => t.metrics?.sessions || 0), 1);
+    const byDate = new Map(dailyActivity.map((day) => [day.date, day]));
+    const points = Array.from({ length: 30 }, (_, offset) => {
+        const date = new Date();
+        date.setUTCHours(0, 0, 0, 0);
+        date.setUTCDate(date.getUTCDate() - (29 - offset));
+        const key = date.toISOString().slice(0, 10);
+        return byDate.get(key) || {
+            date: key,
+            sessions: [],
+            metrics: { sessions: 0, avgDurationSec: 0, completionRate: 0, unansweredRate: 0 }
+        };
+    });
+    const max = Math.max(...points.map((point) => point.metrics.sessions), 1);
     return (
-        <div className="flex h-40 items-end gap-1">
-            {timeSeries.map((t) => {
-                const value = t.metrics?.sessions || 0;
-                const heightPct = Math.max((value / max) * 100, value > 0 ? 4 : 0);
-                return (
-                    <div
-                        key={t._id || t.bucketAt}
-                        title={`${new Date(t.bucketAt).toLocaleString('tr-TR')}: ${value} oturum`}
-                        className="min-h-[1px] flex-1 rounded-t bg-brand/60 transition-colors hover:bg-brand"
-                        style={{ height: `${heightPct}%` }}
-                    />
-                );
-            })}
+        <div>
+            <div className="mb-3 flex items-center justify-between text-xs text-text-muted">
+                <span>Günlük oturum sayısı</span>
+                <span>En yüksek: {max}</span>
+            </div>
+            <div className="relative h-52 border-b border-border/80">
+                <div className="pointer-events-none absolute inset-0 flex flex-col justify-between text-[10px] text-text-muted/60">
+                    <div className="border-t border-dashed border-border/60"><span className="relative -top-2 bg-surface pr-2">{max}</span></div>
+                    <div className="border-t border-dashed border-border/40"><span className="relative -top-2 bg-surface pr-2">{Math.ceil(max / 2)}</span></div>
+                    <div className="border-t border-border/60"><span className="relative -top-2 bg-surface pr-2">0</span></div>
+                </div>
+                <div className="absolute inset-x-7 inset-y-0 flex items-end gap-1">
+                    {points.map((point, index) => {
+                        const value = point.metrics.sessions;
+                        const heightPct = value ? Math.max((value / max) * 100, 8) : 1;
+                        const dateLabel = new Date(`${point.date}T12:00:00Z`).toLocaleDateString('tr-TR', { day: 'numeric', month: 'long' });
+                        return (
+                            <div key={point.date} className="group relative flex h-full min-w-0 flex-1 items-end">
+                                <div
+                                    tabIndex={0}
+                                    aria-label={`${dateLabel}, ${value} oturum`}
+                                    className={`w-full rounded-t-sm transition ${value ? 'bg-brand/70 hover:bg-brand focus:bg-brand' : 'bg-border/30'}`}
+                                    style={{ height: `${heightPct}%` }}
+                                />
+                                <div className={`pointer-events-none absolute bottom-[calc(100%+8px)] z-20 hidden w-64 rounded-xl border border-border bg-bg p-3 text-left shadow-2xl group-hover:block group-focus-within:block ${index > 22 ? 'right-0' : index < 7 ? 'left-0' : 'left-1/2 -translate-x-1/2'}`}>
+                                    <p className="font-semibold text-text">{dateLabel}</p>
+                                    <div className="mt-2 grid grid-cols-2 gap-x-4 gap-y-1 text-xs text-text-muted">
+                                        <span>Oturum</span><span className="text-right text-text">{value}</span>
+                                        <span>Ort. süre</span><span className="text-right text-text">{formatDuration(point.metrics.avgDurationSec)}</span>
+                                        <span>Tamamlanma</span><span className="text-right text-text">%{Math.round(point.metrics.completionRate * 100)}</span>
+                                        <span>Cevapsız</span><span className="text-right text-text">%{Math.round(point.metrics.unansweredRate * 100)}</span>
+                                    </div>
+                                    {point.sessions.length > 0 && <div className="mt-3 border-t border-border pt-2"><p className="mb-1 text-[10px] font-semibold uppercase tracking-wider text-text-muted">Oturumlar</p>{point.sessions.slice(0, 4).map((session) => <p key={session.id} className="truncate text-xs text-text">{new Date(session.startedAt).toLocaleTimeString('tr-TR', { hour: '2-digit', minute: '2-digit' })} · {session.name} · {formatDuration(session.durationSec)}</p>)}{point.sessions.length > 4 && <p className="mt-1 text-xs text-brand-light">+{point.sessions.length - 4} oturum daha</p>}</div>}
+                                </div>
+                            </div>
+                        );
+                    })}
+                </div>
+            </div>
+            <div className="mt-2 flex justify-between px-7 text-[10px] text-text-muted">
+                <span>{new Date(`${points[0].date}T12:00:00Z`).toLocaleDateString('tr-TR', { day: 'numeric', month: 'short' })}</span>
+                <span>{new Date(`${points[14].date}T12:00:00Z`).toLocaleDateString('tr-TR', { day: 'numeric', month: 'short' })}</span>
+                <span>Bugün</span>
+            </div>
         </div>
     );
 }
@@ -76,10 +120,9 @@ export function Analytics() {
     });
 
     useEffect(() => {
-        if (!productId && products?.[0]) {
-            setSearchParams({ product: products[0].id }, { replace: true });
-        }
-    }, [productId, products, setSearchParams]);
+        const resolved = resolveRememberedSelection({ currentId: productId, items: products, storageKey: productSelectionKey(workspace?.id) });
+        if (resolved && resolved !== productId) setSearchParams({ product: resolved }, { replace: true });
+    }, [productId, products, setSearchParams, workspace?.id]);
 
     const { data: agents } = useQuery({
         queryKey: ['agents', productId],
@@ -88,10 +131,10 @@ export function Analytics() {
     });
 
     useEffect(() => {
-        if (productId && !agentId && agents?.[0]) {
-            setSearchParams({ product: productId, agent: agents[0]._id }, { replace: true });
-        }
-    }, [productId, agentId, agents, setSearchParams]);
+        if (!productId) return;
+        const resolved = resolveRememberedSelection({ currentId: agentId, items: agents, storageKey: agentSelectionKey(workspace?.id, productId), getId: (agent) => agent._id });
+        if (resolved && resolved !== agentId) setSearchParams({ product: productId, agent: resolved }, { replace: true });
+    }, [productId, agentId, agents, setSearchParams, workspace?.id]);
 
     const { data: stats, isLoading: statsLoading } = useQuery({
         queryKey: ['analytics-agent', agentId],
@@ -106,10 +149,12 @@ export function Analytics() {
     });
 
     function onProductChange(value) {
+        rememberSelection(productSelectionKey(workspace?.id), value);
         setSearchParams({ product: value });
     }
 
     function onAgentChange(value) {
+        rememberSelection(agentSelectionKey(workspace?.id, productId), value);
         setSearchParams({ product: productId, agent: value });
     }
 
@@ -176,8 +221,8 @@ export function Analytics() {
                     </div>
 
                     <div className="mb-6 rounded-[var(--radius-card)] border border-border bg-surface p-5">
-                        <h3 className="mb-4 text-sm font-semibold text-text">Son 30 gün — saatlik oturum sayısı</h3>
-                        <SessionsChart timeSeries={stats?.timeSeries} />
+                        <h3 className="mb-4 text-sm font-semibold text-text">Son 30 gün — oturum trendi</h3>
+                        <SessionsChart dailyActivity={stats?.dailyActivity} />
                     </div>
 
                     <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">

@@ -9,8 +9,8 @@
  * topic while step 2 is current gets step 4 marked done immediately; the
  * cursor simply skips it, silently, whenever it's eventually reached.
  *
- * @typedef {{ id:string, order:number, url:string|null, directive:string,
- *             attach:string|null, mode:'important'|'situational'|'skip-if-no-answer' }} PlaybookNode
+ * @typedef {{ id:string, order:number, type?:'narrative'|'survey', url:string|null, directive:string,
+ *             attach:string|null, survey?:object|null, mode:'important'|'situational'|'skip-if-no-answer' }} PlaybookNode
  *
  * @param {PlaybookNode[]} nodes already normalized (see normalizePlaybook in
  *   @repo/contracts) — sorted by order, densely numbered, blank steps dropped

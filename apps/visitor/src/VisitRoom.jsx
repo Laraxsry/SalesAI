@@ -14,6 +14,8 @@ import { Mic, MicOff, PhoneOff, ScreenShare, ScreenShareOff, X, Hand } from 'luc
 import { ParticipantsPanel } from './ParticipantsPanel.jsx';
 import { useMeetingState } from './useMeetingState.js';
 import { buildMeetingStatusText } from './meeting-status.js';
+import { useInCallSurvey } from './useInCallSurvey.js';
+import { InCallSurvey } from './InCallSurvey.jsx';
 
 // 'listening' deliberately does NOT say "Dinliyor…" (listening/waiting) —
 // the agent now self-continues almost instantly between its own turns
@@ -41,11 +43,11 @@ const API = import.meta.env.VITE_API_URL || 'http://localhost:5001';
  * transcription stream (`useVoiceAssistant()`'s `agentTranscriptions`, fed
  * by agent-worker's `SyncedTextOutput`). Only the most recent segment is
  * shown, matching how a live caption naturally rolls forward. */
-function Captions({ segments }) {
+function Captions({ segments, surveyActive = false }) {
     const last = segments[segments.length - 1];
     if (!last?.text) return null;
     return (
-        <div aria-live="polite" aria-atomic="true" className="pointer-events-none absolute bottom-24 left-1/2 w-full max-w-lg -translate-x-1/2 px-4">
+        <div aria-live="polite" aria-atomic="true" className={`pointer-events-none absolute left-1/2 w-full max-w-lg -translate-x-1/2 px-4 ${surveyActive ? 'bottom-64 sm:bottom-56' : 'bottom-24'}`}>
             <p className="rounded-xl border border-white/10 bg-[#071713]/85 px-4 py-2.5 text-center text-sm font-medium text-white backdrop-blur-xl">
                 {last.text}
             </p>
@@ -65,6 +67,7 @@ export function VisitRoom({ embed, embedConfig, sessionId, roomName, maxParticip
     const localScreenTrack = screenTracks.find(t => t.participant.isLocal);
     const mainTrack = tourTrack ?? videoTrack;
     const room = useRoomContext();
+    const { survey, answer: answerSurvey } = useInCallSurvey(room);
     const [micError, setMicError] = useState(false);
     const [shareError, setShareError] = useState('');
     const [showShareConsent, setShowShareConsent] = useState(false);
@@ -251,7 +254,8 @@ export function VisitRoom({ embed, embedConfig, sessionId, roomName, maxParticip
                     </div>
                 )}
 
-                <Captions segments={agentTranscriptions} />
+                <Captions segments={agentTranscriptions} surveyActive={Boolean(survey)} />
+                <InCallSurvey survey={survey} onAnswer={answerSurvey} />
             </div>
 
             <ParticipantsPanel maxParticipants={maxParticipants} />

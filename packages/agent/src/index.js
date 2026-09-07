@@ -2,6 +2,7 @@ export { buildSystemPrompt } from './persona.js';
 export { buildTools } from './tools.js';
 export {
     buildIdleNudgeInstructions,
+    buildSurveyAcknowledgementInstructions,
     wrapDirective,
     buildGreetingInstructions
 } from './proactive.js';

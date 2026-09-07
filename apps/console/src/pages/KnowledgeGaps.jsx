@@ -18,6 +18,7 @@ import {
 import { analyticsApi, productsApi, knowledgeApi } from '../lib/api.js';
 import { useAuthStore } from '../store/auth.js';
 import { getSocket } from '../lib/socket.js';
+import { productSelectionKey, rememberSelection, resolveRememberedSelection } from '../lib/selectionMemory.js';
 
 const TABS = [
     { key: 'unanswered', label: 'Cevapsız Sorular' },
@@ -648,10 +649,13 @@ export function KnowledgeGaps() {
     });
 
     useEffect(() => {
-        if (!productId && products?.[0]) {
-            setSearchParams({ product: products[0].id }, { replace: true });
+        const resolved = resolveRememberedSelection({ currentId: productId, items: products, storageKey: productSelectionKey(workspace?.id) });
+        if (resolved && resolved !== productId) {
+            const next = new URLSearchParams(searchParams);
+            next.set('product', resolved);
+            setSearchParams(next, { replace: true });
         }
-    }, [productId, products, setSearchParams]);
+    }, [productId, products, searchParams, setSearchParams, workspace?.id]);
 
     function setTab(nextTab) {
         const next = new URLSearchParams(searchParams);
@@ -676,6 +680,7 @@ export function KnowledgeGaps() {
                     <select
                         value={productId}
                         onChange={(e) => {
+                            rememberSelection(productSelectionKey(workspace?.id), e.target.value);
                             const next = new URLSearchParams(searchParams);
                             next.set('product', e.target.value);
                             setSearchParams(next);

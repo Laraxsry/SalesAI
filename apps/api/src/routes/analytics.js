@@ -1,4 +1,5 @@
 import { Router } from 'express';
+import mongoose from 'mongoose';
 import { Agent, Session, Message, SessionSummary, AnalyticsRollup, Lead, Product } from '@repo/database';
 import { requireAuth } from '@repo/auth';
 
@@ -78,7 +79,73 @@ analyticsRouter.get('/agents/:id', requireAuth, async (req, res, next) => {
         } else {
             rollupFilter.bucketAt = { $gte: new Date(Date.now() - 30 * 24 * 60 * 60 * 1000) };
         }
-        const timeSeries = await AnalyticsRollup.find(rollupFilter).sort({ bucketAt: 1 }).lean();
+        const rollups = await AnalyticsRollup.find(rollupFilter).sort({ bucketAt: 1 }).lean();
+        // Rollups are asynchronous. A newly used agent can have sessions
+        // before the hourly worker has produced its first rollup; showing an
+        // empty chart in that period is misleading, so derive the same bucket
+        // shape directly from the sessions already loaded for the KPIs.
+        const timeSeries = rollups.length > 0
+            ? rollups
+            : [...sessions
+                .filter((session) => session.startedAt)
+                .reduce((buckets, session) => {
+                    const bucketAt = new Date(session.startedAt);
+                    bucketAt.setUTCMinutes(0, 0, 0);
+                    const key = bucketAt.toISOString();
+                    const current = buckets.get(key) || {
+                        bucketAt,
+                        metrics: { sessions: 0, avgDurationSec: 0, completionRate: 0, unansweredRate: 0 }
+                    };
+                    current.metrics.sessions += 1;
+                    buckets.set(key, current);
+                    return buckets;
+                }, new Map())
+                .values()]
+                .sort((a, b) => new Date(a.bucketAt) - new Date(b.bucketAt));
+
+        const summaryBySession = new Map(
+            (await SessionSummary.find({ sessionId: { $in: sessionIds } }, 'sessionId dropOff unanswered').lean())
+                .map((summary) => [String(summary.sessionId), summary])
+        );
+        const dailyActivity = [...sessions.reduce((days, currentSession) => {
+            if (!currentSession.startedAt) return days;
+            const date = new Date(currentSession.startedAt);
+            const day = date.toISOString().slice(0, 10);
+            const entry = days.get(day) || { date: day, sessions: [] };
+            const summary = summaryBySession.get(String(currentSession._id));
+            const durationSec = currentSession.endedAt
+                ? Math.max(0, Math.round((new Date(currentSession.endedAt) - date) / 1000))
+                : null;
+            entry.sessions.push({
+                id: String(currentSession._id),
+                name: currentSession.visitorName || 'Anonim oturum',
+                startedAt: currentSession.startedAt,
+                status: currentSession.status,
+                durationSec,
+                completed: currentSession.status === 'ended' && !(summary?.dropOff > 0),
+                unanswered: Boolean(summary?.unanswered?.length)
+            });
+            days.set(day, entry);
+            return days;
+        }, new Map()).values()].map((entry) => {
+            const ended = entry.sessions.filter((item) => item.status === 'ended');
+            const durations = entry.sessions.map((item) => item.durationSec).filter(Number.isFinite);
+            return {
+                ...entry,
+                metrics: {
+                    sessions: entry.sessions.length,
+                    avgDurationSec: durations.length
+                        ? Math.round(durations.reduce((sum, value) => sum + value, 0) / durations.length)
+                        : 0,
+                    completionRate: ended.length
+                        ? ended.filter((item) => item.completed).length / ended.length
+                        : 0,
+                    unansweredRate: ended.length
+                        ? ended.filter((item) => item.unanswered).length / ended.length
+                        : 0
+                }
+            };
+        }).sort((a, b) => a.date.localeCompare(b.date));
 
         res.json({
             agentId: String(agent._id),
@@ -88,7 +155,8 @@ analyticsRouter.get('/agents/:id', requireAuth, async (req, res, next) => {
             averageDurationSeconds,
             completionRate: Math.round(completionRate * 100) / 100,
             unansweredRate: Math.round(unansweredRate * 100) / 100,
-            timeSeries
+            timeSeries,
+            dailyActivity
         });
     } catch (err) {
         next(err);
@@ -204,16 +272,44 @@ analyticsRouter.get('/leads', requireAuth, async (req, res, next) => {
         if (status) filter.status = status;
         if (minScore) filter.score = { $gte: Number(minScore) };
 
-        const [leads, total] = await Promise.all([
+        const [leads, total, statusRows] = await Promise.all([
             Lead.find(filter)
                 .sort({ score: -1, createdAt: -1 })
                 .skip(Number(skip))
                 .limit(Math.min(Number(limit), 100))
                 .lean(),
-            Lead.countDocuments(filter)
+            Lead.countDocuments(filter),
+            Lead.aggregate([
+                { $match: { workspaceId: new mongoose.Types.ObjectId(workspaceId) } },
+                { $group: { _id: '$status', count: { $sum: 1 } } }
+            ])
         ]);
+        const sessionIds = leads.map((lead) => lead.sessionId);
+        const [sessions, summaries] = await Promise.all([
+            Session.find({ _id: { $in: sessionIds } }, 'visitorName startedAt endedAt status surveyAnswers').lean(),
+            SessionSummary.find({ sessionId: { $in: sessionIds } }, 'sessionId tldr topics objections unanswered sentiment nextStep').lean()
+        ]);
+        const sessionById = new Map(sessions.map((session) => [String(session._id), session]));
+        const summaryById = new Map(summaries.map((summary) => [String(summary.sessionId), summary]));
+        const enrichedLeads = leads.map((lead) => {
+            const session = sessionById.get(String(lead.sessionId));
+            const summary = summaryById.get(String(lead.sessionId));
+            return {
+                ...lead,
+                session: session ? {
+                    visitorName: session.visitorName,
+                    startedAt: session.startedAt,
+                    endedAt: session.endedAt,
+                    status: session.status
+                } : null,
+                surveyAnswers: session?.surveyAnswers || [],
+                summary: summary || null
+            };
+        });
+        const statusCounts = { new: 0, qualified: 0, dismissed: 0 };
+        for (const row of statusRows) statusCounts[row._id] = row.count;
 
-        res.json({ total, leads });
+        res.json({ total, leads: enrichedLeads, statusCounts });
     } catch (err) {
         next(err);
     }
@@ -283,4 +379,3 @@ analyticsRouter.patch('/leads/:id/status', requireAuth, async (req, res, next) =
         next(err);
     }
 });
-

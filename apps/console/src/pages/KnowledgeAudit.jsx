@@ -4,6 +4,7 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { ArrowLeft, AlertTriangle, Copy, Trash2, ShieldCheck, RefreshCw } from 'lucide-react';
 import { knowledgeApi, productsApi } from '../lib/api.js';
 import { useAuthStore } from '../store/auth.js';
+import { productSelectionKey, rememberSelection, resolveRememberedSelection } from '../lib/selectionMemory.js';
 
 /**
  * Knowledge audit review.
@@ -54,10 +55,9 @@ export function KnowledgeAudit() {
     });
 
     useEffect(() => {
-        if (!productId && products?.[0]) {
-            setSearchParams({ product: products[0].id }, { replace: true });
-        }
-    }, [productId, products, setSearchParams]);
+        const resolved = resolveRememberedSelection({ currentId: productId, items: products, storageKey: productSelectionKey(workspace?.id) });
+        if (resolved && resolved !== productId) setSearchParams({ product: resolved }, { replace: true });
+    }, [productId, products, setSearchParams, workspace?.id]);
 
     const { data: audits } = useQuery({
         queryKey: ['knowledge-audits', productId],
@@ -130,6 +130,7 @@ export function KnowledgeAudit() {
                             value={productId}
                             onChange={(e) => {
                                 setDecisions({});
+                                rememberSelection(productSelectionKey(workspace?.id), e.target.value);
                                 setSearchParams({ product: e.target.value });
                             }}
                             className="h-10 rounded-[var(--radius-input)] border border-border bg-surface px-3 text-sm text-text outline-none focus:border-brand"

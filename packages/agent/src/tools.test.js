@@ -163,6 +163,35 @@ describe('buildTools', () => {
                 { text: 'b', score: 0.5, sourceId: 's2', pageUrl: 'https://example.com/about' }
             ]);
         });
+
+        it('forwards element-scoped metadata so the model can navigate and resolve the exact DOM target', async () => {
+            retrieve.mockResolvedValue([{
+                text: 'Midas uygulamasında Yatırım Hesabı bölümünü açın.',
+                score: 0.93,
+                sourceId: 's1',
+                metadata: {
+                    pageUrl: 'https://example.com/faq',
+                    elementKey: 'el_0123456789abcdef',
+                    elementPath: 'sss/midas-ekstresi',
+                    elementType: 'toggle',
+                    heading: 'Midas ekstresini nasıl yüklerim?'
+                }
+            }]);
+            const tools = buildTools({ productId: 'prod-123' });
+
+            const result = await findTool(tools, 'search_knowledge').handler({ query: 'Midas ekstresi' });
+
+            expect(result).toEqual([{
+                text: 'Midas uygulamasında Yatırım Hesabı bölümünü açın.',
+                score: 0.93,
+                sourceId: 's1',
+                pageUrl: 'https://example.com/faq',
+                elementKey: 'el_0123456789abcdef',
+                elementPath: 'sss/midas-ekstresi',
+                elementType: 'toggle',
+                heading: 'Midas ekstresini nasıl yüklerim?'
+            }]);
+        });
     });
 
     describe('find_page', () => {
@@ -253,7 +282,14 @@ describe('buildTools', () => {
                         { label: 'Planı Seç', kind: 'button', selector: 'text=Planı Seç' },
                         { label: 'Gönder', kind: 'submit', selector: 'text=Gönder' }
                     ],
-                    sections: [{ tag: 'section', ariaLabel: 'Fiyatlandırma bölümü', textSnippet: '...' }]
+                    sections: [{ tag: 'section', ariaLabel: 'Fiyatlandırma bölümü', textSnippet: '...' }],
+                    toggles: [{
+                        elementKey: 'el_0123456789abcdef',
+                        elementPath: 'sss/midas-ekstresi',
+                        label: 'Midas ekstresini nasıl yüklerim?',
+                        kind: 'toggle',
+                        selector: '[aria-controls="faq-midas"]'
+                    }]
                 }
             },
             {
@@ -321,6 +357,35 @@ describe('buildTools', () => {
             expect(result).toEqual({ candidates: [] });
         });
 
+        it('resolves an elementKey exactly without fuzzy matching', async () => {
+            const tools = buildTools({ productId: 'p1', siteMap });
+
+            const result = await findTool(tools, 'find_element').handler({ elementKey: 'el_0123456789abcdef' });
+
+            expect(result).toEqual({
+                candidates: [{
+                    pageUrl: 'https://example.test/pricing',
+                    selector: '[aria-controls="faq-midas"]',
+                    kind: 'toggle',
+                    label: 'Midas ekstresini nasıl yüklerim?',
+                    elementKey: 'el_0123456789abcdef',
+                    elementPath: 'sss/midas-ekstresi'
+                }]
+            });
+        });
+
+        it('includes element-aware toggles in fuzzy discovery', async () => {
+            const tools = buildTools({ productId: 'p1', siteMap });
+
+            const result = await findTool(tools, 'find_element').handler({ query: 'Midas ekstresi' });
+
+            expect(result.candidates[0]).toMatchObject({
+                elementKey: 'el_0123456789abcdef',
+                selector: '[aria-controls="faq-midas"]',
+                kind: 'toggle'
+            });
+        });
+
         // Real crawl data showed a badge with the identical selector repeated
         // on every page, alone filling the whole candidate cap and crowding
         // out page-specific matches.
@@ -385,6 +450,40 @@ describe('buildTools', () => {
             const tools = buildTools({ productId: 'p1', tour: {} });
             const result = await findTool(tools, toolName).handler(args);
             expect(result).toEqual({ ok: false });
+        });
+
+        it('resolves click_element by elementKey and requests idempotent expansion', async () => {
+            const tour = { click: vi.fn().mockResolvedValue({ ok: true, expanded: true }) };
+            const siteMap = [{
+                url: 'https://example.test/faq',
+                components: {
+                    toggles: [{
+                        elementKey: 'el_0123456789abcdef',
+                        label: 'Midas ekstresi',
+                        selector: '[aria-controls="faq-midas"]',
+                        kind: 'toggle'
+                    }]
+                }
+            }];
+            const tools = buildTools({ productId: 'p1', tour, siteMap });
+
+            const result = await findTool(tools, 'click_element').handler({
+                elementKey: 'el_0123456789abcdef',
+                ensureExpanded: true
+            });
+
+            expect(tour.click).toHaveBeenCalledWith('[aria-controls="faq-midas"]', { ensureExpanded: true });
+            expect(result).toEqual({ ok: true, expanded: true });
+        });
+
+        it('returns a soft failure when click_element receives a stale elementKey', async () => {
+            const tour = { click: vi.fn() };
+            const tools = buildTools({ productId: 'p1', tour, siteMap: [] });
+
+            const result = await findTool(tools, 'click_element').handler({ elementKey: 'el_missing' });
+
+            expect(result).toEqual({ ok: false, found: false, reason: 'element_key_not_found' });
+            expect(tour.click).not.toHaveBeenCalled();
         });
     });
 

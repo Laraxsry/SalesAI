@@ -9,7 +9,8 @@
   },
   "scripts": {
     "db:indexes": "node scripts/sync-indexes.js",
-    "lint": "eslint ."
+    "lint": "eslint .",
+    "test": "vitest run"
   },
   "dependencies": {
     "@repo/logger": "*",
@@ -18,6 +19,7 @@
   "devDependencies": {
     "@repo/eslint-config": "*",
     "dotenv": "^16.4.7",
-    "eslint": "^9.17.0"
+    "eslint": "^9.17.0",
+    "vitest": "^4.1.10"
   }
 }

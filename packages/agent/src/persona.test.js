@@ -288,6 +288,15 @@ describe('buildSystemPrompt — conversational behavior rules', () => {
         expect(withPlaybook).not.toContain('`tabLabel`, its content is behind a specific tab/panel selector');
     });
 
+    it('opens an exact expandable elementKey after answering, only outside a playbook', () => {
+        const withoutPlaybook = buildSystemPrompt(baseCfg);
+        const withPlaybook = buildSystemPrompt({ ...baseCfg, playbookActive: true });
+        expect(withoutPlaybook).toContain('`elementKey`');
+        expect(withoutPlaybook).toContain('`ensureExpanded=true`');
+        expect(withoutPlaybook).toContain('After answering');
+        expect(withPlaybook).not.toContain('`elementKey`');
+    });
+
     it('tells the model not to re-ask read_tour_screen the same question when content is missing, but to navigate to the right page instead, only outside a playbook', () => {
         const withoutPlaybook = buildSystemPrompt(baseCfg);
         const withPlaybook = buildSystemPrompt({ ...baseCfg, playbookActive: true });

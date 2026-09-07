@@ -9,6 +9,7 @@ import { Button, Input } from '@repo/ui';
 import { Plus, Bot, X, AlertCircle } from 'lucide-react';
 import { productsApi, agentsApi } from '../lib/api.js';
 import { useAuthStore } from '../store/auth.js';
+import { productSelectionKey, rememberSelection, resolveRememberedSelection } from '../lib/selectionMemory.js';
 
 const STATUS_STYLE = {
     draft: 'text-text-muted bg-surface-raised',
@@ -306,10 +307,9 @@ export function Agents() {
     });
 
     useEffect(() => {
-        if (!productId && products?.[0]) {
-            setSearchParams({ product: products[0].id }, { replace: true });
-        }
-    }, [productId, products, setSearchParams]);
+        const resolved = resolveRememberedSelection({ currentId: productId, items: products, storageKey: productSelectionKey(workspace?.id) });
+        if (resolved && resolved !== productId) setSearchParams({ product: resolved }, { replace: true });
+    }, [productId, products, setSearchParams, workspace?.id]);
 
     const { data: agents } = useQuery({
         queryKey: ['agents', productId],
@@ -346,7 +346,10 @@ export function Agents() {
                     {products && products.length > 1 && (
                         <select
                             value={productId ?? ''}
-                            onChange={(e) => setSearchParams({ product: e.target.value })}
+                            onChange={(e) => {
+                                rememberSelection(productSelectionKey(workspace?.id), e.target.value);
+                                setSearchParams({ product: e.target.value });
+                            }}
                             className="h-10 rounded-[var(--radius-input)] border border-border bg-surface px-3 text-sm text-text outline-none focus:border-brand"
                         >
                             {products.map((p) => (

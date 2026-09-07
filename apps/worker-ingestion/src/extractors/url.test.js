@@ -8,7 +8,7 @@ vi.mock('@repo/screen', () => ({ loginWithCredentials: vi.fn() }));
 vi.mock('playwright', () => ({ chromium: { launch: vi.fn() } }));
 
 const { chromium } = await import('playwright');
-const { extractFromUrl, waitForStableContent, extractPageComponents, discoverTabVariants } =
+const { extractFromUrl, waitForStableContent, extractPageComponents, discoverTabVariants, discoverToggleVariants } =
     await import('./url.js');
 
 const EMPTY_COMPONENTS = { headings: [], interactiveElements: [], sections: [] };
@@ -95,7 +95,7 @@ describe('extractFromUrl — previousPages cache', () => {
 
     it('does not navigate to a URL already present in previousPages, and reuses its cached text/links', async () => {
         const previousPages = new Map([
-            ['https://example.com/a', { rawText: 'raw A text', links: ['https://example.com/b'] }]
+            ['https://example.com/a', { indexVersion: 2, rawText: 'raw A text', links: ['https://example.com/b'] }]
         ]);
         const onProgress = vi.fn();
 
@@ -121,6 +121,7 @@ describe('extractFromUrl — previousPages cache', () => {
         // parentUrl added (that field didn't exist when this cache entry —
         // the legacy plain-string-links shape — was written).
         expect(result.pagesIndex['https://example.com/a']).toEqual({
+            indexVersion: 2,
             rawText: 'raw A text',
             links: ['https://example.com/b']
         });
@@ -128,11 +129,31 @@ describe('extractFromUrl — previousPages cache', () => {
         // the page it was discovered from (the root, here) — and a
         // (here empty, per the fixture's fake DOM) components inventory.
         expect(result.pagesIndex['https://example.com/b']).toEqual({
+            indexVersion: 2,
             rawText: 'raw B text',
             links: [],
             parentUrl: 'https://example.com/a',
             components: EMPTY_COMPONENTS
         });
+    });
+
+    it('re-fetches a legacy page index once so newly-added element discovery is populated', async () => {
+        fakePage = makeFakePage(
+            new Map([['https://example.com/a', { text: 'fresh A text', links: [] }]])
+        );
+        chromium.launch.mockResolvedValue({
+            newContext: async () => ({ newPage: async () => fakePage }),
+            close: vi.fn(async () => {})
+        });
+        const previousPages = new Map([
+            ['https://example.com/a', { rawText: 'stale A text', links: [] }]
+        ]);
+
+        const result = await extractFromUrl('https://example.com/a', null, null, previousPages);
+
+        expect(fakePage.goto).toHaveBeenCalledTimes(2);
+        expect(result.pages[0].text).toBe('fresh A text');
+        expect(result.pagesIndex['https://example.com/a'].indexVersion).toBe(2);
     });
 
     it('fetches everything normally when previousPages is empty (first-ever crawl)', async () => {
@@ -425,5 +446,61 @@ describe('discoverTabVariants', () => {
         expect(variants).toEqual([]);
         expect(page.goto).toHaveBeenCalledTimes(1);
         expect(page.click).not.toHaveBeenCalled();
+    });
+});
+
+describe('discoverToggleVariants', () => {
+    it('captures and restores a collapsed content toggle with stable identity metadata', async () => {
+        const locator = {
+            first: vi.fn(function () { return this; }),
+            waitFor: vi.fn(async () => {}),
+            click: vi.fn(async () => {}),
+            evaluate: vi.fn(async () => ({
+                expanded: true,
+                revealedText: 'Midas uygulamasında Yatırım Hesabı bölümünü açın.'
+            }))
+        };
+        const page = {
+            evaluate: vi.fn(async (fn) => fn.toString().includes("querySelectorAll('[aria-expanded]')")
+                ? [{
+                      index: 0,
+                      label: 'Midas ekstresini nasıl yüklerim?',
+                      controlsId: 'faq-midas',
+                      sectionLabel: 'Sıkça Sorulan Sorular',
+                      initialExpanded: false
+                  }]
+                : 100),
+            locator: vi.fn(() => locator),
+            waitForTimeout: vi.fn(async () => {})
+        };
+
+        const result = await discoverToggleVariants(page, 'https://example.com/faq');
+
+        expect(locator.click).toHaveBeenCalledTimes(2); // open, then restore
+        expect(result).toHaveLength(1);
+        expect(result[0]).toMatchObject({
+            elementPath: 'sikca-sorulan-sorular/midas-ekstresini-nasil-yuklerim',
+            label: 'Midas ekstresini nasıl yüklerim?',
+            selector: '[aria-controls="faq-midas"]',
+            expanded: true,
+            revealedText: 'Midas uygulamasında Yatırım Hesabı bölümünü açın.'
+        });
+        expect(result[0].elementKey).toMatch(/^el_[a-f0-9]{16}$/);
+    });
+
+    it('ignores action-like expanded controls instead of clicking arbitrary CTAs', async () => {
+        const page = {
+            evaluate: vi.fn(async () => [{
+                index: 0,
+                label: 'Demo talep et',
+                controlsId: 'demo',
+                sectionLabel: null,
+                initialExpanded: false
+            }]),
+            locator: vi.fn()
+        };
+
+        await expect(discoverToggleVariants(page, 'https://example.com')).resolves.toEqual([]);
+        expect(page.locator).not.toHaveBeenCalled();
     });
 });

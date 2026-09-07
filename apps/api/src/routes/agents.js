@@ -5,14 +5,26 @@ import {
     AgentUpdateInput,
     EmbedConfigInput,
     PlaybookInput,
+    PlaybookGenerationInput,
     normalizePlaybook,
     isTourNavigableUrl
 } from '@repo/contracts';
-import { Agent, ShareLink, Product, Message, Session, EmbedConfig, EmbedDomain, Playbook } from '@repo/database';
+import {
+    Agent,
+    ShareLink,
+    Product,
+    Message,
+    Session,
+    EmbedConfig,
+    EmbedDomain,
+    Playbook,
+    KnowledgeTopic,
+    KnowledgeSource
+} from '@repo/database';
 import { requireAuth } from '@repo/auth';
 import { shareToken, buildEmbedSnippet, logAudit, extractRequestMeta, AUDIT_ACTIONS } from '@repo/utils';
 import { retrieve } from '@repo/rag';
-import { getLLM } from '@repo/ai';
+import { getLLM, generatePlaybookDraft } from '@repo/ai';
 import { getSdkVersion } from '../services/sdk-bundle.js';
 import { requestTimeout } from '../middleware/request-timeout.js';
 import { chatRateLimit } from '../middleware/public-rate-limits.js';
@@ -394,6 +406,7 @@ agentsRouter.get('/:id/playbook', requireAuth, async (req, res, next) => {
         const playbook = (doc || new Playbook({ agentId: agent._id })).toObject();
         res.json({
             ...playbook,
+            maxParticipants: Math.max(1, Number(agent.maxParticipants) || 1),
             product: {
                 websiteUrl: product?.websiteUrl || null,
                 tourAllowedDomains: product?.tourAllowedDomains || []
@@ -403,6 +416,77 @@ agentsRouter.get('/:id/playbook', requireAuth, async (req, res, next) => {
         next(err);
     }
 });
+
+/**
+ * Generate a review-only playbook draft. This endpoint intentionally never
+ * writes Playbook: AI/presets propose, the editor previews, and the existing
+ * POST /playbook endpoint remains the only persistence + versioning boundary.
+ */
+agentsRouter.post(
+    '/:id/playbook/generate',
+    requireAuth,
+    validate({ body: PlaybookGenerationInput }),
+    async (req, res, next) => {
+        try {
+            const agent = await Agent.findById(req.params.id).lean();
+            if (!agent) return res.status(404).json({ error: 'Agent not found' });
+
+            const product = await Product.findById(agent.productId).lean();
+            if (!product) return res.status(404).json({ error: 'Product not found' });
+
+            const [topics, sources] = await Promise.all([
+                KnowledgeTopic.find({ productId: product._id, status: 'ready' })
+                    .sort({ createdAt: 1 })
+                    .select('title body')
+                    .lean(),
+                KnowledgeSource.find({
+                    productId: product._id,
+                    type: { $in: ['url', 'api'] },
+                    'meta.crawlIndex.pages': { $exists: true }
+                })
+                    .select('meta.crawlIndex.pages')
+                    .lean()
+            ]);
+
+            const pagesByUrl = new Map();
+            for (const source of sources) {
+                for (const [url, page] of Object.entries(source.meta?.crawlIndex?.pages || {})) {
+                    if (!isTourNavigableUrl(url, product) || pagesByUrl.has(url)) continue;
+                    pagesByUrl.set(url, {
+                        url,
+                        title: page.components?.headings?.[0]?.text || '',
+                        clickableElements: [
+                            ...(page.components?.toggles || []).map((element) => element.label),
+                            ...(page.components?.interactiveElements || []).map((element) => element.label)
+                        ].filter(Boolean)
+                    });
+                }
+            }
+
+            const siteMap = [...pagesByUrl.values()];
+            const canShowScreen = agent.screenModes?.includes('guided-tour') && siteMap.length > 0;
+            const draft = await generatePlaybookDraft(req.body, {
+                product,
+                agent,
+                topics,
+                siteMap: canShowScreen ? siteMap : [],
+                canUseSurvey: Math.max(1, Number(agent.maxParticipants) || 1) === 1
+            });
+
+            res.json({
+                ...draft,
+                context: {
+                    topicCount: topics.length,
+                    pageCount: siteMap.length,
+                    canShowScreen,
+                    canUseSurvey: Math.max(1, Number(agent.maxParticipants) || 1) === 1
+                }
+            });
+        } catch (err) {
+            next(err);
+        }
+    }
+);
 
 /**
  * Save the agent's playbook. Upsert semantics: the body's `nodes` is the new
@@ -422,6 +506,14 @@ agentsRouter.post('/:id/playbook', requireAuth, validate({ body: PlaybookInput }
         if (!product) return res.status(404).json({ error: 'Product not found' });
 
         const nodes = normalizePlaybook(req.body.nodes);
+        if (
+            Math.max(1, Number(agent.maxParticipants) || 1) > 1 &&
+            nodes.some((node) => node.type === 'survey')
+        ) {
+            return res.status(422).json({
+                error: 'In-call survey steps currently support only 1-on-1 agents'
+            });
+        }
         const badIndex = nodes.findIndex((n) => n.url && !isTourNavigableUrl(n.url, product));
         if (badIndex !== -1) {
             return res.status(422).json({
@@ -444,6 +536,7 @@ agentsRouter.post('/:id/playbook', requireAuth, validate({ body: PlaybookInput }
 
         res.json({
             ...doc.toObject(),
+            maxParticipants: Math.max(1, Number(agent.maxParticipants) || 1),
             product: {
                 websiteUrl: product.websiteUrl || null,
                 tourAllowedDomains: product.tourAllowedDomains || []

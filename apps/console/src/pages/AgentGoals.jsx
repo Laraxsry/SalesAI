@@ -3,8 +3,9 @@ import { useParams, Link } from 'react-router-dom';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { Button } from '@repo/ui';
 import { isTourNavigableUrl } from '@repo/contracts';
-import { ArrowLeft, Globe, Paperclip, Trash2, Target, Info, AlertCircle, Check, GripVertical } from 'lucide-react';
+import { ArrowLeft, Globe, Paperclip, Trash2, Target, Info, AlertCircle, Check, GripVertical, Sparkles } from 'lucide-react';
 import { agentsApi } from '../lib/api.js';
+import { toEditorSurvey } from '../lib/playbookSurvey.js';
 
 /**
  * Hedefler (playbook) editörü — agent'ın her ziyaretçide izleyeceği genel
@@ -22,14 +23,45 @@ const MODE_OPTIONS = [
     { value: 'skip-if-no-answer', label: 'Cevap yoksa geç' }
 ];
 
+const NODE_TYPE_OPTIONS = [
+    { value: 'narrative', label: 'Anlatım' },
+    { value: 'survey', label: 'Soru' }
+];
+
 function makeRowId() {
     return typeof crypto !== 'undefined' && crypto.randomUUID
         ? crypto.randomUUID()
         : `row-${Math.random().toString(36).slice(2)}`;
 }
 
+function makeOptionValue() {
+    return `option_${makeRowId().replace(/[^a-zA-Z0-9_-]/g, '').slice(0, 48)}`;
+}
+
+function makeOption(label) {
+    return { value: makeOptionValue(), label };
+}
+
+/** Trailing-empty-slot pattern, same as rows: the last option box is always
+ *  an empty one to type into, capped at the server's 8-option limit. */
+function withTrailingEmptyOption(options) {
+    const last = options[options.length - 1];
+    if (options.length >= 8) return options;
+    if (!last || last.label.trim()) return [...options, makeOption('')];
+    return options;
+}
+
+function optionPlaceholderIndex(options) {
+    const last = options[options.length - 1];
+    return last && !last.label.trim() ? options.length - 1 : -1;
+}
+
 function emptyRow() {
-    return { id: makeRowId(), directive: '', url: null, attach: null, mode: 'situational' };
+    return { id: makeRowId(), type: 'narrative', directive: '', url: null, attach: null, mode: 'situational', survey: null };
+}
+
+function rowText(row) {
+    return row.type === 'survey' ? row.survey?.question || '' : row.directive || '';
 }
 
 /** Server nodes -> editor rows, with the first-step seed and a trailing
@@ -37,10 +69,22 @@ function emptyRow() {
 function rowsFromServer(nodes) {
     const rows = (nodes || []).map((n) => ({
         id: n.id || makeRowId(),
+        type: n.type || 'narrative',
         directive: n.directive || '',
         url: n.url ?? null,
         attach: n.attach ?? null,
-        mode: n.mode || 'situational'
+        mode: n.mode || 'situational',
+        survey: n.type === 'survey' && n.survey
+            ? toEditorSurvey(
+                  n.survey,
+                  n.survey.answerType === 'text'
+                      ? []
+                      : withTrailingEmptyOption((n.survey.options || []).map((option) => ({
+                            value: option.value,
+                            label: option.label
+                        })))
+              )
+            : null
     }));
 
     if (rows.length === 0) {
@@ -48,7 +92,7 @@ function rowsFromServer(nodes) {
     }
 
     const last = rows[rows.length - 1];
-    if (!last || last.directive.trim()) rows.push(emptyRow());
+    if (!last || rowText(last).trim()) rows.push(emptyRow());
     return rows;
 }
 
@@ -60,6 +104,13 @@ export function AgentGoals() {
     const [saving, setSaving] = useState(false);
     const [saved, setSaved] = useState(false);
     const [error, setError] = useState('');
+    const [creationMode, setCreationMode] = useState('custom');
+    const [generationBrief, setGenerationBrief] = useState('');
+    const [generationStrategy, setGenerationStrategy] = useState('consultative');
+    const [generationPreset, setGenerationPreset] = useState('guided-demo');
+    const [includeSurvey, setIncludeSurvey] = useState(true);
+    const [generating, setGenerating] = useState(false);
+    const [generatedDraft, setGeneratedDraft] = useState(null);
 
     const { data, isLoading } = useQuery({
         queryKey: ['agent-playbook', id],
@@ -75,6 +126,7 @@ export function AgentGoals() {
     const rowRefs = useRef(new Map());
     const prevRectsRef = useRef(null);
     const [draggingId, setDraggingId] = useState(null);
+    const [draggingOption, setDraggingOption] = useState(null);
 
     // Runs after every rows update; only actually animates when a reorder
     // (not a text edit) primed prevRectsRef right before the state change.
@@ -111,7 +163,7 @@ export function AgentGoals() {
      *  a step" slot, not a real step to reorder around. */
     function placeholderIndex(list) {
         const last = list[list.length - 1];
-        return last && !last.directive.trim() ? list.length - 1 : -1;
+        return last && !rowText(last).trim() ? list.length - 1 : -1;
     }
 
     function moveRow(rowId, targetIndex) {
@@ -191,9 +243,13 @@ export function AgentGoals() {
 
     const product = data?.product || {};
 
+    useEffect(() => {
+        if (Number(data?.maxParticipants) > 1) setIncludeSurvey(false);
+    }, [data?.maxParticipants]);
+
     function withTrailingEmpty(next) {
         const last = next[next.length - 1];
-        if (!last || last.directive.trim()) return [...next, emptyRow()];
+        if (!last || rowText(last).trim()) return [...next, emptyRow()];
         return next;
     }
 
@@ -220,6 +276,75 @@ export function AgentGoals() {
         updateRow(row.id, { attach: row.attach === null ? '' : null });
     }
 
+    function changeNodeType(row, type) {
+        if (type === 'survey' && Number(data?.maxParticipants) > 1) return;
+        if (type === 'survey') {
+            updateRow(row.id, {
+                type,
+                survey: {
+                    question: row.directive || '',
+                    fieldKey: null,
+                    answerType: 'single-choice',
+                    options: withTrailingEmptyOption([]),
+                    allowFreeText: false,
+                    required: true
+                }
+            });
+            return;
+        }
+        updateRow(row.id, {
+            type,
+            directive: row.survey?.question || row.directive || '',
+            survey: null
+        });
+    }
+
+    function updateOptionLabel(row, index, label) {
+        updateRow(row.id, {
+            survey: {
+                ...row.survey,
+                options: withTrailingEmptyOption(
+                    row.survey.options.map((o, i) => (i === index ? { ...o, label } : o))
+                )
+            }
+        });
+    }
+
+    function removeOption(row, index) {
+        updateRow(row.id, {
+            survey: {
+                ...row.survey,
+                options: withTrailingEmptyOption(row.survey.options.filter((_, i) => i !== index))
+            }
+        });
+    }
+
+    function handleOptionDragStart(e, row, index) {
+        setDraggingOption({ rowId: row.id, index });
+        e.dataTransfer.effectAllowed = 'move';
+        e.dataTransfer.setData('text/plain', String(index));
+    }
+
+    /** Live-swaps as the pointer passes over another option box — small,
+     *  short lists (≤8) don't need the row list's FLIP animation. */
+    function handleOptionDragOver(e, row, index) {
+        if (!draggingOption || draggingOption.rowId !== row.id) return;
+        const pIndex = optionPlaceholderIndex(row.survey.options);
+        if (pIndex !== -1 && index >= pIndex) return;
+        e.preventDefault();
+        e.dataTransfer.dropEffect = 'move';
+        if (draggingOption.index === index) return;
+        const options = [...row.survey.options];
+        const [item] = options.splice(draggingOption.index, 1);
+        options.splice(index, 0, item);
+        updateRow(row.id, { survey: { ...row.survey, options } });
+        setDraggingOption({ rowId: row.id, index });
+    }
+
+    function endOptionDrag() {
+        setDraggingOption(null);
+    }
+
     /** Girildiği anda doğrulama — bkz. agent_flow.md "URL doğrulaması
      *  editörde, girildiği anda yapılır". Ürün henüz hiç site/allowlist
      *  tanımlamadıysa (yeni ürün) uyarı bastırılır; sunucu kaydederken zaten
@@ -234,20 +359,64 @@ export function AgentGoals() {
         return '';
     }
 
-    const filledRows = useMemo(() => rows.filter((r) => r.directive.trim()), [rows]);
+    const filledRows = useMemo(() => rows.filter((r) => rowText(r).trim()), [rows]);
+
+    async function onGenerate() {
+        setError('');
+        setGenerating(true);
+        setGeneratedDraft(null);
+        try {
+            const draft = await agentsApi.generatePlaybook(id, {
+                source: creationMode === 'preset' ? 'preset' : 'ai',
+                brief: generationBrief.trim(),
+                strategy: generationStrategy,
+                preset: creationMode === 'preset' ? generationPreset : null,
+                includeSurvey: includeSurvey && (Number(data?.maxParticipants) || 1) <= 1,
+                maxNodes: 6
+            });
+            setGeneratedDraft(draft);
+        } catch (err) {
+            setError(err.message);
+        } finally {
+            setGenerating(false);
+        }
+    }
+
+    function applyGeneratedDraft() {
+        if (!generatedDraft?.nodes?.length) return;
+        setRows(rowsFromServer(generatedDraft.nodes));
+        setGeneratedDraft(null);
+        setSaved(false);
+        setCreationMode('custom');
+    }
 
     async function onSave() {
         setError('');
         setSaving(true);
         try {
-            const nodes = filledRows.map((r, i) => ({
-                id: r.id,
-                order: i + 1,
-                directive: r.directive.trim(),
-                url: r.url?.trim() || null,
-                attach: r.attach?.trim() || null,
-                mode: r.mode
-            }));
+            const nodes = filledRows.map((r, i) => {
+                const question = r.survey?.question?.trim() || '';
+                return {
+                    id: r.id,
+                    order: i + 1,
+                    type: r.type || 'narrative',
+                    directive: r.type === 'survey' ? question : r.directive.trim(),
+                    url: r.url?.trim() || null,
+                    attach: r.attach?.trim() || null,
+                    mode: r.mode,
+                    survey: r.type === 'survey'
+                        ? {
+                              ...r.survey,
+                              question,
+                              options: r.survey.answerType === 'single-choice'
+                                  ? r.survey.options
+                                      .map((option) => ({ ...option, label: option.label.trim() }))
+                                      .filter((option) => option.label)
+                                  : []
+                          }
+                        : null
+                };
+            });
             const result = await agentsApi.savePlaybook(id, { nodes, enabled: true });
             setRows(rowsFromServer(result.nodes));
             queryClient.invalidateQueries({ queryKey: ['agent-playbook', id] });
@@ -279,6 +448,135 @@ export function AgentGoals() {
                     sorularına göre esner.
                 </p>
             </div>
+
+            <section className="mb-5 rounded-[var(--radius-card)] border border-border bg-surface p-4">
+                <div className="flex flex-wrap items-center justify-between gap-3">
+                    <div>
+                        <h2 className="text-sm font-semibold text-text">Akış oluşturma</h2>
+                        <p className="mt-0.5 text-xs text-text-muted">
+                            Manuel düzenle, şirket bilgisiyle AI taslağı üret veya hazır bir başlangıç akışı seç.
+                        </p>
+                    </div>
+                    <div className="flex rounded-[var(--radius-input)] border border-border bg-bg p-1">
+                        {[
+                            ['custom', 'Özel'],
+                            ['ai', 'AI generated'],
+                            ['preset', 'Hazır preset']
+                        ].map(([value, label]) => (
+                            <button
+                                key={value}
+                                type="button"
+                                onClick={() => { setCreationMode(value); setGeneratedDraft(null); }}
+                                className={`rounded-[calc(var(--radius-input)-3px)] px-3 py-1.5 text-xs transition-colors ${creationMode === value
+                                    ? 'bg-brand/15 text-brand-light'
+                                    : 'text-text-muted hover:text-text'
+                                    }`}
+                            >
+                                {label}
+                            </button>
+                        ))}
+                    </div>
+                </div>
+
+                {creationMode !== 'custom' && (
+                    <div className="mt-4 grid gap-3 lg:grid-cols-[1fr_13rem]">
+                        <div>
+                            {creationMode === 'ai' ? (
+                                <textarea
+                                    value={generationBrief}
+                                    onChange={(event) => setGenerationBrief(event.target.value)}
+                                    maxLength={1500}
+                                    rows={3}
+                                    placeholder="Örn. Midas kullanıcılarına odaklan; önce ihtiyaçlarını sor, sonra ekstre yükleme ve sonuç ekranını göster."
+                                    className="w-full resize-y rounded-[var(--radius-input)] border border-border bg-bg px-3 py-2.5 text-sm text-text outline-none placeholder:text-text-muted/60 focus:border-brand"
+                                />
+                            ) : (
+                                <select
+                                    value={generationPreset}
+                                    onChange={(event) => setGenerationPreset(event.target.value)}
+                                    className="h-10 w-full rounded-[var(--radius-input)] border border-border bg-bg px-3 text-sm text-text outline-none focus:border-brand"
+                                >
+                                    <option value="guided-demo">Rehberli ürün demosu</option>
+                                    <option value="discovery">Danışmanlık odaklı keşif</option>
+                                    <option value="qualification">Hızlı ön görüşme</option>
+                                </select>
+                            )}
+                            <p className="mt-1.5 text-[11px] text-text-muted">
+                                Taslak önce burada önizlenir; siz uygulayıp Kaydet'e basmadan canlı akış değişmez.
+                            </p>
+                        </div>
+
+                        <div className="flex flex-col gap-2">
+                            {creationMode === 'ai' && (
+                                <select
+                                    value={generationStrategy}
+                                    onChange={(event) => setGenerationStrategy(event.target.value)}
+                                    className="h-10 rounded-[var(--radius-input)] border border-border bg-bg px-2 text-xs text-text outline-none focus:border-brand"
+                                >
+                                    <option value="consultative">Danışmanlık odaklı</option>
+                                    <option value="storytelling">Hikâye anlatımı</option>
+                                    <option value="sector-aware">Sektör dinamikleri</option>
+                                </select>
+                            )}
+                            <label className="flex items-center gap-2 text-xs text-text-muted">
+                                <input
+                                    type="checkbox"
+                                    checked={includeSurvey}
+                                    disabled={Number(data?.maxParticipants) > 1}
+                                    onChange={(event) => setIncludeSurvey(event.target.checked)}
+                                />
+                                Görüşme içi kısa anket ekle
+                            </label>
+                            <button
+                                type="button"
+                                onClick={onGenerate}
+                                disabled={generating}
+                                className="inline-flex h-10 items-center justify-center gap-2 rounded-[var(--radius-input)] bg-brand px-3 text-sm font-medium text-white transition-opacity disabled:opacity-50"
+                            >
+                                <Sparkles size={15} />
+                                {generating ? 'Taslak hazırlanıyor…' : 'Taslak oluştur'}
+                            </button>
+                        </div>
+                    </div>
+                )}
+
+                {generatedDraft?.nodes?.length > 0 && (
+                    <div className="mt-4 rounded-[var(--radius-input)] border border-brand/30 bg-brand/5 p-3">
+                        <div className="flex flex-wrap items-center justify-between gap-2">
+                            <div>
+                                <p className="text-sm font-medium text-text">{generatedDraft.nodes.length} adımlık taslak hazır</p>
+                                <p className="text-[11px] text-text-muted">
+                                    {generatedDraft.context?.topicCount || 0} bilgi başlığı ve {generatedDraft.context?.pageCount || 0} doğrulanmış sayfa kullanıldı.
+                                </p>
+                            </div>
+                            <div className="flex gap-2">
+                                <button
+                                    type="button"
+                                    onClick={() => setGeneratedDraft(null)}
+                                    className="rounded-[var(--radius-input)] border border-border px-3 py-1.5 text-xs text-text-muted hover:text-text"
+                                >
+                                    Vazgeç
+                                </button>
+                                <button
+                                    type="button"
+                                    onClick={applyGeneratedDraft}
+                                    className="rounded-[var(--radius-input)] bg-brand px-3 py-1.5 text-xs font-medium text-white"
+                                >
+                                    Editöre uygula
+                                </button>
+                            </div>
+                        </div>
+                        <ol className="mt-3 grid gap-1.5">
+                            {generatedDraft.nodes.map((node, index) => (
+                                <li key={node.id || index} className="flex gap-2 text-xs text-text-muted">
+                                    <span className="text-brand-light">{index + 1}.</span>
+                                    <span>{node.type === 'survey' ? `Soru: ${node.survey?.question}` : node.directive}</span>
+                                </li>
+                            ))}
+                        </ol>
+                    </div>
+                )}
+            </section>
 
             <div className="mb-5 flex items-start gap-2.5 rounded-[var(--radius-input)] border border-brand/30 bg-brand/5 px-3.5 py-3">
                 <Info size={15} className="mt-0.5 shrink-0 text-brand-light" />
@@ -326,7 +624,7 @@ export function AgentGoals() {
                                 )}
 
                                 <span
-                                    className={`flex h-7 w-7 shrink-0 items-center justify-center rounded-full text-xs font-semibold ${row.directive.trim()
+                                    className={`flex h-7 w-7 shrink-0 items-center justify-center rounded-full text-xs font-semibold ${rowText(row).trim()
                                             ? 'bg-brand/15 text-brand-light'
                                             : 'bg-surface-raised text-text-muted'
                                         }`}
@@ -334,10 +632,31 @@ export function AgentGoals() {
                                     {index + 1}
                                 </span>
 
+                                <select
+                                    value={row.type}
+                                    onChange={(e) => changeNodeType(row, e.target.value)}
+                                    title="Adım türü"
+                                    className="h-10 w-[6.5rem] shrink-0 rounded-[var(--radius-input)] border border-border bg-bg px-2 text-xs text-text outline-none focus:border-brand"
+                                >
+                                    {NODE_TYPE_OPTIONS.map((opt) => (
+                                        <option
+                                            key={opt.value}
+                                            value={opt.value}
+                                            disabled={opt.value === 'survey' && Number(data?.maxParticipants) > 1}
+                                        >
+                                            {opt.label}
+                                        </option>
+                                    ))}
+                                </select>
+
                                 <input
-                                    value={row.directive}
-                                    onChange={(e) => updateRow(row.id, { directive: e.target.value })}
-                                    placeholder="Örn. Şirketi tanıt: kuruluş yılı, kaç ülkede faaliyet, müşteri sayısı"
+                                    value={rowText(row)}
+                                    onChange={(e) => row.type === 'survey'
+                                        ? updateRow(row.id, { survey: { ...row.survey, question: e.target.value } })
+                                        : updateRow(row.id, { directive: e.target.value })}
+                                    placeholder={row.type === 'survey'
+                                        ? 'Örn. Hangi aracı kurumu kullanıyorsunuz?'
+                                        : 'Örn. Şirketi tanıt: kuruluş yılı, kaç ülkede faaliyet, müşteri sayısı'}
                                     className="h-10 min-w-0 flex-1 rounded-[var(--radius-input)] border border-border bg-bg px-3 text-[13.5px] text-text outline-none placeholder:text-text-muted/60 focus:border-brand"
                                 />
 
@@ -407,6 +726,107 @@ export function AgentGoals() {
                             )}
                             {warning && (
                                 <p className="ml-[3.75rem] mt-1.5 text-xs text-amber-400">{warning}</p>
+                            )}
+
+                            {row.type === 'survey' && row.survey && (
+                                <div className="ml-[3.75rem] mt-3 rounded-[var(--radius-input)] border border-brand/20 bg-brand/5 p-3">
+                                    <div className="grid gap-3 md:grid-cols-[10rem_1fr]">
+                                        <label className="text-xs text-text-muted">
+                                            Cevap türü
+                                            <select
+                                                value={row.survey.answerType}
+                                                onChange={(e) => updateRow(row.id, {
+                                                    survey: {
+                                                        ...row.survey,
+                                                        answerType: e.target.value,
+                                                        options: e.target.value === 'text' ? [] : withTrailingEmptyOption(row.survey.options),
+                                                        allowFreeText: e.target.value === 'text' ? true : row.survey.allowFreeText
+                                                    }
+                                                })}
+                                                className="mt-1 h-9 w-full rounded-[var(--radius-input)] border border-border bg-bg px-2 text-xs text-text outline-none focus:border-brand"
+                                            >
+                                                <option value="single-choice">Tek seçim</option>
+                                                <option value="text">Serbest metin</option>
+                                            </select>
+                                        </label>
+
+                                        {row.survey.answerType === 'single-choice' && (
+                                            <div className="text-xs text-text-muted">
+                                                Seçenekler
+                                                <div className="mt-1 flex flex-col gap-1.5">
+                                                    {row.survey.options.map((option, optionIndex) => {
+                                                        const isOptionPlaceholder = optionIndex === optionPlaceholderIndex(row.survey.options);
+                                                        const isDraggingOption = draggingOption?.rowId === row.id && draggingOption.index === optionIndex;
+                                                        return (
+                                                            <div
+                                                                key={option.value}
+                                                                onDragOver={(e) => handleOptionDragOver(e, row, optionIndex)}
+                                                                onDrop={(e) => { e.preventDefault(); endOptionDrag(); }}
+                                                                className={`flex items-center gap-1.5 transition-opacity ${isDraggingOption ? 'opacity-40' : 'opacity-100'}`}
+                                                            >
+                                                                {isOptionPlaceholder ? (
+                                                                    <span className="h-9 w-5 shrink-0" aria-hidden="true" />
+                                                                ) : (
+                                                                    <button
+                                                                        type="button"
+                                                                        draggable
+                                                                        onDragStart={(e) => handleOptionDragStart(e, row, optionIndex)}
+                                                                        onDragEnd={endOptionDrag}
+                                                                        title="Sürükleyerek sırala"
+                                                                        aria-label={`${optionIndex + 1}. seçeneği yeniden sırala`}
+                                                                        className="flex h-9 w-5 shrink-0 cursor-grab items-center justify-center text-text-muted/40 hover:text-text-muted active:cursor-grabbing"
+                                                                    >
+                                                                        <GripVertical size={13} />
+                                                                    </button>
+                                                                )}
+                                                                <input
+                                                                    value={option.label}
+                                                                    onChange={(e) => updateOptionLabel(row, optionIndex, e.target.value)}
+                                                                    placeholder={`Seçenek ${optionIndex + 1}`}
+                                                                    className="h-9 min-w-0 flex-1 rounded-[var(--radius-input)] border border-border bg-bg px-2.5 text-xs text-text outline-none focus:border-brand"
+                                                                />
+                                                                {!isOptionPlaceholder && (
+                                                                    <button
+                                                                        type="button"
+                                                                        onClick={() => removeOption(row, optionIndex)}
+                                                                        title="Seçeneği sil"
+                                                                        className="flex h-9 w-9 shrink-0 items-center justify-center rounded-[var(--radius-input)] text-text-muted/60 transition-colors hover:bg-red-500/10 hover:text-red-400"
+                                                                    >
+                                                                        <Trash2 size={13} />
+                                                                    </button>
+                                                                )}
+                                                            </div>
+                                                        );
+                                                    })}
+                                                </div>
+                                            </div>
+                                        )}
+                                    </div>
+                                    <div className="mt-3 flex flex-wrap gap-5 text-xs text-text-muted">
+                                        {row.survey.answerType === 'single-choice' && (
+                                            <label className="flex items-center gap-2">
+                                                <input
+                                                    type="checkbox"
+                                                    checked={row.survey.allowFreeText}
+                                                    onChange={(e) => updateRow(row.id, {
+                                                        survey: { ...row.survey, allowFreeText: e.target.checked }
+                                                    })}
+                                                />
+                                                Diğer cevaba izin ver
+                                            </label>
+                                        )}
+                                        <label className="flex items-center gap-2">
+                                            <input
+                                                type="checkbox"
+                                                checked={row.survey.required}
+                                                onChange={(e) => updateRow(row.id, {
+                                                    survey: { ...row.survey, required: e.target.checked }
+                                                })}
+                                            />
+                                            Cevap zorunlu
+                                        </label>
+                                    </div>
+                                </div>
                             )}
 
                             {row.attach !== null && (

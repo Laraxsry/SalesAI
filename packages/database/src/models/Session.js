@@ -81,7 +81,9 @@ const SessionSchema = new Schema(
             name: { type: String },
             email: { type: String },
             phone: { type: String }
-        }
+        },
+        /** Validated in-call survey answers, keyed for later CRM mapping. */
+        surveyAnswers: { type: [Schema.Types.Mixed], default: [] }
     },
     { timestamps: true }
 );

@@ -183,6 +183,20 @@ describe('withToolCallTimeline', () => {
         });
     });
 
+    it('browser form değerlerini timeline içinde maskeler', async () => {
+        const persist = vi.fn(async () => {});
+        const timeline = createSessionTimeline({ sessionId: 's1', log: makeLog(), persist });
+        const [wrapped] = withToolCallTimeline(
+            [{ name: 'browser_fill_form', handler: async () => ({ ok: true }) }],
+            timeline
+        );
+
+        await wrapped.handler({ elements: [{ uid: '1_1', value: 'private value' }] });
+
+        const begin = persist.mock.calls.map(([d]) => d).find((d) => d.type === TIMELINE_EVENTS.TOOL_BEGIN);
+        expect(begin.meta.args).toEqual({ elements: [{ uid: '1_1', value: '[REDACTED]' }] });
+    });
+
     it('tool hata fırlatırsa hatayı yeniden fırlatır ama önce end’i status:error ile yazar', async () => {
         const persist = vi.fn(async () => {});
         const timeline = createSessionTimeline({ sessionId: 's1', log: makeLog(), persist });

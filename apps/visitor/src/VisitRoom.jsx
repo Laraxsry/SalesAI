@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useReducer, useRef, useState } from 'react';
 import {
     RoomAudioRenderer,
     VideoTrack,
@@ -16,6 +16,12 @@ import { useMeetingState } from './useMeetingState.js';
 import { buildMeetingStatusText } from './meeting-status.js';
 import { useInCallSurvey } from './useInCallSurvey.js';
 import { InCallSurvey } from './InCallSurvey.jsx';
+import { TourOverlay } from './TourOverlay.jsx';
+import {
+    applyPresentationMessage,
+    decodePresentationMessage,
+    INITIAL_PRESENTATION_STATE
+} from './presentation-state.js';
 
 // 'listening' deliberately does NOT say "Dinliyor…" (listening/waiting) —
 // the agent now self-continues almost instantly between its own turns
@@ -71,6 +77,10 @@ export function VisitRoom({ embed, embedConfig, sessionId, roomName, maxParticip
     const [micError, setMicError] = useState(false);
     const [shareError, setShareError] = useState('');
     const [showShareConsent, setShowShareConsent] = useState(false);
+    const [presentation, dispatchPresentation] = useReducer(
+        applyPresentationMessage,
+        INITIAL_PRESENTATION_STATE
+    );
     const startedRef = useRef(false);
 
     // Görev #11 — group meeting: waiting/floor status line + raise-hand.
@@ -98,7 +108,7 @@ export function VisitRoom({ embed, embedConfig, sessionId, roomName, maxParticip
     // close the screen share, the agent-worker can't stop this track itself
     // (it belongs to this client) — it sends a data-channel request instead.
     useEffect(() => {
-        function handleData(payload) {
+        function handleData(payload, participant) {
             let msg;
             try {
                 msg = JSON.parse(new TextDecoder().decode(payload));
@@ -108,10 +118,53 @@ export function VisitRoom({ embed, embedConfig, sessionId, roomName, maxParticip
             if (msg?.type === 'salesai:stop_screen_share') {
                 localParticipant.setScreenShareEnabled(false).catch(() => {});
             }
+            const presentationMessage = decodePresentationMessage(payload);
+            const fromTourAgent = Boolean(participant?.identity)
+                && (!tourTrack || participant.identity === tourTrack.participant.identity);
+            if (presentationMessage) {
+                const reason = !fromTourAgent ? 'unexpected_sender'
+                    : Number(presentationMessage.emittedAt || 0) < presentation.lastEmittedAt ? 'stale_timestamp'
+                    : Number(presentationMessage.viewVersion ?? presentation.viewVersion) < presentation.viewVersion ? 'stale_view'
+                    : null;
+                console.info('[tour.presentation] received', {
+                    cueId: presentationMessage.cueId, operationId: presentationMessage.operationId,
+                    action: presentationMessage.action, viewVersion: presentationMessage.viewVersion,
+                    reason, hasTourTrack: Boolean(tourTrack)
+                });
+                if (fromTourAgent) dispatchPresentation(presentationMessage);
+            }
         }
         room.on(RoomEvent.DataReceived, handleData);
         return () => room.off(RoomEvent.DataReceived, handleData);
-    }, [room, localParticipant]);
+    }, [room, localParticipant, tourTrack, presentation.lastEmittedAt, presentation.viewVersion]);
+
+    useEffect(() => {
+        const cue = presentation.cue;
+        console.info('[tour.presentation] overlay_state', {
+            cueId: cue?.cueId, operationId: cue?.operationId, action: cue?.action ?? 'clear',
+            viewVersion: presentation.viewVersion, hasTourTrack: Boolean(tourTrack)
+        });
+    }, [presentation.cue, presentation.viewVersion, tourTrack]);
+
+    useEffect(() => {
+        const cue = presentation.cue;
+        if (!cue?.durationMs) return undefined;
+        const ttlMs = cue.action === 'cursor_move'
+            ? cue.durationMs + 1600
+            : cue.action === 'click'
+                ? Math.max(cue.durationMs, 700)
+                : cue.durationMs;
+        const timer = setTimeout(() => {
+            console.info('[tour.presentation] expired', { cueId: cue.cueId, operationId: cue.operationId, ttlMs });
+            dispatchPresentation({
+                type: 'salesai:presentation',
+                action: 'clear',
+                emittedAt: Number(cue.emittedAt || 0) + ttlMs,
+                viewVersion: cue.viewVersion
+            });
+        }, ttlMs);
+        return () => clearTimeout(timer);
+    }, [presentation.cue]);
 
     function toggleMic() {
         localParticipant.setMicrophoneEnabled(!isMicrophoneEnabled).catch(() => setMicError(true));
@@ -211,6 +264,8 @@ export function VisitRoom({ embed, embedConfig, sessionId, roomName, maxParticip
                         </div>
                     </div>
                 )}
+
+                {tourTrack && <TourOverlay cue={presentation.cue} />}
 
                 {tourTrack && videoTrack && (
                     <div className="absolute right-4 top-4 h-28 w-20 overflow-hidden rounded-xl border border-white/20 bg-black shadow-xl sm:h-36 sm:w-28">

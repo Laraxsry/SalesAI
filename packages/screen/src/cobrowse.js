@@ -2,6 +2,7 @@ import { chromium } from 'playwright';
 import { getDomain } from 'tldts';
 import { getLogger } from '@repo/logger';
 import { waitForStableContent } from '@repo/utils';
+import { tourBrowserCapacity } from './browser-capacity.js';
 
 const log = getLogger({ mod: 'guided-tour' });
 
@@ -16,9 +17,6 @@ const log = getLogger({ mod: 'guided-tour' });
  *  - playwright (default): deterministic + AI actions via highlight/goto/click.
  *  - browserbase/stagehand (optional): cloud browser with computer-use agent.
  */
-/** Global set to track active browser instances across all sessions. */
-const activeBrowsers = new Set();
-const MAX_CONCURRENT_BROWSERS = Number(process.env.MAX_TOUR_BROWSERS || 3);
 const PAGE_READY_TIMEOUT_MS = Number(process.env.TOUR_PAGE_READY_TIMEOUT_MS || 3000);
 
 /**
@@ -341,18 +339,11 @@ export class GuidedTour {
 
         const epoch = this.lifecycleEpoch;
         this.preparePromise = (async () => {
-            if (activeBrowsers.size >= MAX_CONCURRENT_BROWSERS) {
-                throw new Error(
-                    `[GuidedTour] Concurrent browser limit reached (${MAX_CONCURRENT_BROWSERS}). ` +
-                    'Try again later or increase MAX_TOUR_BROWSERS env var.'
-                );
-            }
-
             // Reserve synchronously before the first await. Without this, two
             // concurrent prepare() calls from different sessions can both see
             // the same free slot and launch past the configured browser cap.
             this.browserReservation = { tour: this };
-            activeBrowsers.add(this.browserReservation);
+            tourBrowserCapacity.acquire(this.browserReservation, 'GuidedTour');
 
             const prepareStartedAt = Date.now();
             const phase = {};
@@ -374,9 +365,6 @@ export class GuidedTour {
                     this.stagehand = stagehand;
                     this.page = stagehand.page;
                     this.context = stagehand.context;
-                    activeBrowsers.delete(this.browserReservation);
-                    this.browserReservation = null;
-                    activeBrowsers.add(stagehand);
                 } catch (err) {
                     // init() can fail before the candidate is assigned to the
                     // tour. Close that partial resource explicitly so the
@@ -400,9 +388,6 @@ export class GuidedTour {
                     throw new Error('[GuidedTour] Preparation cancelled because the tour was closed.');
                 }
                 this.browser = browser;
-                activeBrowsers.delete(this.browserReservation);
-                this.browserReservation = null;
-                activeBrowsers.add(browser);
 
                 t = Date.now();
                 this.context = await browser.newContext({ viewport: this.viewport });
@@ -853,15 +838,13 @@ export class GuidedTour {
             this.snapshotInitScript = null;
         }
         if (this.browserReservation) {
-            activeBrowsers.delete(this.browserReservation);
+            tourBrowserCapacity.release(this.browserReservation);
             this.browserReservation = null;
         }
         if (this.backend === 'stagehand' && this.stagehand) {
-            activeBrowsers.delete(this.stagehand);
             await this.stagehand.close();
             this.stagehand = null;
         } else if (this.browser) {
-            activeBrowsers.delete(this.browser);
             await this.browser.close();
             this.browser = null;
         }

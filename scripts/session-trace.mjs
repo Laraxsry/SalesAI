@@ -104,6 +104,7 @@ const MARK = {
     media: '🎙',
     speech: '💬',
     playbook: '▶',
+    browser: '🌐',
     screen: '🖥',
     tool: '🔧'
 };

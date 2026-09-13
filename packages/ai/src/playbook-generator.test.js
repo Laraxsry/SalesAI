@@ -30,7 +30,7 @@ describe('compileGeneratedPlaybook', () => {
                     type: 'narrative',
                     directive: 'Ekstre yükleme akışını ihtiyaca bağlayarak göster.',
                     url: 'https://gelirgider.example/faq',
-                    attach: 'Döviz kuru nasıl hesaplanıyor?'
+                    actions: ['Döviz kuru nasıl hesaplanıyor?']
                 },
                 {
                     type: 'narrative',
@@ -53,23 +53,38 @@ describe('compileGeneratedPlaybook', () => {
             { value: 'generated_option_2', label: 'Papara' }
         ]);
         expect(result.nodes[1].url).toBe('https://gelirgider.example/faq');
-        expect(result.nodes[1].attach).toBe('Döviz kuru nasıl hesaplanıyor?');
+        expect(result.nodes[1].actions).toEqual(['Döviz kuru nasıl hesaplanıyor?']);
         expect(result.nodes[2].url).toBeNull();
     });
 
-    it('drops an invented click target that was not observed on the selected page', () => {
+    it('drops an invented click target that was not observed on the selected page, keeping the valid ones', () => {
         const result = compileGeneratedPlaybook({ nodes: [{
             type: 'narrative',
             directive: 'İlgili SSS maddesini göster.',
             url: 'https://gelirgider.example/faq',
-            attach: 'Vergilerinizi kolaylaştırmak için buradayız.'
+            actions: ['Döviz kuru nasıl hesaplanıyor?', 'Vergilerinizi kolaylaştırmak için buradayız.']
         }] }, {
             allowedUrls: ['https://gelirgider.example/faq'],
             allowedAttachments: {
                 'https://gelirgider.example/faq': ['Döviz kuru nasıl hesaplanıyor?']
             }
         });
-        expect(result.nodes[0].attach).toBeNull();
+        expect(result.nodes[0].actions).toEqual(['Döviz kuru nasıl hesaplanıyor?']);
+    });
+
+    it('accepts the legacy single `attach` string shape as a one-item actions list', () => {
+        const result = compileGeneratedPlaybook({ nodes: [{
+            type: 'narrative',
+            directive: 'İlgili SSS maddesini göster.',
+            url: 'https://gelirgider.example/faq',
+            attach: 'Döviz kuru nasıl hesaplanıyor?'
+        }] }, {
+            allowedUrls: ['https://gelirgider.example/faq'],
+            allowedAttachments: {
+                'https://gelirgider.example/faq': ['Döviz kuru nasıl hesaplanıyor?']
+            }
+        });
+        expect(result.nodes[0].actions).toEqual(['Döviz kuru nasıl hesaplanıyor?']);
     });
 
     it('drops survey nodes for group agents and rejects an empty result', () => {

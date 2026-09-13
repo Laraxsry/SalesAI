@@ -479,9 +479,14 @@ export const PlaybookNodeInput = z.object({
     /** The marketer's private note about what to cover. Never spoken verbatim —
      *  the worker wraps it before the model ever sees it (see wrapDirective). */
     directive: z.string().trim().min(1).max(600),
-    /** Natural-language description of an element to click, e.g. "Rapor Ekle
-     *  butonu". Resolved at runtime by the model, not by a stored selector. */
-    attach: z.string().trim().max(200).nullable().default(null),
+    /** Ordered natural-language screen actions for this step, e.g. ["Category
+     *  alanına tıkla", "\"Staff\" yaz", "Staff sonucuna tıkla"]. Resolved at
+     *  runtime by the model, not by stored selectors — it picks whichever
+     *  concrete action (click, point, scroll, fill) each one actually is. */
+    actions: z.array(z.string().trim().min(1).max(200)).max(10).default([]),
+    /** @deprecated Accepted only while pre-actions clients and persisted
+     *  playbooks are upgraded. normalizePlaybook converts it at the boundary. */
+    attach: z.string().trim().max(200).nullable().optional(),
     mode: PlaybookNodeMode.default('situational'),
     survey: PlaybookSurveyInput.nullable().default(null)
 }).superRefine((node, ctx) => {
@@ -546,16 +551,24 @@ export function normalizePlaybook(nodes = []) {
         .filter((n) => n && typeof n.directive === 'string' && n.directive.trim().length > 0)
         .slice()
         .sort((a, b) => (a.order ?? 0) - (b.order ?? 0))
-        .map((n, i) => ({
-            ...n,
-            order: i + 1,
-            type: n.type || 'narrative',
-            directive: n.directive.trim(),
-            url: n.url || null,
-            attach: n.attach?.trim() || null,
-            survey: n.type === 'survey' ? n.survey : null,
-            mode: n.mode || 'situational'
-        }));
+        .map((n, i) => {
+            const { attach, ...node } = n;
+            const actions = Array.isArray(n.actions)
+                ? n.actions.map((action) => String(action).trim()).filter(Boolean).slice(0, 10)
+                : [];
+            return {
+                ...node,
+                order: i + 1,
+                type: n.type || 'narrative',
+                directive: n.directive.trim(),
+                url: n.url || null,
+                // Mongoose applies the new [] default while hydrating legacy
+                // records, so an empty array must still fall back to attach.
+                actions: actions.length ? actions : attach?.trim() ? [attach.trim()] : [],
+                survey: n.type === 'survey' ? n.survey : null,
+                mode: n.mode || 'situational'
+            };
+        });
 }
 
 /**

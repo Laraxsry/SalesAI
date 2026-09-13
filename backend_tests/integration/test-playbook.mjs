@@ -40,7 +40,7 @@ function cyberverseNodes() {
             order: 7,
             directive: 'Rapor ekle (örnek)',
             url: 'https://demo.cyberverse.example/reports',
-            attach: 'Rapor Ekle butonu'
+            actions: ['Rapor Ekle butonuna tıkla', 'Başlık alanına yaz']
         },
         { id: 'n8', order: 8, directive: 'Avatara dön, ürünü yarın başlatmak ister misiniz diye sor' }
     ];
@@ -135,10 +135,12 @@ async function run() {
         if (
             getSaved.status === 200 &&
             savedBody.nodes?.length === 8 &&
-            savedBody.nodes[6].attach === 'Rapor Ekle butonu' &&
+            Array.isArray(savedBody.nodes[6].actions) &&
+            savedBody.nodes[6].actions.length === 2 &&
+            savedBody.nodes[6].actions[0] === 'Rapor Ekle butonuna tıkla' &&
             savedBody.version === 1
         ) {
-            ok('GET round-trips the saved playbook, including attach on step 7');
+            ok('GET round-trips the saved playbook, including the ordered actions on step 7');
         } else {
             fail('GET round-trip', `status=${getSaved.status} body=${JSON.stringify(savedBody)}`);
         }

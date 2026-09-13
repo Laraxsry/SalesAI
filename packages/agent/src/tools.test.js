@@ -86,6 +86,30 @@ describe('buildTools', () => {
         expect(toolNames(tools)).toContain('flag_followup_needed');
     });
 
+    it('offers one MCP browser control surface and removes legacy selector actions', async () => {
+        const browser = {
+            observe: vi.fn(async () => ({ ok: true, snapshot: 'uid=1 button "Open"' })),
+            perform: vi.fn(async () => ({ ok: true })),
+            focus: vi.fn(async () => ({ ok: true }))
+        };
+        const tools = buildTools({ productId: 'p1', browser });
+        const names = toolNames(tools);
+
+        expect(names).toEqual(expect.arrayContaining([
+            'browser_snapshot', 'browser_click', 'browser_focus', 'browser_fill', 'browser_fill_form',
+            'browser_hover', 'browser_press_key', 'browser_list_pages',
+            'browser_new_page', 'browser_select_page'
+        ]));
+        expect(names).not.toEqual(expect.arrayContaining([
+            'find_element', 'highlight', 'click_element', 'scroll_page'
+        ]));
+
+        await findTool(tools, 'browser_click').handler({ uid: '1' });
+        expect(browser.perform).toHaveBeenCalledWith('click', { uid: '1', includeSnapshot: true });
+        await findTool(tools, 'browser_focus').handler({ uid: '1', intent: 'text' });
+        expect(browser.focus).toHaveBeenCalledWith('1', 'text');
+    });
+
     describe('search_knowledge', () => {
         it('retrieves for the bound productId and maps chunks to {text, score, sourceId}', async () => {
             retrieve.mockResolvedValue([

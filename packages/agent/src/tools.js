@@ -204,7 +204,8 @@ export function buildTools({
     multiParticipant = false,
     expectResponse,
     nextParticipant,
-    flagFollowup
+    flagFollowup,
+    browser
 }) {
     const tools = [
         {
@@ -420,6 +421,115 @@ export function buildTools({
             handler: async ({ question }) => flagFollowup?.(question) ?? { ok: false }
         }
     ];
+
+    if (browser) {
+        const replaced = new Set(['find_element', 'highlight', 'click_element', 'scroll_page']);
+        for (let index = tools.length - 1; index >= 0; index -= 1) {
+            if (replaced.has(tools[index].name)) tools.splice(index, 1);
+        }
+        tools.push(
+            {
+                name: 'browser_snapshot',
+                description: 'Read the live page accessibility tree. Call before interacting and use only UIDs from the latest snapshot.',
+                parameters: { type: 'object', properties: {} },
+                handler: async () => browser.observe()
+            },
+            {
+                name: 'browser_click',
+                description: 'Click an element using a UID from the latest browser_snapshot. Observe again after state-changing clicks.',
+                parameters: {
+                    type: 'object',
+                    properties: { uid: { type: 'string' } },
+                    required: ['uid']
+                },
+                handler: async ({ uid }) => browser.perform('click', { uid, includeSnapshot: true })
+            },
+            {
+                name: 'browser_focus',
+                description: 'Direct the visitor\'s attention to one element without clicking it. Use a UID from the latest browser_snapshot and only when the element supports the point you are currently explaining.',
+                parameters: {
+                    type: 'object',
+                    properties: {
+                        uid: { type: 'string' },
+                        intent: {
+                            type: 'string',
+                            enum: ['emphasize', 'text', 'panel'],
+                            description: 'text draws a marker, panel uses a spotlight, emphasize uses an outline.'
+                        }
+                    },
+                    required: ['uid']
+                },
+                handler: async ({ uid, intent = 'emphasize' }) => browser.focus?.(uid, intent) ?? { ok: false }
+            },
+            {
+                name: 'browser_fill',
+                description: 'Fill one input, textarea, select, checkbox, or radio using a UID from the latest snapshot.',
+                parameters: {
+                    type: 'object',
+                    properties: { uid: { type: 'string' }, value: { type: 'string' } },
+                    required: ['uid', 'value']
+                },
+                handler: async ({ uid, value }) => browser.perform('fill', { uid, value, includeSnapshot: true })
+            },
+            {
+                name: 'browser_fill_form',
+                description: 'Fill several visible form controls in one reliable operation. Use UIDs from the latest snapshot.',
+                parameters: {
+                    type: 'object',
+                    properties: {
+                        elements: {
+                            type: 'array',
+                            items: {
+                                type: 'object',
+                                properties: { uid: { type: 'string' }, value: { type: 'string' } },
+                                required: ['uid', 'value']
+                            }
+                        }
+                    },
+                    required: ['elements']
+                },
+                handler: async ({ elements }) => browser.perform('fillForm', { elements, includeSnapshot: true })
+            },
+            {
+                name: 'browser_hover',
+                description: 'Hover an element using a UID from the latest snapshot, for menus and hover-revealed content.',
+                parameters: {
+                    type: 'object', properties: { uid: { type: 'string' } }, required: ['uid']
+                },
+                handler: async ({ uid }) => browser.perform('hover', { uid, includeSnapshot: true })
+            },
+            {
+                name: 'browser_press_key',
+                description: 'Press a key or key chord in the live browser, such as PageDown, Escape, Tab, or Control+A.',
+                parameters: {
+                    type: 'object', properties: { key: { type: 'string' } }, required: ['key']
+                },
+                handler: async ({ key }) => browser.perform('pressKey', { key, includeSnapshot: true })
+            },
+            {
+                name: 'browser_list_pages',
+                description: 'List the tabs owned by this demo session and show which one is selected.',
+                parameters: { type: 'object', properties: {} },
+                handler: async () => browser.perform('listPages', {})
+            },
+            {
+                name: 'browser_new_page',
+                description: 'Open a trusted product URL in a new demo tab. Use only when a second tab helps preserve the current view.',
+                parameters: {
+                    type: 'object', properties: { url: { type: 'string' } }, required: ['url']
+                },
+                handler: async ({ url }) => browser.perform('newPage', { url })
+            },
+            {
+                name: 'browser_select_page',
+                description: 'Switch to a tab returned by browser_list_pages.',
+                parameters: {
+                    type: 'object', properties: { pageId: { type: 'number' } }, required: ['pageId']
+                },
+                handler: async ({ pageId }) => browser.perform('selectPage', { pageId, bringToFront: true })
+            }
+        );
+    }
 
     if (multiParticipant) {
         tools.push({

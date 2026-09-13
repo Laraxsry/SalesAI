@@ -2,7 +2,7 @@ import { describe, it, expect } from 'vitest';
 import { createPlaybookCursor } from './playbook-cursor.js';
 
 function node(id, order, extra = {}) {
-    return { id, order, url: null, directive: `directive-${id}`, attach: null, mode: 'situational', ...extra };
+    return { id, order, url: null, directive: `directive-${id}`, actions: [], mode: 'situational', ...extra };
 }
 
 describe('createPlaybookCursor — ordering', () => {

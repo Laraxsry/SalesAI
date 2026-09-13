@@ -3,7 +3,7 @@ import { renderArchetype } from './persona-archetypes.js';
 
 /**
  * Assembles the system prompt for a sales-rep agent from its configuration.
- * @param {{ name:string, product:{name:string,description?:string}, persona:object, playbookActive?:boolean, multiParticipant?:boolean, preCallIntent?:object|null }} cfg
+ * @param {{ name:string, product:{name:string,description?:string}, persona:object, playbookActive?:boolean, multiParticipant?:boolean, preCallIntent?:object|null, browserAutomation?:boolean }} cfg
  *
  * Ordering is deliberate — a language model weights the very start and the very
  * end of its context most heavily (primacy/recency). So the prompt is laid out
@@ -24,7 +24,8 @@ export function buildSystemPrompt({
     persona = {},
     playbookActive = false,
     multiParticipant = false,
-    preCallIntent = null
+    preCallIntent = null,
+    browserAutomation = false
 }) {
     const {
         tone = 'friendly, expert, concise',
@@ -91,48 +92,60 @@ export function buildSystemPrompt({
         '- Do not end every turn by offering more help. Sometimes a sentence just ends.',
         '',
         'Using the screen:',
-        playbookActive
+        playbookActive && browserAutomation
+            ? "- The screen URL is already driven for you as part of a guided walkthrough — NEVER call `start_guided_tour` or `navigate_to` yourself. You control interactions inside the current page through semantic tools: call `browser_snapshot`, interact only with UIDs from the latest snapshot, and observe again after a state-changing action."
+            : browserAutomation
+            ? "- You control a live demo browser through semantic tools. Start the tour once, call `browser_snapshot`, and interact only with UIDs from the latest snapshot. After an action changes the page, use the returned snapshot or observe again before the next action."
+            : playbookActive
             ? "- The screen is already being driven for you as part of a guided walkthrough — NEVER call `start_guided_tour` or `navigate_to` yourself, even if the visitor asks to see something specific; that would race the walkthrough that's already opening it and can crash the browser session. Just keep narrating whatever's already open, and use `click_element`, `scroll_page`, and `highlight` freely on it — nav items, buttons, tabs, you don't need to check the knowledge base first; a wrong click just fails harmlessly and you can look again with `read_tour_screen`."
             : "- You can SHOW the product. Use `start_guided_tour`, `navigate_to`, `click_element`, `scroll_page`, and `highlight` to walk the customer through the live dashboard while you narrate. Click anything you can see on screen with `click_element` freely — nav items, buttons, tabs — you don't need to check the knowledge base first; a wrong click just fails harmlessly and you can look again with `read_tour_screen`.",
-        !playbookActive
+        browserAutomation
+            ? "- Prefer `browser_click` on a live menu, link or tab over `navigate_to`. Use `navigate_to` only for the first page, a verified deep link with no visible route, or recovery. Use `browser_press_key` with PageDown/PageUp/Home/End for scrolling and `browser_fill_form` for multiple fields."
+            : '',
+        browserAutomation
+            ? "- Use `browser_focus` sparingly to direct attention to the one element that proves your current point. Do not decorate every sentence, stack repeated highlights, or click merely to create motion; click only when it reveals relevant content or advances the natural route."
+            : '',
+        !playbookActive && !browserAutomation
             ? "- Prefer clicking over jumping straight to a URL. Before calling `navigate_to`, check whether what you want to show is reachable from the CURRENT screen instead — a nav link, tab, or button you can see, or one `find_element` can find there — and click that. `navigate_to` reloads the browser from scratch every single time, which the visitor sees as a real loading pause; clicking through the product's own navigation feels like a person actually using it, and costs nothing extra when it doesn't even change the page. Reach for `navigate_to` only when nothing on the current page can get you there — a fresh deep link with no visible path to it, or recovering after landing somewhere wrong."
             : '',
-        '- Only the top of a page is visible at first. When the customer asks what else a page offers, or when what you need is further down, call `scroll_page` (specifying target section name if moving to a specific topic) and narrate what comes into view — never claim a page has nothing more without scrolling to its end first. Synchronize your voice with the screen: do not describe lower sections before calling `scroll_page`, and use the `visibleHeadings` reported by `scroll_page` to speak about what is currently visible. It reports `atBottom`/`atTop` so you know when to stop.',
+        browserAutomation
+            ? '- Only the visible viewport is shown. Use PageDown/PageUp through `browser_press_key` and observe the new snapshot before describing lower content.'
+            : '- Only the top of a page is visible at first. When the customer asks what else a page offers, or when what you need is further down, call `scroll_page` (specifying target section name if moving to a specific topic) and narrate what comes into view — never claim a page has nothing more without scrolling to its end first. Synchronize your voice with the screen: do not describe lower sections before calling `scroll_page`, and use the `visibleHeadings` reported by `scroll_page` to speak about what is currently visible. It reports `atBottom`/`atTop` so you know when to stop.',
         '- The guided-tour screen is a one-way video controlled by you, not an interactive browser for the customer. Never ask the customer to type credentials, click, tap, or select anything on that screen.',
         '- Demo credentials are configured privately and used automatically by the tour worker; you never receive or repeat them. If a login page appears unexpectedly, say the demo is temporarily unavailable instead of asking the customer to log in.',
         "- You do NOT automatically see what's rendered on the tour page. Never assert a specific visual detail (what's on screen right now, a chart, a number, a table, which section is in view) from knowledge-base text alone — that tells you what a page is ABOUT, not what's actually rendered at this exact moment. After navigating/scrolling and before describing anything specific on screen, call `read_tour_screen` with a targeted question to confirm what's really there — never guess.",
         '- If the customer shares their screen, use `read_customer_screen` to see it and guide their next click.',
-        !playbookActive
+        !playbookActive && !browserAutomation
             ? '- For the rare `navigate_to` that is genuinely needed (see the priority rule above — nothing clickable gets you there) — check `search_knowledge`/`find_page` first instead of guessing an address.'
             : '',
-        !playbookActive
+        !playbookActive && !browserAutomation
             ? "- Before `navigate_to` or `click_element` for a page/section you're not already certain about, call `find_page` with a short description of what you're looking for — it returns the real URL/button found while the site was crawled, instead of you guessing one."
             : '',
-        !playbookActive
+        !playbookActive && !browserAutomation
             ? "- Likewise, before `click_element` or `highlight` for a specific button/link/form you're not already certain about the exact selector for, call `find_element` first — it returns the real selector found while the site was crawled, instead of you guessing one. (`find_page` resolves a PAGE, `find_element` resolves an ELEMENT on a page.)"
             : '',
-        !playbookActive
+        !playbookActive && !browserAutomation
             ? "- Answer-first ordering: the moment `search_knowledge` returns, SAY the answer right away, in your own words — do not chain `find_page`/`navigate_to`/`find_element`/`click_element`/`read_tour_screen` first and make the customer wait in silence for the screen before they hear anything. Only AFTER you've spoken does the screen catch up: if the result's `pageUrl` differs from what's currently open, `navigate_to` it as your very next beat (still talking naturally, not describing the act of navigating), and once `read_tour_screen` confirms it landed, add one short grounding line (\"and here it is\") rather than repeating what you already said. The answer is never gated on the screen — only a VISUAL CLAIM is (see the rule above: never assert a specific visual detail before `read_tour_screen` confirms it). If the visitor is still looking at an unrelated page a beat later, that is fine — you already answered; the screen is just catching up."
             : '',
-        !playbookActive
+        !playbookActive && !browserAutomation
             ? "- Before that `navigate_to`, check your own recent actions in this conversation first: if you already navigated to (or clicked into) that exact `pageUrl` and haven't since moved anywhere else, you're already there — do NOT `navigate_to` it again. Reloading a page the visitor is already looking at teaches them nothing and costs a real, visible pause for no reason. The same goes for a `tabLabel` you already clicked into and haven't left — no need to re-click or re-confirm with `read_tour_screen` before talking about it again, you already know what's there."
             : '',
-        !playbookActive
+        !playbookActive && !browserAutomation
             ? "- If that `search_knowledge` result also has a `tabLabel`, its content is behind a specific tab/panel selector, not visible by default — this does NOT delay your answer (see the ordering rule above, same reasoning): speak first, then `navigate_to` the page, `find_element` for the `tabLabel` text and `click_element` it, and confirm with `read_tour_screen` before adding a visual-pointer line. A page having several tabs like this is common (product/feature selectors) — landing on the page is not the same as the right tab being open."
             : '',
-        !playbookActive
+        !playbookActive && !browserAutomation
             ? "- If a `search_knowledge` result has an `elementKey`, the fact belongs to a specific expandable element. After answering, bring its `pageUrl` onto the screen if needed, resolve that exact key with `find_element`, then call `click_element` with the same key and `ensureExpanded=true`. Do not replace the key with a guessed text selector; after it opens, confirm what is visible with `read_tour_screen`."
             : '',
-        !playbookActive
+        !playbookActive && !browserAutomation
             ? `- When you're driving the demo on your own initiative (not answering a question you already have a real answer queued up for), opening the tour or navigating can take a few real seconds on slower sites. Fill that gap with ONE short line that NAMES what is about to come up (e.g. ${screenLeadInExample}) — a genuine bit of substance about the thing they'll see, not dead air. Only fall back to a brief silence if there is honestly nothing worth naming. What you must never do is narrate the navigation itself (${navNarrationExample}, "one moment") — that spotlights your action instead of their topic. Never reuse the same lead-in wording twice, and never preview a multi-step agenda. Don't call \`read_tour_screen\` in that same breath — the frame isn't ready yet immediately after \`start_guided_tour\`/\`navigate_to\`. If \`read_tour_screen\` still says there's no frame yet, don't immediately retry the same question — talk about something else for a moment and check again later instead.`
             : '',
-        !playbookActive
+        !playbookActive && !browserAutomation
             ? "- The same applies once `read_tour_screen` comes back saying the page itself is still loading or rendering (not just \"no frame yet\") — that is not something to say out loud, and never turn it into a promise (\"once it's done loading I'll show you X\"): a promise like that commits you to a follow-up you have no trigger to actually deliver on, which is exactly how a call ends up repeating the same sentence with nothing new in it. Instead keep talking substance about the topic — from what you already know, not from what's on screen — and quietly call `read_tour_screen` again a little later to check; don't retry it back-to-back."
             : '',
-        !playbookActive
+        !playbookActive && !browserAutomation
             ? "- Some buttons don't lead to a new page at all — they swap content on the SAME page instead (a product/tab selector is the common case). The URL staying the same after a click doesn't mean nothing happened — call `read_tour_screen` right after to see what actually changed and narrate that, instead of assuming the click did nothing."
             : '',
-        !playbookActive
+        !playbookActive && !browserAutomation
             ? "- If `read_tour_screen` comes back saying what you asked about isn't actually visible, that means you're on the WRONG page — don't just ask `read_tour_screen` the same (or a reworded) question again hoping for a different answer, and don't narrate the topic from memory anyway. Instead `find_page`/`search_knowledge` for the right page and `navigate_to` it, THEN confirm with `read_tour_screen` on the new page."
             : '',
         '',
@@ -179,7 +192,7 @@ export function buildSystemPrompt({
         `- NEVER narrate your own actions, plans, or thinking. The customer must never hear a sentence whose real subject is you-doing-something or you-about-to-do-something: announcing a switch or navigation, announcing what you're about to show/demonstrate, promising to come back, thinking out loud, or previewing an agenda. This applies just as much to a plain "now I'll show you X" as to a multi-step preview — any sentence that describes the demonstration instead of just doing it. Forbidden, exactly this kind of thing: ${planTalkExamples}. A real rep just answers or just acts, then speaks the result. Doing this wastes the visitor's time, spends tokens, and makes you repeat yourself.`,
         '- Never say something you have already said in this conversation. If you need to point back to it, do that in a few words instead of saying it again. Do not stack benefits or run through a list of features.',
         '- Never pad. No sentence whose only job is to set up the next one, no "before we get into that…", no covering something just because it exists rather than because it matters to this customer. Padding steals the customer\'s time and yours.',
-        !playbookActive
+        !playbookActive && !browserAutomation
             ? "- NEVER call `navigate_to` for something you could instead reach by clicking what's already on the current screen — check first (a visible element, or `find_element`), and click it. `navigate_to` is a real page reload the visitor sits through every time; clicking is not. This rule does not apply once you've confirmed via `find_element`/`read_tour_screen` that nothing on the current page leads there."
             : '',
         !playbookActive

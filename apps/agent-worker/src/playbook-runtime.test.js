@@ -13,7 +13,7 @@ import { createPlaybookRuntime } from './playbook-runtime.js';
  */
 
 function node(id, order, extra = {}) {
-    return { id, order, url: null, directive: `TOPIC_${id}`, attach: null, mode: 'situational', ...extra };
+    return { id, order, url: null, directive: `TOPIC_${id}`, actions: [], mode: 'situational', ...extra };
 }
 
 /** A shared call log both fakes write into, so ordering across them is
@@ -123,7 +123,7 @@ describe('createPlaybookRuntime — order and isolation', () => {
         const url = 'https://salesai.example/faq';
         const cursor = createPlaybookCursor([
             node('first', 1, { url }),
-            node('second', 2, { url, attach: 'Tahvil vergisi' })
+            node('second', 2, { url, actions: ['Tahvil vergisi'] })
         ]);
         const runtime = createPlaybookRuntime({ cursor, screen: h.screen, speak: h.speak });
 

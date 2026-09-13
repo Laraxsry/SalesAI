@@ -8,12 +8,15 @@
   },
   "scripts": {
     "lint": "eslint .",
+    "smoke:chrome-mcp": "node ../../scripts/chrome-mcp-smoke.mjs",
     "test": "vitest run"
   },
   "dependencies": {
+    "@modelcontextprotocol/sdk": "1.30.0",
     "@repo/ai": "*",
     "@repo/logger": "*",
     "@repo/utils": "*",
+    "chrome-devtools-mcp": "1.8.0",
     "playwright": "^1.49.1",
     "tldts": "^7.4.8"
   },

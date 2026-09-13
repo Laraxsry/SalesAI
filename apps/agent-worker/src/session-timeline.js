@@ -34,6 +34,9 @@ export const TIMELINE_EVENTS = {
     REALTIME_GATE_OPEN: 'session.realtime_gate.open',
     ERROR: 'session.error',
 
+    // ── Runtime / browser seçimi ─────────────────────────────────────────
+    BROWSER_PROVIDER_SELECTED: 'browser.provider.selected',
+
     // ── Katılımcı / medya ────────────────────────────────────────────────
     PARTICIPANT_JOIN: 'media.participant.join',
     PARTICIPANT_LEAVE: 'media.participant.leave',
@@ -67,6 +70,9 @@ export const TIMELINE_EVENTS = {
     SURVEY_ANSWERED: 'survey.answered',
 
     // ── Ekran / Playwright ───────────────────────────────────────────────
+    TOUR_CHOREOGRAPHY: 'tour.choreography',
+    TOUR_PRESENTATION_PUBLISH: 'tour.presentation.publish',
+    TOUR_BROWSER_ACTION: 'tour.browser.action',
     SCREEN_NAVIGATE_BEGIN: 'screen.navigate.begin',
     SCREEN_NAVIGATE_END: 'screen.navigate.end',
     SCREEN_TOUR_PREPARE_BEGIN: 'screen.tour.prepare.begin',
@@ -193,7 +199,7 @@ export function withToolCallTimeline(toolDefs, timeline) {
                 // İlk argüman modelin ürettiği parametre nesnesi. Neyi neden
                 // çağırdığını sonradan anlamanın tek yolu bu — teşhiste en
                 // çok işe yarayan alan.
-                args: args[0]
+                args: redactToolArgs(toolDef.name, args[0])
             });
             try {
                 const result = await toolDef.handler(...args);
@@ -205,4 +211,18 @@ export function withToolCallTimeline(toolDefs, timeline) {
             }
         }
     }));
+}
+
+function redactToolArgs(toolName, args) {
+    if (!args || typeof args !== 'object') return args;
+    if (toolName === 'browser_fill') return { ...args, value: '[REDACTED]' };
+    if (toolName === 'browser_fill_form') {
+        return {
+            ...args,
+            elements: Array.isArray(args.elements)
+                ? args.elements.map((element) => ({ ...element, value: '[REDACTED]' }))
+                : args.elements
+        };
+    }
+    return args;
 }

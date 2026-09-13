@@ -209,7 +209,7 @@ describe('PlaybookNodeInput', () => {
         expect(result.success).toBe(true);
         expect(result.data.type).toBe('narrative');
         expect(result.data.url).toBeNull();
-        expect(result.data.attach).toBeNull();
+        expect(result.data.actions).toEqual([]);
         expect(result.data.survey).toBeNull();
         expect(result.data.mode).toBe('situational');
     });
@@ -249,15 +249,24 @@ describe('PlaybookNodeInput', () => {
         expect(result.success).toBe(false);
     });
 
-    it('accepts a full node with url, attach, and an explicit mode', () => {
+    it('accepts a full node with url, actions, and an explicit mode', () => {
         const result = PlaybookNodeInput.safeParse({
             ...base,
             url: 'https://demo.salesai.example/reports',
-            attach: 'Rapor Ekle butonu',
+            actions: ['Rapor Ekle butonuna tıkla', 'Başlık alanına yaz'],
             mode: 'important'
         });
         expect(result.success).toBe(true);
         expect(result.data.mode).toBe('important');
+        expect(result.data.actions).toEqual(['Rapor Ekle butonuna tıkla', 'Başlık alanına yaz']);
+    });
+
+    it('caps actions at 10', () => {
+        const result = PlaybookNodeInput.safeParse({
+            ...base,
+            actions: Array.from({ length: 11 }, (_, i) => `Adım ${i}`)
+        });
+        expect(result.success).toBe(false);
     });
 
     it('rejects an empty directive', () => {
@@ -297,6 +306,15 @@ describe('PlaybookInput', () => {
         }));
         const result = PlaybookInput.safeParse({ nodes });
         expect(result.success).toBe(false);
+    });
+
+    it('accepts a legacy attach payload until persisted playbooks are migrated', () => {
+        const parsed = PlaybookInput.parse({
+            nodes: [{ id: 'legacy', order: 1, directive: 'Eski adım', attach: 'Rapor Ekle butonu' }]
+        });
+        expect(normalizePlaybook(parsed.nodes)[0]).toMatchObject({
+            actions: ['Rapor Ekle butonu']
+        });
     });
 });
 
@@ -343,13 +361,32 @@ describe('normalizePlaybook', () => {
         expect(result.map((n) => n.id)).toEqual(['a']);
     });
 
-    it('trims the directive and normalizes empty attach/url to null', () => {
+    it('trims the directive and normalizes an empty url to null', () => {
         const result = normalizePlaybook([
-            { id: 'a', order: 1, directive: '  Boşluklu  ', url: '', attach: '  ' }
+            { id: 'a', order: 1, directive: '  Boşluklu  ', url: '', actions: ['  '] }
         ]);
         expect(result[0].directive).toBe('Boşluklu');
         expect(result[0].url).toBeNull();
-        expect(result[0].attach).toBeNull();
+        expect(result[0].actions).toEqual([]);
+    });
+
+    it('coerces a legacy single `attach` string into a one-item actions list', () => {
+        const result = normalizePlaybook([
+            // Matches a hydrated legacy Mongoose node: the old field survives
+            // while the new schema simultaneously supplies actions: [].
+            { id: 'a', order: 1, directive: 'Eski format', attach: 'Rapor Ekle butonu', actions: [] }
+        ]);
+        expect(result[0].actions).toEqual(['Rapor Ekle butonu']);
+        expect(result[0]).not.toHaveProperty('attach');
+    });
+
+    it('keeps new actions authoritative when a legacy attach also exists', () => {
+        const result = normalizePlaybook([{
+            id: 'a', order: 1, directive: 'Yeni format',
+            attach: 'Eski hedef', actions: ['Yeni hedef']
+        }]);
+        expect(result[0].actions).toEqual(['Yeni hedef']);
+        expect(result[0]).not.toHaveProperty('attach');
     });
 
     it('defaults a missing mode to situational', () => {

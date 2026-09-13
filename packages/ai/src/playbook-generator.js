@@ -61,7 +61,7 @@ export function compileGeneratedPlaybook(raw, {
                 type: 'survey',
                 directive: question,
                 url: null,
-                attach: null,
+                actions: [],
                 mode: NODE_MODES.has(candidate.mode) ? candidate.mode : 'important',
                 survey: {
                     question,
@@ -85,8 +85,12 @@ export function compileGeneratedPlaybook(raw, {
         if (!directive) continue;
         const requestedUrl = clip(candidate.url, 2000);
         const acceptedUrl = requestedUrl && allowed.has(requestedUrl) ? requestedUrl : null;
-        const requestedAttach = clip(candidate.attach, 200);
         const pageAttachments = new Set(allowedAttachments[acceptedUrl] || []);
+        // Back-compat: a model still returning the pre-array `attach` shape
+        // is treated as a one-item actions list rather than dropped.
+        const requestedActions = Array.isArray(candidate.actions)
+            ? candidate.actions
+            : candidate.attach ? [candidate.attach] : [];
         compiled.push({
             id: `generated_${compiled.length + 1}`,
             order: compiled.length + 1,
@@ -94,8 +98,12 @@ export function compileGeneratedPlaybook(raw, {
             directive,
             url: acceptedUrl,
             // A natural-sounding invented sentence is not a DOM target. Only
-            // preserve an exact label observed on this exact crawled page.
-            attach: requestedAttach && pageAttachments.has(requestedAttach) ? requestedAttach : null,
+            // preserve exact labels observed on this exact crawled page —
+            // silently drop anything else rather than failing the node.
+            actions: requestedActions
+                .map((action) => clip(action, 200))
+                .filter((action) => action && pageAttachments.has(action))
+                .slice(0, 10),
             mode: NODE_MODES.has(candidate.mode) ? candidate.mode : 'situational',
             survey: null
         });
@@ -212,7 +220,7 @@ Sales design principles:
 - Ask only questions that materially change the conversation. Put survey questions early and keep the whole flow suitable for a short meeting.
 - Make narrative steps personalized by prior survey answers, while keeping the route deterministic.
 - Use exact URLs only from availablePages. Omit a URL when no verified page fits.
-- Set attach only to an exact clickableElements label from that same page. Omit attach when the page has no matching listed element; never write an instruction or invented sentence there.
+- Set actions only to a list of exact clickableElements labels from that same page, in the order they should happen. Omit actions (or leave the list empty) when the page has no matching listed element; never write an instruction or invented sentence there.
 - Use natural, restrained language; no hype, fake urgency or unsupported superlatives.
 - Return at most ${request.maxNodes} nodes.
 ${request.includeSurvey && context.canUseSurvey ? '- Include 1-3 useful survey nodes.' : '- Do not include survey nodes.'}
@@ -227,7 +235,7 @@ Available pages: ${JSON.stringify(pages)}
 Respond ONLY with valid JSON, no markdown:
 {"nodes":[
   {"type":"survey","question":"...","answerType":"single-choice|text","options":["..."],"allowFreeText":true,"required":true,"mode":"important|situational|skip-if-no-answer"},
-  {"type":"narrative","directive":"private instruction describing what to accomplish and how to connect it to prior answers","url":"exact available URL or omit","attach":"optional natural-language element description","mode":"important|situational|skip-if-no-answer"}
+  {"type":"narrative","directive":"private instruction describing what to accomplish and how to connect it to prior answers","url":"exact available URL or omit","actions":["optional exact clickableElements labels, in order"],"mode":"important|situational|skip-if-no-answer"}
 ]}`;
 }
 

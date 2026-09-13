@@ -1,6 +1,6 @@
 {
   "name": "@app/agent-worker",
-  "version": "0.1.0",
+  "version": "2.0.0",
   "private": true,
   "type": "module",
   "main": "src/agent.js",
@@ -25,6 +25,7 @@
     "@repo/agent": "*",
     "@repo/avatar": "*",
     "@repo/config-env": "*",
+    "@repo/contracts": "*",
     "@repo/database": "*",
     "@repo/livekit": "*",
     "@repo/logger": "*",

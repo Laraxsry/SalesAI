@@ -101,7 +101,7 @@ describe('wrapDirective', () => {
         expect(text).toContain('do not call advance_step');
     });
 
-    const node = { directive: 'Şirketi tanıt: kuruluş yılı, kaç ülkede faaliyet', attach: null, url: null };
+    const node = { directive: 'Şirketi tanıt: kuruluş yılı, kaç ülkede faaliyet', actions: [], url: null };
 
     it('carries the directive through verbatim', () => {
         expect(wrapDirective(node)).toContain(node.directive);
@@ -146,22 +146,38 @@ describe('wrapDirective', () => {
         expect(wrapDirective(node, { screenVisible: false })).not.toContain('already open');
     });
 
-    it('asks for the click when the step has an attach target and the screen is visible', () => {
-        const withAttach = wrapDirective({ ...node, attach: 'Rapor Ekle butonu' }, { screenVisible: true });
-        expect(withAttach).toContain('Rapor Ekle butonu');
-        expect(withAttach).toContain('click_element');
+    it('asks for the on-screen action when the step has one and the screen is visible, without naming a tool', () => {
+        const withAction = wrapDirective({ ...node, actions: ['Rapor Ekle butonuna tıkla'] }, { screenVisible: true });
+        expect(withAction).toContain('Rapor Ekle butonuna tıkla');
+        expect(withAction).toContain('whichever action actually fits');
+        // Backend-agnostic on purpose (see wrapDirective's comment) — the
+        // concrete tool name for whichever backend is running comes from
+        // persona.js, not from here. Neither the old Playwright tool name
+        // nor the Chrome MCP one should ever appear in this output.
+        expect(withAction).not.toContain('click_element');
+        expect(withAction).not.toContain('browser_click');
 
-        expect(wrapDirective(node, { screenVisible: true })).not.toContain('click_element');
+        expect(wrapDirective(node, { screenVisible: true })).not.toContain('whichever action actually fits');
     });
 
-    it('never asks for the click when the screen isn\'t actually visible, even with an attach target', () => {
+    it('numbers multiple actions in the given order', () => {
+        const withActions = wrapDirective(
+            { ...node, actions: ['Category alanına tıkla', '"Staff" yaz', 'Staff sonucuna tıkla'] },
+            { screenVisible: true }
+        );
+        expect(withActions).toContain('1. Category alanına tıkla');
+        expect(withActions).toContain('2. "Staff" yaz');
+        expect(withActions).toContain('3. Staff sonucuna tıkla');
+    });
+
+    it('never asks for an on-screen action when the screen isn\'t actually visible, even with actions set', () => {
         // Navigation can fail or still be in flight — sending the model
-        // hunting for an element on a page that isn't rendered is a
-        // guaranteed, pointless click_element timeout instead of just
-        // narrating the content it already has.
-        const withAttach = wrapDirective({ ...node, attach: 'Rapor Ekle butonu' }, { screenVisible: false });
-        expect(withAttach).not.toContain('click_element');
-        expect(withAttach).not.toContain('Rapor Ekle butonu');
+        // hunting for elements on a page that isn't rendered is a
+        // guaranteed, pointless timeout instead of just narrating the
+        // content it already has.
+        const withAction = wrapDirective({ ...node, actions: ['Rapor Ekle butonuna tıkla'] }, { screenVisible: false });
+        expect(withAction).not.toContain('whichever action actually fits');
+        expect(withAction).not.toContain('Rapor Ekle butonuna tıkla');
     });
 
     it('tells the model to continue rather than restart when resuming', () => {
@@ -207,7 +223,7 @@ describe('proactive builders — quoting back what was already said', () => {
     });
 
     it('wrapDirective quotes the cut-off text only while resuming', () => {
-        const node = { directive: 'Fiyatları anlat', attach: null, url: null };
+        const node = { directive: 'Fiyatları anlat', actions: [], url: null };
 
         const resumed = wrapDirective(node, { resuming: true, spokenSoFar: 'YARIM_KALAN' });
         expect(resumed).toContain('YARIM_KALAN');
@@ -218,7 +234,7 @@ describe('proactive builders — quoting back what was already said', () => {
     });
 
     it('never leaks the existence of a plan through the new branches', () => {
-        const node = { directive: 'Fiyatları anlat', attach: null, url: null };
+        const node = { directive: 'Fiyatları anlat', actions: [], url: null };
         const texts = [
             buildIdleNudgeInstructions({ consecutive: 1, lastUtterance: 'bir şey' }),
             wrapDirective(node, { resuming: true, spokenSoFar: 'bir şey' }),

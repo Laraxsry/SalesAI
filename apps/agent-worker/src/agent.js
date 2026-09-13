@@ -34,7 +34,8 @@ import {
 } from '@repo/agent';
 import { startAvatarWithFallback } from '@repo/avatar';
 import { roomService } from '@repo/livekit';
-import { GuidedTour, analyzeFrame } from '@repo/screen';
+import { BrowserSession, ChromeMcpTour, GuidedTour, analyzeFrame } from '@repo/screen';
+import { normalizePlaybook } from '@repo/contracts';
 import { getLogger, runWithContext } from '@repo/logger';
 import { decryptField, languageName } from '@repo/utils';
 import { publishEvent, publishMetric, publishUsage, RT_EVENTS, SESSION_METRICS } from '@repo/realtime';
@@ -55,6 +56,11 @@ import { createQuestionQueue } from './question-queue.js';
 import { createHandQueue } from './hand-queue.js';
 import { matchReturningParticipant } from './returning-participant.js';
 import { pickActiveSpeaker, chooseAttribution } from './active-speaker.js';
+import { AGENT_RUNTIME_VERSION } from './runtime-version.js';
+import { selectBrowserProvider } from './browser-provider.js';
+import { createPresentationCuePublisher } from './presentation-cues.js';
+import { tourActionMeta } from './tour-diagnostics.js';
+import { createTourChoreographer } from './tour-choreographer.js';
 
 /**
  * Runs the session with the trace context extracted from the LiveKit dispatch
@@ -251,9 +257,9 @@ async function runSession(ctx) {
     const playbookDoc = generatedPlan ? null : await Playbook.findOne({ agentId: agentDoc._id });
     const playbookNodes = generatedPlan
         ? planToPlaybookNodes(generatedPlan)
-        : (playbookDoc?.enabled ? playbookDoc.nodes : []).map((n) =>
-              typeof n.toObject === 'function' ? n.toObject() : n
-          );
+        : normalizePlaybook((playbookDoc?.enabled ? playbookDoc.nodes : []).map((n) =>
+            typeof n.toObject === 'function' ? n.toObject() : n
+        ));
     const playbookActive = playbookNodes.length > 0;
     const playbookCursor = playbookActive ? createPlaybookCursor(playbookNodes) : null;
     /** @type {ReturnType<typeof createPlaybookRuntime>|null} */
@@ -283,6 +289,7 @@ async function runSession(ctx) {
     });
 
     timeline.emit(TIMELINE_EVENTS.SESSION_START, {
+        agentRuntimeVersion: AGENT_RUNTIME_VERSION,
         agentId: String(agentDoc._id),
         productId: String(product._id),
         roomName: ctx.room?.name ?? null,
@@ -316,9 +323,21 @@ async function runSession(ctx) {
             mode: n.mode,
             url: n.url ?? null,
             directive: n.directive,
-            attach: n.attach ?? null
+            actions: n.actions ?? []
         }))
     });
+
+    const providerSelection = selectBrowserProvider({
+        configuredProvider: product.browserProvider || process.env.COBROWSE_PROVIDER || 'playwright',
+        playbookActive
+    });
+    const backend = providerSelection.effectiveProvider;
+    const providerTelemetry = {
+        agentRuntimeVersion: AGENT_RUNTIME_VERSION,
+        ...providerSelection
+    };
+    log.info('browser provider selected', providerTelemetry);
+    timeline.emit(TIMELINE_EVENTS.BROWSER_PROVIDER_SELECTED, providerTelemetry);
 
     const instructions = buildSystemPrompt({
         name: agentDoc.name,
@@ -326,7 +345,8 @@ async function runSession(ctx) {
         persona: agentDoc.persona,
         playbookActive,
         multiParticipant: isMultiParty,
-        preCallIntent
+        preCallIntent,
+        browserAutomation: backend === 'chrome-mcp'
     });
 
     // screenModes defined on the agent doc govern which tools are available
@@ -336,12 +356,11 @@ async function runSession(ctx) {
     // Streams agent-driven browser navigation as a LiveKit video track.
     // COBROWSE_PROVIDER=browserbase opts into the Stagehand/Browserbase
     // cloud backend; default stays local Playwright.
-    const backend = process.env.COBROWSE_PROVIDER === 'browserbase' ? 'stagehand' : 'playwright';
     const startUrl = product.websiteUrl || 'https://salesai.dev';
 
-    // Phase 3: Session Handover
-    // If the visitor passed their active session (transientAuth), use it
-    // and IMMEDIATELY delete it from the database so it cannot be read again.
+    // Chrome MCP always signs into the seller-owned demo account. A visitor's
+    // transient session is deliberately outside this provider's trust boundary.
+    // The legacy drivers retain handover compatibility during migration.
     let tourAuth = null;
     if (product.demoSession) {
         try {
@@ -351,16 +370,34 @@ async function runSession(ctx) {
         }
     }
     if (session.transientAuth) {
-        tourAuth = session.transientAuth;
-        log.info('Using transientAuth for session handover, deleting from DB for security', { sessionId: String(session._id) });
+        if (backend === 'chrome-mcp') {
+            log.info('Discarding transientAuth for Chrome MCP; seller demo credentials remain active', {
+                sessionId: String(session._id)
+            });
+        } else {
+            tourAuth = session.transientAuth;
+            log.info('Using transientAuth for session handover, deleting from DB for security', {
+                sessionId: String(session._id)
+            });
+        }
         await Session.updateOne({ _id: session._id }, { $unset: { transientAuth: 1 } });
     }
 
-    const tour = new GuidedTour({
-        startUrl,
-        backend,
-        allowedDomains: product.tourAllowedDomains || [],
-        auth: tourAuth
+    const tourDriver = backend === 'chrome-mcp'
+        ? new ChromeMcpTour({
+            startUrl,
+            allowedDomains: product.tourAllowedDomains || [],
+            auth: tourAuth
+        })
+        : new GuidedTour({
+            startUrl,
+            backend,
+            allowedDomains: product.tourAllowedDomains || [],
+            auth: tourAuth
+        });
+    const tour = new BrowserSession({
+        provider: backend,
+        driver: tourDriver
     });
 
     // Prewarm only when this session is guaranteed to use a guided-tour URL.
@@ -561,7 +598,7 @@ async function runSession(ctx) {
             // start_guided_tour call — slip past this guard and reach
             // tour.open() concurrently. GuidedTour's own internal guard then
             // throws "Already open" for whichever call loses the race, and
-            // its catch's tour.close() tears down the OTHER call's still-
+            // its catch's browser recovery tears down the OTHER call's still-
             // in-flight browser, producing a second, differently-worded
             // failure right after. Rolled back in the catch below on failure.
             isTourActive = true;
@@ -629,7 +666,11 @@ async function runSession(ctx) {
             } catch (e) {
                 log.error('GuidedTour open failed: ' + e.message, { error: e.message, durationMs: Date.now() - openStartedAt });
                 tourFrameObserver.abandonPending('tour_open_failed');
-                await tour.close().catch(() => {});
+                if (backend === 'chrome-mcp') {
+                    await tour.recover().catch(() => {});
+                } else {
+                    await tour.close().catch(() => {});
+                }
                 isTourActive = false;
                 latestTourFrameBase64 = null;
                 return { ok: false, error: e.message };
@@ -752,6 +793,83 @@ async function runSession(ctx) {
             }
         }
     };
+
+    const publishPresentationCue = createPresentationCuePublisher({
+        participant: ctx.room.localParticipant,
+        onEvent: (event, meta) => timeline.emit(TIMELINE_EVENTS.TOUR_PRESENTATION_PUBLISH, { event, ...meta })
+    });
+    const tourChoreographer = backend === 'chrome-mcp'
+        ? createTourChoreographer({
+            browser: tour,
+            publishCue: publishPresentationCue,
+            getViewVersion: () => tourViewVersion,
+            onEvent: (event, meta) => timeline.emit(TIMELINE_EVENTS.TOUR_CHOREOGRAPHY, { event, ...meta })
+        })
+        : null;
+
+    timeline.emit(TIMELINE_EVENTS.TOUR_CHOREOGRAPHY, {
+        event: 'configured', enabled: Boolean(tourChoreographer), backend, isTourActive,
+        triggers: ['browser.perform', 'browser.focus', 'customer_interrupted']
+    });
+    let browserOperationSequence = 0;
+    async function monitorBrowserAction(action, args, operation) {
+        const operationId = `browser-${++browserOperationSequence}`;
+        const started = Date.now();
+        const meta = { operationId, ...tourActionMeta(action, args) };
+        timeline.emit(TIMELINE_EVENTS.TOUR_BROWSER_ACTION, {
+            ...meta, event: 'begin', isTourActive, viewVersion: tourViewVersion
+        });
+        try {
+            const result = isTourActive ? await operation(operationId)
+                : { ok: false, error: 'Tour not active. Call start_guided_tour first.' };
+            timeline.emit(TIMELINE_EVENTS.TOUR_BROWSER_ACTION, {
+                ...meta, event: 'end', status: result?.ok === false ? 'failed' : 'ok',
+                reason: !isTourActive ? 'tour_inactive' : undefined,
+                error: result?.error, viewVersion: tourViewVersion
+            }, Date.now() - started);
+            return result;
+        } catch (error) {
+            timeline.emit(TIMELINE_EVENTS.TOUR_BROWSER_ACTION, {
+                ...meta, event: 'end', status: 'error', error: error.message, viewVersion: tourViewVersion
+            }, Date.now() - started);
+            throw error;
+        }
+    }
+
+    const browserControls = backend === 'chrome-mcp' ? {
+        observe: () => monitorBrowserAction('observe', {}, () => tour.observe()),
+        focus: (uid, intent) => monitorBrowserAction('focus', { uid }, async operationId => {
+            try {
+                const cue = await tourChoreographer.focus(uid, intent, operationId);
+                return { ok: true, cueId: cue.cueId };
+            } catch (error) {
+                return { ok: false, error: error.message };
+            }
+        }),
+        perform: (action, args) => monitorBrowserAction(action, args, async operationId => {
+            const presentation = await tourChoreographer.beforeAction(action, args, operationId);
+            if (presentation.cancelled) {
+                return { ok: false, error: 'Browser action cancelled because the customer started speaking.' };
+            }
+            timeline.emit(TIMELINE_EVENTS.TOUR_BROWSER_ACTION, {
+                event: 'execute', operationId, action, decorated: presentation.decorated, viewVersion: tourViewVersion
+            });
+            const result = await tour.perform(action, args);
+            timeline.emit(TIMELINE_EVENTS.TOUR_BROWSER_ACTION, {
+                event: 'executed', operationId, action, ok: result?.ok, viewVersion: tourViewVersion
+            });
+            if (!['listPages'].includes(action)) {
+                const viewVersion = ++tourViewVersion;
+                timeline.emit(TIMELINE_EVENTS.TOUR_BROWSER_ACTION, { event: 'capture', operationId, viewVersion });
+                await captureAndPublishTourFrame(viewVersion);
+                if (['click', 'pressKey', 'selectPage', 'newPage'].includes(action)) {
+                    await tourChoreographer.clear('view_changed').catch(() => {});
+                }
+                scheduleTourFrame(800);
+            }
+            return result;
+        })
+    } : null;
 
     // ── Customer Screen Vision (Mode B) ────────────────────────────────────
     // Samples the customer's screen-share track at ~1 FPS, downscales to
@@ -1013,13 +1131,14 @@ async function runSession(ctx) {
         return { ok: true };
     };
 
-    // `click_element` succeeding used to also close out the current playbook
+    // A screen action succeeding used to also close out the current playbook
     // node (via withPlaybookProgress, now removed) whenever that node had an
-    // `attach` target — the idea being "the one concrete action happened, so
+    // `actions` target — the idea being "the one concrete action happened, so
     // the node is done". Live testing proved this wrong: a node whose
-    // `attach` describes several elements (a marketer writing "click X, then
-    // Y, then Z" into one field — see md/backend/playbook_session_log.md
-    // item 6/15) closed the instant the FIRST click landed, before the
+    // `actions` describe several elements (a marketer writing "click X, then
+    // Y, then Z" — see md/backend/playbook_session_log.md item 6/15, now
+    // a first-class ordered list instead of one crammed field) closed the
+    // instant the FIRST action landed, before the
     // model had said a word of the actual directive — the topic was silently
     // never narrated. `advance_step` is the only thing that closes a node
     // now, exactly as its own description already promised ("the moment you
@@ -1044,6 +1163,7 @@ async function runSession(ctx) {
                 // Group session: hand the floor to the next raised hand.
                 nextParticipant: advanceToNextParticipant,
                 flagFollowup,
+                browser: browserControls,
                 // Not yet awaitable at this point in the source (playbookRuntime
                 // is constructed further down, once agentSession exists) — this
                 // closure only reads it, and by the time the model can actually
@@ -1231,7 +1351,7 @@ async function runSession(ctx) {
                     nodeId: node.id,
                     mode: node.mode,
                     hasUrl: Boolean(node.url),
-                    hasAttach: Boolean(node.attach),
+                    actionCount: node.actions?.length ?? 0,
                     ...meta
                 });
                 Message.create({
@@ -1257,7 +1377,7 @@ async function runSession(ctx) {
                         // what the model was ASKED to cover right next to what
                         // it actually said, without scrolling back.
                         directive: node.directive,
-                        hasAttach: Boolean(node.attach),
+                        actionCount: node.actions?.length ?? 0,
                         ...meta
                     });
                 }
@@ -1292,7 +1412,8 @@ async function runSession(ctx) {
                         persona: agentDoc.persona,
                         playbookActive: false,
                         multiParticipant: isMultiParty,
-                        preCallIntent
+                        preCallIntent,
+                        browserAutomation: backend === 'chrome-mcp'
                     });
                     const postPlaybookTools = buildSessionTools(false);
                     agentSession.updateAgent(new voice.Agent({
@@ -1571,6 +1692,7 @@ async function runSession(ctx) {
     });
     agentSession.on(voice.AgentSessionEventTypes.UserStateChanged, (ev) => {
         timeline.emit(TIMELINE_EVENTS.USER_STATE, { from: ev.oldState, to: ev.newState });
+        if (ev.newState === 'speaking') tourChoreographer?.cancel('customer_interrupted');
         if (greetingSent) silence.handleUserState(ev.newState);
     });
     // Ground truth for `activeSpeechCount` (declared above): every

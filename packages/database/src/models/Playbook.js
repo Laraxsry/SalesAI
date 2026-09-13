@@ -25,9 +25,10 @@ const PlaybookNodeSchema = new Schema(
          *  verbatim, always wrapped before it reaches the model (see
          *  @repo/agent's wrapDirective). */
         directive: { type: String, required: true },
-        /** Natural-language description of an on-screen element to click,
-         *  resolved by the model at runtime — not a stored CSS selector. */
-        attach: { type: String, default: null },
+        /** Ordered natural-language on-screen actions for this step (click,
+         *  point, scroll, or fill) — resolved by the model at runtime, not
+         *  stored selectors. */
+        actions: { type: [String], default: [] },
         mode: {
             type: String,
             enum: ['important', 'situational', 'skip-if-no-answer'],

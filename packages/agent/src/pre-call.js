@@ -70,7 +70,7 @@ export function sanitizeGeneratedPlan(plan, { siteMapUrls, canShowScreen = false
  * along so the model delivers it instead of composing from scratch.
  *
  * @param {{ steps:Array<{url:string|null,coverage:string,narration:string}> }} plan
- * @returns {Array<{id:string,order:number,url:string|null,directive:string,narration:string|null,attach:null,mode:'important'}>}
+ * @returns {Array<{id:string,order:number,url:string|null,directive:string,narration:string|null,actions:string[],mode:'important'}>}
  */
 export function planToPlaybookNodes(plan) {
     return (plan?.steps || []).map((s, i) => ({
@@ -79,7 +79,7 @@ export function planToPlaybookNodes(plan) {
         url: s.url ?? null,
         directive: s.coverage || s.narration || '',
         narration: s.narration || null,
-        attach: null,
+        actions: [],
         type: 'narrative',
         survey: null,
         mode: 'important'

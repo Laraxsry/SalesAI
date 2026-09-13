@@ -10,7 +10,7 @@
  * cursor simply skips it, silently, whenever it's eventually reached.
  *
  * @typedef {{ id:string, order:number, type?:'narrative'|'survey', url:string|null, directive:string,
- *             attach:string|null, survey?:object|null, mode:'important'|'situational'|'skip-if-no-answer' }} PlaybookNode
+ *             actions?:string[], survey?:object|null, mode:'important'|'situational'|'skip-if-no-answer' }} PlaybookNode
  *
  * @param {PlaybookNode[]} nodes already normalized (see normalizePlaybook in
  *   @repo/contracts) — sorted by order, densely numbered, blank steps dropped

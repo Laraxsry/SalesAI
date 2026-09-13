@@ -56,8 +56,22 @@ function optionPlaceholderIndex(options) {
     return last && !last.label.trim() ? options.length - 1 : -1;
 }
 
+/** Same trailing-empty-slot pattern as options, for the plain-string actions
+ *  list — capped at the server's 10-action limit. */
+function withTrailingEmptyAction(actions) {
+    const last = actions[actions.length - 1];
+    if (actions.length >= 10) return actions;
+    if (last === undefined || last.trim()) return [...actions, ''];
+    return actions;
+}
+
+function actionPlaceholderIndex(actions) {
+    const last = actions[actions.length - 1];
+    return last !== undefined && !last.trim() ? actions.length - 1 : -1;
+}
+
 function emptyRow() {
-    return { id: makeRowId(), type: 'narrative', directive: '', url: null, attach: null, mode: 'situational', survey: null };
+    return { id: makeRowId(), type: 'narrative', directive: '', url: null, actions: null, mode: 'situational', survey: null };
 }
 
 function rowText(row) {
@@ -72,7 +86,7 @@ function rowsFromServer(nodes) {
         type: n.type || 'narrative',
         directive: n.directive || '',
         url: n.url ?? null,
-        attach: n.attach ?? null,
+        actions: n.actions?.length ? withTrailingEmptyAction(n.actions) : null,
         mode: n.mode || 'situational',
         survey: n.type === 'survey' && n.survey
             ? toEditorSurvey(
@@ -271,9 +285,21 @@ export function AgentGoals() {
         updateRow(row.id, { url: row.url === null ? '' : null });
     }
 
-    /** attach alanını aç/kapat, aynı kalıp. */
-    function toggleAttach(row) {
-        updateRow(row.id, { attach: row.attach === null ? '' : null });
+    /** Aksiyon listesini aç/kapat, aynı kalıp — açılınca tek boş satırla başlar. */
+    function toggleActions(row) {
+        updateRow(row.id, { actions: row.actions === null ? [''] : null });
+    }
+
+    function updateActionText(row, index, value) {
+        updateRow(row.id, {
+            actions: withTrailingEmptyAction(row.actions.map((a, i) => (i === index ? value : a)))
+        });
+    }
+
+    function removeAction(row, index) {
+        updateRow(row.id, {
+            actions: withTrailingEmptyAction(row.actions.filter((_, i) => i !== index))
+        });
     }
 
     function changeNodeType(row, type) {
@@ -402,7 +428,7 @@ export function AgentGoals() {
                     type: r.type || 'narrative',
                     directive: r.type === 'survey' ? question : r.directive.trim(),
                     url: r.url?.trim() || null,
-                    attach: r.attach?.trim() || null,
+                    actions: (r.actions || []).map((a) => a.trim()).filter(Boolean),
                     mode: r.mode,
                     survey: r.type === 'survey'
                         ? {
@@ -583,7 +609,8 @@ export function AgentGoals() {
                 <p className="text-[13px] leading-relaxed text-text-muted">
                     Ne anlatılacağını maddele — agent hepsini kapsayana kadar sonraki adıma geçmez.
                     Bir adımda ekran gösterilecekse <Globe size={12} className="inline align-[-1px]" />{' '}
-                    ikonuna, belirli bir öğeye tıklanacaksa{' '}
+                    ikonuna, ekranda bir şey yapılacaksa (tıklama, seçim, yazma — birden fazla adım
+                    sırayla eklenebilir){' '}
                     <Paperclip size={12} className="inline align-[-1px]" /> ikonuna bas.
                 </p>
             </div>
@@ -687,9 +714,9 @@ export function AgentGoals() {
 
                                 <button
                                     type="button"
-                                    onClick={() => toggleAttach(row)}
-                                    title={row.attach === null ? 'Tıklanacak öğe ekle' : 'Öğeyi kaldır'}
-                                    className={`flex h-10 w-10 shrink-0 items-center justify-center rounded-[var(--radius-input)] border transition-colors ${row.attach !== null
+                                    onClick={() => toggleActions(row)}
+                                    title={row.actions === null ? 'Ekran aksiyonu ekle' : 'Aksiyonları kaldır'}
+                                    className={`flex h-10 w-10 shrink-0 items-center justify-center rounded-[var(--radius-input)] border transition-colors ${row.actions !== null
                                             ? 'border-brand/50 bg-brand/10 text-brand-light'
                                             : 'border-border bg-surface-raised text-text-muted hover:border-brand/50 hover:text-text'
                                         }`}
@@ -829,20 +856,42 @@ export function AgentGoals() {
                                 </div>
                             )}
 
-                            {row.attach !== null && (
-                                <div className="mt-2.5 flex items-center gap-2">
-                                    <span className="h-8 w-4 shrink-0" aria-hidden="true" />
-                                    <span className="h-7 w-7 shrink-0" aria-hidden="true" />
-                                    <input
-                                        value={row.attach}
-                                        onChange={(e) => updateRow(row.id, { attach: e.target.value })}
-                                        placeholder='Örn. "Rapor Ekle" butonu'
-                                        className="h-9 min-w-0 flex-1 rounded-[var(--radius-input)] border border-border bg-bg px-3 text-[13px] text-text outline-none placeholder:text-text-muted/60 focus:border-brand"
-                                    />
-                                    <span className="h-9 w-[9.5rem] shrink-0" aria-hidden="true" />
-                                    <span className="h-9 w-10 shrink-0" aria-hidden="true" />
-                                    <span className="h-9 w-10 shrink-0" aria-hidden="true" />
-                                    <span className="h-9 w-10 shrink-0" aria-hidden="true" />
+                            {row.actions !== null && (
+                                <div className="mt-2.5 flex flex-col gap-1.5">
+                                    {row.actions.map((action, actionIndex) => {
+                                        const isActionPlaceholder = actionIndex === actionPlaceholderIndex(row.actions);
+                                        return (
+                                            <div key={actionIndex} className="flex items-center gap-2">
+                                                <span className="h-8 w-4 shrink-0" aria-hidden="true" />
+                                                <span className="flex h-7 w-7 shrink-0 items-center justify-center text-[11px] text-text-muted/60">
+                                                    {actionIndex + 1}
+                                                </span>
+                                                <input
+                                                    value={action}
+                                                    onChange={(e) => updateActionText(row, actionIndex, e.target.value)}
+                                                    placeholder={actionIndex === 0
+                                                        ? 'Örn. "Category" alanına tıkla'
+                                                        : 'Sıradaki adım, örn. "Staff" yaz'}
+                                                    className="h-9 min-w-0 flex-1 rounded-[var(--radius-input)] border border-border bg-bg px-3 text-[13px] text-text outline-none placeholder:text-text-muted/60 focus:border-brand"
+                                                />
+                                                <span className="h-9 w-[9.5rem] shrink-0" aria-hidden="true" />
+                                                <span className="h-9 w-10 shrink-0" aria-hidden="true" />
+                                                <span className="h-9 w-10 shrink-0" aria-hidden="true" />
+                                                {isActionPlaceholder ? (
+                                                    <span className="h-9 w-10 shrink-0" aria-hidden="true" />
+                                                ) : (
+                                                    <button
+                                                        type="button"
+                                                        onClick={() => removeAction(row, actionIndex)}
+                                                        title="Adımı sil"
+                                                        className="flex h-9 w-10 shrink-0 items-center justify-center rounded-[var(--radius-input)] text-text-muted/60 transition-colors hover:bg-red-500/10 hover:text-red-400"
+                                                    >
+                                                        <Trash2 size={13} />
+                                                    </button>
+                                                )}
+                                            </div>
+                                        );
+                                    })}
                                 </div>
                             )}
                         </div>

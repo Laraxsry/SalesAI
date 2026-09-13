@@ -154,7 +154,7 @@ export function buildIdleNudgeInstructions({ consecutive = 1, lastUtterance, lan
  * is ALREADY WRITTEN for this specific visitor — the model delivers it rather
  * than composing from a topic, which removes the compose latency.
  *
- * @param {{ directive: string, type?:'narrative'|'survey', survey?:object|null, narration?: string|null, attach?: string|null, url?: string|null }} node
+ * @param {{ directive: string, type?:'narrative'|'survey', survey?:object|null, narration?: string|null, actions?: string[]|null, url?: string|null }} node
  * @param {object} [opts]
  * @param {boolean} [opts.screenVisible] a page is already on the visitor's screen
  * @param {boolean} [opts.resuming] this step was cut short earlier and is being retried
@@ -213,13 +213,27 @@ export function wrapDirective(
         );
     }
 
-    // Gated on screenVisible: clicking something on a screen that isn't
-    // actually showing (navigation failed or hasn't finished) sends the
-    // model hunting for an element that was never rendered — a guaranteed,
-    // pointless click_element timeout instead of just narrating the content.
-    if (node.attach && screenVisible) {
+    // Gated on screenVisible: acting on something that isn't actually showing
+    // (navigation failed or hasn't finished) sends the model hunting for
+    // elements that were never rendered — a guaranteed, pointless timeout
+    // instead of just narrating the content it already has.
+    //
+    // Deliberately backend- and tool-agnostic: this used to hardcode "using
+    // click_element" and force every action into a click (see
+    // md/backend/playbook_session_log.md item 6/15 — a scroll instruction
+    // written here got forced into a failing click_element call). Worse, the
+    // Chrome MCP browser backend doesn't even expose a `click_element` tool
+    // (it's `browser_click` there), so the hardcoded name broke outright on
+    // that backend regardless of what was written. Which concrete tool
+    // "click"/"point"/"scroll"/"fill" maps to is already established earlier
+    // in this same system prompt (persona.js's backend-conditional "Using the
+    // screen" rules) — naming one here would only go stale for whichever
+    // backend the session isn't running.
+    if (node.actions?.length && screenVisible) {
+        const steps = node.actions.map((action, index) => `${index + 1}. ${action}`).join('\n');
         lines.push(
-            `As part of this, point out and click the "${node.attach}" element using click_element, and say what it does as you do it.`
+            "As part of this, also make the following happen on screen, in order — resolve each one to whichever action actually fits (clicking, pointing/highlighting, scrolling, or filling/typing a field), never force one into a click it isn't, and say what it does as you do it:",
+            steps
         );
     }
 

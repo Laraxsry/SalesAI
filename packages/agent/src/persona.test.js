@@ -71,6 +71,19 @@ describe('buildSystemPrompt — navigation ownership', () => {
         expect(prompt).toContain('`highlight`');
     });
 
+    it('keeps URL ownership in the runtime while allowing MCP UID interactions during a playbook', () => {
+        const prompt = buildSystemPrompt({
+            ...baseCfg,
+            playbookActive: true,
+            browserAutomation: true
+        });
+
+        expect(prompt).toContain('NEVER call `start_guided_tour` or `navigate_to` yourself');
+        expect(prompt).toContain('`browser_snapshot`');
+        expect(prompt).toContain('UIDs from the latest snapshot');
+        expect(prompt).not.toContain('Start the tour once');
+    });
+
     it('tells the model it CAN use start_guided_tour/navigate_to when no playbook is running', () => {
         const prompt = buildSystemPrompt(baseCfg);
         expect(prompt).toContain('Use `start_guided_tour`, `navigate_to`');

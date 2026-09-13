@@ -404,6 +404,9 @@ agentsRouter.get('/:id/playbook', requireAuth, async (req, res, next) => {
         ]);
 
         const playbook = (doc || new Playbook({ agentId: agent._id })).toObject();
+        // Keep legacy persistence details at the API boundary. Consumers only
+        // receive the current actions[] model, even for pre-migration records.
+        playbook.nodes = normalizePlaybook(playbook.nodes);
         res.json({
             ...playbook,
             maxParticipants: Math.max(1, Number(agent.maxParticipants) || 1),

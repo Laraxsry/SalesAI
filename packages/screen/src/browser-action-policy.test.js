@@ -16,4 +16,12 @@ describe('BrowserActionPolicy', () => {
         expect(() => policy.assertAllowed({ action: 'click', element })).toThrow(/destructive/);
         expect(policy.assertAllowed({ action: 'click', element, capability: 'system:cookie' }).allowed).toBe(true);
     });
+
+    it('permits opening a form but blocks its generic Add submit', () => {
+        const opening = { role: 'button', name: 'Add', line: 'button "Add"', insideForm: false };
+        const submit = { ...opening, insideForm: true };
+        expect(policy.assertAllowed({ action: 'click', element: opening }).allowed).toBe(true);
+        expect(() => policy.assertAllowed({ action: 'click', element: submit }))
+            .toThrow(/form submit/);
+    });
 });

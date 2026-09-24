@@ -398,6 +398,25 @@ describe('ChromeMcpTour', () => {
         await tour.close();
     });
 
+    it('blocks keyboard submission while a form is visible', async () => {
+        const adapter = {
+            connect: vi.fn(async () => {}),
+            callInternalTool: loginEvaluation,
+            callTool: vi.fn(async (name) => {
+                if (name === 'new_page') return result('ok');
+                if (name === 'list_pages') return result('## Pages\n1: Demo (https://demo.example) [selected]');
+                if (name === 'take_snapshot') return result('uid=2_0 form\n  uid=2_1 textbox "Name"');
+                return result('ok');
+            }),
+            close: vi.fn(async () => {})
+        };
+        const tour = new ChromeMcpTour({ startUrl: 'https://demo.example', adapter });
+        await tour.open();
+        await tour.observe();
+        await expect(tour.perform('pressKey', { key: 'Enter' })).rejects.toThrow(/submit/);
+        await tour.close();
+    });
+
     it('returns normalized live element geometry through the internal probe', async () => {
         const adapter = {
             connect: vi.fn(async () => {}),

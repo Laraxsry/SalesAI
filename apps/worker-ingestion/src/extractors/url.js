@@ -1,5 +1,6 @@
-import { checkSSRFUrl, waitForStableContent as waitForStableContentShared } from '@repo/utils';
+import { checkSSRFUrl, safeFetch, waitForStableContent as waitForStableContentShared } from '@repo/utils';
 import { loginWithCredentials } from '@repo/screen';
+import { extractDocumentText } from '@repo/rag';
 import { chromium } from 'playwright';
 import { createHash } from 'node:crypto';
 
@@ -23,6 +24,15 @@ const MAX_TOTAL_VISITED = MAX_CRAWL_PAGES * 20;
 // can have dozens of accordion sections; this keeps a single page's expand
 // pass from running away.
 const MAX_EXPAND_CLICKS = Number(process.env.URL_CRAWL_MAX_EXPAND_CLICKS || 25);
+
+// Discovered PDF links are downloaded and parsed instead of Playwright-
+// navigated (see extractPdfPage). Streamed and enforced against the actual
+// byte count as it arrives — a Content-Length header can be absent or lie,
+// so it's only used as an early reject, never trusted on its own. Slightly
+// tighter than ZIP_MAX_ENTRY_BYTES (ingest-source.js) since that cap applies
+// to a locally-trusted uploaded archive, not bytes fetched from an arbitrary
+// link discovered on a crawled site.
+const MAX_PDF_BYTES = Number(process.env.URL_CRAWL_MAX_PDF_BYTES || 20 * 1024 * 1024);
 
 // waitForStableContent(): how long to poll for the page's text to stop
 // growing before giving up and extracting whatever's there. Bounded (unlike
@@ -110,12 +120,15 @@ function normalizeUrl(href) {
  * `parentUrl` (the page `rawLinks` was found on) is carried onto each queued
  * item so `pagesIndex` can record the crawl-tree parent once the link is
  * actually visited (see `extractFromUrl`'s main loop). */
+const PDF_URL_PATTERN = /\.pdf(?:[?#]|$)/i;
+
 function enqueueLinks(rawLinks, queue, visited, rootOrigin, parentUrl) {
     for (const link of rawLinks) {
         const targetUrl = typeof link === 'string' ? link : link?.targetUrl;
         const normalized = normalizeUrl(targetUrl);
         if (normalized && normalized.startsWith(rootOrigin) && !visited.has(normalized)) {
-            queue.push({ url: normalized, parentUrl });
+            const isPdfCandidate = PDF_URL_PATTERN.test(new URL(normalized).pathname);
+            queue.push({ url: normalized, parentUrl, ...(isPdfCandidate ? { isPdfCandidate: true } : {}) });
         }
     }
 }
@@ -535,6 +548,49 @@ export async function discoverTabVariants(page, urlStr) {
 }
 
 /**
+ * Downloads and parses a PDF discovered while crawling a site, in place of a
+ * Playwright page load (a PDF has no DOM to scrape). The `.pdf`-looking URL
+ * is only ever a hint to get here — `extractDocumentText`'s magic-byte check
+ * is what actually decides whether the response is a real PDF, so a link
+ * that merely looks like a PDF but serves something else throws and is
+ * skipped by the caller, same as any other broken page.
+ *
+ * The response body is read in a streamed loop with a running byte count
+ * (never `res.arrayBuffer()` directly) so a missing or lying Content-Length
+ * header can't be used to smuggle an oversized download into memory.
+ */
+async function extractPdfPage(urlStr) {
+    await checkSSRFUrl(urlStr);
+    const res = await safeFetch(urlStr);
+    if (!res.ok) {
+        return { ok: false, status: res.status };
+    }
+
+    const declaredLength = Number(res.headers.get('content-length'));
+    if (Number.isFinite(declaredLength) && declaredLength > MAX_PDF_BYTES) {
+        throw new Error(`PDF exceeds ${MAX_PDF_BYTES} byte cap (declared Content-Length: ${declaredLength})`);
+    }
+
+    const reader = res.body.getReader();
+    const chunks = [];
+    let total = 0;
+    for (;;) {
+        const { done, value } = await reader.read();
+        if (done) break;
+        total += value.byteLength;
+        if (total > MAX_PDF_BYTES) {
+            await reader.cancel();
+            throw new Error(`PDF exceeds ${MAX_PDF_BYTES} byte cap while streaming`);
+        }
+        chunks.push(value);
+    }
+
+    const buffer = Buffer.concat(chunks.map((c) => Buffer.from(c)));
+    const text = await extractDocumentText(buffer, { mime: res.headers.get('content-type') || '', ext: 'pdf' });
+    return { ok: true, text, links: [] };
+}
+
+/**
  * Navigates to one page, returns its visible text plus every same-origin
  * link found on it — both real `<a href>` tags and, for sites with none
  * (see discoverClientRoutedLinks), client-side-routed nav buttons — after
@@ -705,7 +761,7 @@ export function stripRepeatedBoilerplate(pages) {
  *   mechanism even if the live site changed — only a `websiteUrl` change
  *   (a different root/crawl) or a manually forced full re-crawl would pick
  *   that up. Defaults to an empty Map (first-ever crawl of a source).
- * @returns {Promise<{ text: string, pages: { url: string, text: string }[], pagesIndex: Record<string, {rawText:string, links:{label:string,targetUrl:string,kind:string}[], parentUrl:string|null, components:{headings:object[], interactiveElements:object[], sections:object[]}}> }>}
+ * @returns {Promise<{ text: string, pages: { url: string, text: string }[], pagesIndex: Record<string, {rawText:string, links:{label:string,targetUrl:string,kind:string}[], parentUrl:string|null, components:{headings:object[], interactiveElements:object[], sections:object[]}, isPdf?:boolean}> }>}
  */
 export async function extractFromUrl(urlStr, auth = null, onProgress = null, previousPages = new Map()) {
     // SSRF guard on the root URL; re-checked per discovered link below.
@@ -734,7 +790,7 @@ export async function extractFromUrl(urlStr, auth = null, onProgress = null, pre
         let fetchedCount = 0;
 
         while (queue.length && fetchedCount < MAX_CRAWL_PAGES && visited.size < MAX_TOTAL_VISITED) {
-            const { url: next, parentUrl } = queue.shift();
+            const { url: next, parentUrl, isPdfCandidate } = queue.shift();
             if (!next || visited.has(next)) continue;
             visited.add(next);
 
@@ -761,9 +817,9 @@ export async function extractFromUrl(urlStr, auth = null, onProgress = null, pre
 
             let result;
             try {
-                result = await extractPage(page, next, rootOrigin);
+                result = isPdfCandidate ? await extractPdfPage(next) : await extractPage(page, next, rootOrigin);
             } catch {
-                continue; // one broken page shouldn't kill the whole crawl
+                continue; // one broken page (or unparseable/oversized PDF) shouldn't kill the whole crawl
             }
             fetchedCount++;
 
@@ -780,10 +836,11 @@ export async function extractFromUrl(urlStr, auth = null, onProgress = null, pre
                 rawText: result.text,
                 links: result.links,
                 parentUrl,
-                components: result.components,
-                ...(result.tabVariants ? { tabVariants: result.tabVariants } : {})
+                components: result.components || { headings: [], interactiveElements: [], sections: [] },
+                ...(result.tabVariants ? { tabVariants: result.tabVariants } : {}),
+                ...(isPdfCandidate ? { isPdf: true } : {})
             };
-            enqueueLinks(result.links, queue, visited, rootOrigin, next);
+            if (result.links.length) enqueueLinks(result.links, queue, visited, rootOrigin, next);
             await onProgress?.(fetchedCount, MAX_CRAWL_PAGES, pagesIndex);
         }
 

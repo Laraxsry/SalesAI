@@ -1021,10 +1021,13 @@ export function Knowledge() {
                         const topicChildren = topicsBySourceId.get(s._id) || [];
                         const isGroup = children.length > 0 || topicChildren.length > 0;
                         const expanded = expandedGroups.has(s._id);
+                        const pdfPageCount = Object.values(s.meta?.crawlIndex?.pages || {}).filter(
+                            (p) => p?.isPdf
+                        ).length;
                         const groupLabel =
                             children.length > 0
                                 ? `Zip · ${children.length} dosya`
-                                : `${topicChildren.length} otomatik doküman`;
+                                : `${topicChildren.length} otomatik doküman${pdfPageCount > 0 ? ` · ${pdfPageCount} PDF içerir` : ''}`;
                         return (
                             <div key={s._id}>
                                 <SourceRow

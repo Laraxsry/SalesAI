@@ -16,13 +16,14 @@
  *   @repo/contracts) — sorted by order, densely numbered, blank steps dropped
  */
 export function createPlaybookCursor(nodes) {
+    let route = [...nodes];
     const satisfied = new Set();
     let currentIndex = 0;
 
     /** Moves past any step already satisfied, so `currentIndex` always points
      *  at the next thing actually left to do (or one-past-the-end). */
     function skipSatisfied() {
-        while (currentIndex < nodes.length && satisfied.has(nodes[currentIndex].id)) {
+        while (currentIndex < route.length && satisfied.has(route[currentIndex].id)) {
             currentIndex += 1;
         }
     }
@@ -30,7 +31,7 @@ export function createPlaybookCursor(nodes) {
 
     return {
         current() {
-            return nodes[currentIndex] ?? null;
+            return route[currentIndex] ?? null;
         },
 
         /**
@@ -52,9 +53,24 @@ export function createPlaybookCursor(nodes) {
 
         /** Moves to the next not-yet-satisfied step. */
         advance() {
-            currentIndex = Math.min(currentIndex + 1, nodes.length);
+            currentIndex = Math.min(currentIndex + 1, route.length);
             skipSatisfied();
-            return nodes[currentIndex] ?? null;
+            return route[currentIndex] ?? null;
+        },
+
+        /** Replace pending steps after an accepted route revision. Completed IDs
+         * remain satisfied; the model cannot replay them under a new position. */
+        replace(nextNodes) {
+            if (!Array.isArray(nextNodes) || nextNodes.some((node) =>
+                !node || typeof node.id !== 'string')) {
+                throw new TypeError('route nodes are required');
+            }
+            const ids = nextNodes.map((node) => node.id);
+            if (new Set(ids).size !== ids.length) throw new TypeError('duplicate route node ID');
+            route = [...nextNodes];
+            currentIndex = 0;
+            skipSatisfied();
+            return route[currentIndex] ?? null;
         },
 
         /** Whether any step from here on (not yet satisfied) still needs a
@@ -62,19 +78,19 @@ export function createPlaybookCursor(nodes) {
          *  moving to a step with no url of its own, versus leaving it open
          *  because a later step will need it again. */
         anyRemainingUrl() {
-            for (let i = currentIndex; i < nodes.length; i += 1) {
-                const node = nodes[i];
+            for (let i = currentIndex; i < route.length; i += 1) {
+                const node = route[i];
                 if (!satisfied.has(node.id) && node.url) return true;
             }
             return false;
         },
 
         get exhausted() {
-            return currentIndex >= nodes.length;
+            return currentIndex >= route.length;
         },
 
         snapshot() {
-            return { index: currentIndex, total: nodes.length, satisfied: [...satisfied] };
+            return { index: currentIndex, total: route.length, satisfied: [...satisfied] };
         }
     };
 }

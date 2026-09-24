@@ -30,8 +30,10 @@ const SessionSchema = new Schema(
             type: [
                 {
                     _id: false,
+                    participantId: { type: String },
                     identity: { type: String, required: true },
                     name: { type: String },
+                    claimedDisplayName: { type: String },
                     // Stable per-visitor id from the visitor's own localStorage,
                     // used to recognise someone who dropped and rejoined the
                     // same meeting (identity changes on reconnect, this doesn't).

@@ -60,14 +60,45 @@ export const TIMELINE_EVENTS = {
     PLAYBOOK_NODE_REDELIVER: 'playbook.node.redeliver',
     PLAYBOOK_NODE_EXIT: 'playbook.node.exit',
     PLAYBOOK_NODE_FAILED: 'playbook.node.failed',
+    PLAYBOOK_NODE_DEFERRED: 'playbook.node.deferred',
     PLAYBOOK_ADVANCE_IGNORED: 'playbook.advance.ignored',
     // agent.js caught the SDK's own directive-less auto-follow-up (see
     // followup-guard.js) before it could speak, and asked the runtime to
     // redeliver the node it belongs to instead.
     PLAYBOOK_FOLLOWUP_SUPPRESSED: 'playbook.followup.suppressed',
     PLAYBOOK_COMPLETED: 'playbook.completed',
+    DYNAMIC_PLAYBOOK_STATE_STARTED: 'playbook.dynamic_state.started',
+    DYNAMIC_PLAYBOOK_STATE_TRANSITION: 'playbook.dynamic_state.transition',
+    DYNAMIC_PLAYBOOK_COMPLETION_BLOCKED: 'playbook.dynamic_state.completion_blocked',
+    DYNAMIC_PLAYBOOK_ROLLOUT_DECISION: 'playbook.dynamic_state.rollout_decision',
+    MEMORY_PROMOTION_DECISION: 'playbook.memory.promotion_decision',
+    ROUTE_PLANNING_STARTED: 'playbook.route_planning.started',
+    ROUTE_PROPOSAL_ACCEPTED: 'playbook.route_proposal.accepted',
+    ROUTE_PROPOSAL_REJECTED: 'playbook.route_proposal.rejected',
+    ROUTE_PROPOSAL_IGNORED: 'playbook.route_proposal.ignored',
+    ROUTE_PLANNER_FALLBACK: 'playbook.route_planner.fallback',
+    ROUTE_REVIEWED: 'playbook.route_reviewed',
+    DYNAMIC_DEMO_EXECUTION: 'playbook.dynamic_demo.execution',
     SURVEY_SHOWN: 'survey.shown',
     SURVEY_ANSWERED: 'survey.answered',
+    ADAPTIVE_SURVEY_DECISION: 'survey.adaptive.decision',
+    ADAPTIVE_SURVEY_LIFECYCLE: 'survey.adaptive.lifecycle',
+    ADAPTIVE_SURVEY_CONFIG: 'survey.adaptive.config',
+    ADAPTIVE_SURVEY_SHADOW_OBSERVATION: 'survey.adaptive.shadow_observation',
+    ADAPTIVE_SURVEY_SHADOW_PROPOSAL: 'survey.adaptive.shadow_proposal',
+
+    // ── Multi-agent orchestration ────────────────────────────────────────
+    MULTI_AGENT_ROLLOUT_DECISION: 'multi_agent.rollout.decision',
+    MULTI_AGENT_EVENT_PUBLISHED: 'multi_agent.event.published',
+    MULTI_AGENT_ANALYST_RUN: 'multi_agent.analyst.run',
+    MULTI_AGENT_ANALYST_RESULT: 'multi_agent.analyst.result',
+    MULTI_AGENT_MEMORY_APPLIED: 'multi_agent.memory.applied',
+
+    // ── Knowledge resolution / capability requests ──────────────────────
+    KNOWLEDGE_RESOLVED: 'knowledge.resolved',
+    KNOWLEDGE_NOT_FOUND: 'knowledge.not_found',
+    KNOWLEDGE_UNAVAILABLE: 'knowledge.unavailable',
+    CAPABILITY_REQUEST_CAPTURED: 'knowledge.capability_request.captured',
 
     // ── Ekran / Playwright ───────────────────────────────────────────────
     TOUR_CHOREOGRAPHY: 'tour.choreography',

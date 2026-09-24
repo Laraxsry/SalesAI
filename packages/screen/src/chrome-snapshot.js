@@ -8,13 +8,19 @@ function fold(value = '') {
 
 /** Parse the stable subset of Chrome DevTools MCP's accessibility snapshot. */
 export function parseSnapshotElements(snapshotText = '') {
+    const ancestors = [];
     return snapshotText.split('\n').flatMap((line, index) => {
         const uid = line.match(/\buid=([^\s]+)/)?.[1];
         if (!uid) return [];
+        const indent = line.match(/^\s*/)?.[0].length ?? 0;
+        while (ancestors.length && ancestors.at(-1).indent >= indent) ancestors.pop();
         const afterUid = line.slice(line.indexOf(`uid=${uid}`) + uid.length + 4).trim();
         const role = afterUid.match(/^([\w-]+)/)?.[1]?.toLowerCase() ?? '';
         const name = afterUid.match(/^[\w-]+\s+"([^"]*)"/)?.[1] ?? '';
-        return [{ uid, role, name, line, index, folded: fold(`${role} ${name} ${line}`) }];
+        const insideForm = ancestors.some((ancestor) => ancestor.role === 'form');
+        ancestors.push({ indent, role });
+        return [{ uid, role, name, line, index, insideForm,
+            folded: fold(`${role} ${name} ${line}`) }];
     });
 }
 

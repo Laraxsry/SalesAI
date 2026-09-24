@@ -17,12 +17,14 @@ import {
     Playbook,
     KnowledgeSource,
     FollowUpTask,
+    LeadContact,
+    Meeting,
     SessionEvent
 } from '@repo/database';
 import {
     buildSystemPrompt,
     buildTools,
-    buildIdleNudgeInstructions,
+    createProductKnowledgeResolver,
     buildGreetingInstructions,
     classifyStartIntent,
     shouldStartMeeting,
@@ -34,8 +36,15 @@ import {
 } from '@repo/agent';
 import { startAvatarWithFallback } from '@repo/avatar';
 import { roomService } from '@repo/livekit';
-import { BrowserSession, ChromeMcpTour, GuidedTour, analyzeFrame } from '@repo/screen';
-import { normalizePlaybook } from '@repo/contracts';
+import {
+    BrowserSession,
+    ChromeMcpTour,
+    GuidedTour,
+    analyzeFrame,
+    resolveSnapshotTarget
+} from '@repo/screen';
+import { compileLegacyPlaybook, normalizePlaybook } from '@repo/contracts';
+import { getLLM } from '@repo/ai';
 import { getLogger, runWithContext } from '@repo/logger';
 import { decryptField, languageName } from '@repo/utils';
 import { publishEvent, publishMetric, publishUsage, RT_EVENTS, SESSION_METRICS } from '@repo/realtime';
@@ -61,6 +70,70 @@ import { selectBrowserProvider } from './browser-provider.js';
 import { createPresentationCuePublisher } from './presentation-cues.js';
 import { tourActionMeta } from './tour-diagnostics.js';
 import { createTourChoreographer } from './tour-choreographer.js';
+import { createDynamicPlaybookStore } from './dynamic-playbook-store.js';
+import { createLegacyPlaybookStateAdapter } from './legacy-playbook-state-adapter.js';
+import { createKnowledgePlaybookStateAdapter } from './knowledge-playbook-state-adapter.js';
+import { createCapabilityRequestService } from './capability-request-service.js';
+import { isEnabledFeatureFlag } from './feature-flags.js';
+import { createRulesRoutePlanner } from './rules-route-planner.js';
+import { createModelRoutePlanner } from './model-route-planner.js';
+import { createResilientRoutePlanner } from './resilient-route-planner.js';
+import { createRoutePlanningService } from './route-planning-service.js';
+import { createPlanMiddlewarePipeline } from './plan-middleware-pipeline.js';
+import { createGroundingPlanReviewer } from './grounding-plan-reviewer.js';
+import { createSalesBalancePlanReviewer } from './sales-balance-plan-reviewer.js';
+import { createRepetitionPlanReviewer } from './repetition-plan-reviewer.js';
+import { createModelPlanReviewer } from './model-plan-reviewer.js';
+import { createModelPlanCritiqueInvocation } from './model-plan-critique.js';
+import {
+    createPlanMiddlewareExperimentGate, reviewerExperimentPercent
+} from './plan-middleware-experiment.js';
+import { createDynamicDemoExecutor } from './dynamic-demo-executor.js';
+import { createAnswerFirstDemoCoordinator } from './answer-first-demo-coordinator.js';
+import { projectDynamicRouteForPresentation } from './dynamic-route-presentation.js';
+import { canExecuteDynamicRoute } from './dynamic-route-authority.js';
+import { createCustomerReplanTrigger } from './customer-replan-trigger.js';
+import {
+    buildPresenceCheckInstructions, createConversationIdlePolicy
+} from './conversation-idle-policy.js';
+import { createDynamicPlaybookRolloutPolicy } from './dynamic-playbook-rollout-policy.js';
+import { createAdaptiveSurveyRuntime } from './adaptive-survey-runtime.js';
+import { createAdaptiveSurveyService } from './adaptive-survey-service.js';
+import { createAdaptiveSurveyProducer } from './adaptive-survey-producer.js';
+import { createKnownFactResolver } from './known-fact-resolver.js';
+import { createSurveyReviewerPipeline } from './survey-reviewer-pipeline.js';
+import {
+    createKnownFactSurveyReviewer,
+    createConversationTimingSurveyReviewer
+} from './survey-quality-reviewers.js';
+import { resolveAdaptiveSurveyConfig } from './adaptive-survey-config.js';
+import { decideAdaptiveSurveyActivation } from './adaptive-survey-activation.js';
+import {
+    createAdaptiveSurveyShadowObserver, decideAdaptiveSurveyShadowActivation
+} from './adaptive-survey-shadow-observer.js';
+import { createRulesShadowSurveyPlanner } from './rules-shadow-survey-planner.js';
+import { createAdaptiveSurveyShadowProposalService }
+    from './adaptive-survey-shadow-proposals.js';
+import { resolveEngagementActivation } from './orchestration/engagement-activation.js';
+import { createMultiAgentRolloutPolicy }
+    from './orchestration/multi-agent-rollout-policy.js';
+import { createMultiAgentSessionRuntime }
+    from './orchestration/multi-agent-runtime.js';
+import { buildSpeakingMemoryNote } from './orchestration/speaking-memory-note.js';
+import { resolveTargetedSurveyDelivery }
+    from './orchestration/targeted-survey-policy.js';
+import { createParticipantMemoryAnalyst }
+    from './analysts/participant-memory-analyst.js';
+import { createFollowUpClassificationAnalyst }
+    from './analysts/follow-up-classification-analyst.js';
+import {
+    createFollowUpClassificationModelInvocation,
+    createParticipantMemoryModelInvocation
+} from './analysts/model-analyst-invocations.js';
+import { createMongoSalesOutcomeRepositories }
+    from './sales-outcomes/mongo-repositories.js';
+import { createLiveSalesOutcomeRuntime }
+    from './sales-outcomes/live-sales-outcome-runtime.js';
 
 /**
  * Runs the session with the trace context extracted from the LiveKit dispatch
@@ -157,6 +230,7 @@ async function runSession(ctx) {
     // connect/disconnect, used to recognise a returning visitor and to resolve
     // identities to names for the broadcast.
     const rosterHistory = (session?.participants || []).map((p) => ({
+        participantId: p.participantId || null,
         identity: p.identity,
         name: p.name || null,
         visitorKey: p.visitorKey || null,
@@ -288,6 +362,21 @@ async function runSession(ctx) {
         persist: (doc) => SessionEvent.create(doc)
     });
 
+    let dynamicPlaybookStateAdapter = null;
+    let dynamicKnowledgeStateAdapter = null;
+    let dynamicRoutePlanningService = null;
+    let dynamicPlaybookStore = null;
+    let dynamicDemoCoordinator = null;
+    let dynamicDemoExecutor = null;
+    let dynamicRouteAdopted = false;
+    let dynamicRouteAnswerNodeId = null;
+    let dynamicRouteAnswerQuestionId = null;
+    let dynamicRouteAnswerMinSpeechSequence = 0;
+    let speechSequence = 0;
+    let customerAnswerSpeechFloor = 0;
+    const conversationIdlePolicy = createConversationIdlePolicy();
+    let dynamicPlaybookSemanticsByNodeId = new Map();
+
     timeline.emit(TIMELINE_EVENTS.SESSION_START, {
         agentRuntimeVersion: AGENT_RUNTIME_VERSION,
         agentId: String(agentDoc._id),
@@ -326,6 +415,273 @@ async function runSession(ctx) {
             actions: n.actions ?? []
         }))
     });
+
+    // Migration slice 1: mirror the proven ordered runtime into the new
+    // single-writer state engine. This is intentionally shadow-only while
+    // replay evidence is gathered; no decision here can alter what the
+    // visitor sees or what the legacy runtime executes.
+    const legacyDynamicShadowFlag = isEnabledFeatureFlag(
+        process.env.DYNAMIC_PLAYBOOK_STATE_SHADOW_ENABLED
+    );
+    const dynamicRolloutDecision = createDynamicPlaybookRolloutPolicy({
+        mode: process.env.DYNAMIC_PLAYBOOK_ROLLOUT_MODE,
+        canaryPercent: process.env.DYNAMIC_PLAYBOOK_CANARY_PERCENT
+    }).decide({
+        sessionId: String(session._id),
+        agentId: String(agentDoc._id),
+        productId: String(product._id)
+    });
+    const dynamicRouteExecutionEnabled = playbookActive && canExecuteDynamicRoute({
+        enabled: isEnabledFeatureFlag(process.env.DYNAMIC_PLAYBOOK_ROUTE_EXECUTION_ENABLED),
+        cohort: dynamicRolloutDecision.cohort,
+        multiParticipant: isMultiParty
+    });
+    timeline.emit(TIMELINE_EVENTS.DYNAMIC_PLAYBOOK_ROLLOUT_DECISION, {
+        ...dynamicRolloutDecision,
+        routeExecutionEnabled: dynamicRouteExecutionEnabled
+    });
+    const dynamicPlaybookShadowEnabled = playbookActive
+        && (legacyDynamicShadowFlag || dynamicRolloutDecision.dynamicStateEnabled);
+    if (dynamicPlaybookShadowEnabled) {
+        try {
+            const explicitClosingIds = playbookNodes
+                .filter((node) => node.requirement === 'required_before_close')
+                .map((node) => node.id);
+            const contract = compileLegacyPlaybook(playbookNodes, {
+                contractId: playbookDoc?._id
+                    ? `playbook:${playbookDoc._id}`
+                    : `generated-plan:${session._id}`,
+                sourceVersion: playbookDoc?.version ?? null,
+                requiredBeforeCloseNodeIds: explicitClosingIds
+            });
+            dynamicPlaybookSemanticsByNodeId = new Map(contract.nodes.map((node) => [
+                node.id,
+                node.semanticIdentity
+            ]));
+            const store = createDynamicPlaybookStore({
+                sessionId: String(session._id),
+                contract,
+                onTransition: ({ event, current }) => {
+                    timeline.emit(TIMELINE_EVENTS.DYNAMIC_PLAYBOOK_STATE_TRANSITION, {
+                        eventType: event.type,
+                        routeRevision: current.routeRevision,
+                        phase: current.conversationPhase,
+                        activity: current.activity,
+                        activeNodeId: current.activeNodeId,
+                        planningStatus: current.planning.status,
+                        planningGeneration: current.planning.generation,
+                        memoryTurnIndex: current.memory.turnIndex,
+                        memoryTopicCount: Object.keys(current.memory.coveredTopics).length,
+                        nodeId: event.nodeId ?? null,
+                        obligationId: event.obligationId ?? null,
+                        obligationStatus: event.type === 'OBLIGATION_STATUS_CHANGED'
+                            ? event.status
+                            : null,
+                        questionKey: event.question?.questionKey ?? null,
+                        questionStatus: event.question?.status ?? null,
+                        factKey: event.fact?.key ?? null
+                    });
+                }
+            });
+            dynamicPlaybookStore = store;
+            dynamicPlaybookStateAdapter = createLegacyPlaybookStateAdapter(store);
+            dynamicKnowledgeStateAdapter = createKnowledgePlaybookStateAdapter(store);
+            const rulesPlanner = createRulesRoutePlanner();
+            const modelPlannerEnabled = isEnabledFeatureFlag(
+                process.env.DYNAMIC_PLAYBOOK_MODEL_PLANNER_ENABLED
+            ) && Boolean(process.env.OPENAI_API_KEY);
+            const routePlanner = modelPlannerEnabled
+                ? createResilientRoutePlanner({
+                    primary: createModelRoutePlanner({
+                        candidates: rulesPlanner,
+                        complete: (input) => getLLM('openai').complete({
+                            ...input,
+                            ...(process.env.DYNAMIC_PLAYBOOK_MODEL_PLANNER_MODEL
+                                ? { model: process.env.DYNAMIC_PLAYBOOK_MODEL_PLANNER_MODEL }
+                                : {})
+                        })
+                    }),
+                    fallback: rulesPlanner,
+                    timeoutMs: 2500,
+                    onFallback: ({ error }) => log.warn('model route planner fallback', {
+                        reason: error.name
+                    })
+                })
+                : rulesPlanner;
+            dynamicRoutePlanningService = createRoutePlanningService({
+                store,
+                planner: routePlanner,
+                reviewers: createPlanMiddlewarePipeline({
+                    middlewares: [
+                        createGroundingPlanReviewer(),
+                        createRepetitionPlanReviewer({
+                            enabled: createPlanMiddlewareExperimentGate({
+                                experimentId: 'repetition-reviewer-v1',
+                                rolloutPercent: reviewerExperimentPercent(
+                                    process.env.DYNAMIC_PLAYBOOK_REPETITION_REVIEWER_PERCENT
+                                )
+                            }),
+                            enforce: isEnabledFeatureFlag(
+                                process.env.DYNAMIC_PLAYBOOK_MEMORY_POLICY_ENFORCEMENT_ENABLED
+                            ),
+                            onDecision: (decision) => timeline.emit(
+                                TIMELINE_EVENTS.MEMORY_PROMOTION_DECISION,
+                                decision
+                            )
+                        }),
+                        createSalesBalancePlanReviewer(),
+                        ...(isEnabledFeatureFlag(process.env.DYNAMIC_PLAYBOOK_MODEL_CRITIC_ENABLED)
+                            && process.env.OPENAI_API_KEY
+                            ? [createModelPlanReviewer({
+                                model: process.env.DYNAMIC_PLAYBOOK_MODEL_CRITIC_MODEL
+                                    || process.env.OPENAI_LLM_MODEL || 'gpt-5.1',
+                                invoke: createModelPlanCritiqueInvocation({
+                                    complete: (input) => getLLM('openai').complete(input),
+                                    onAssessment: (assessment) => log.info(
+                                        'model plan critique assessed', assessment
+                                    )
+                                }),
+                                timeoutMs: 2500
+                            })]
+                            : [])
+                    ],
+                    onReview: (review) => {
+                        timeline.emit(TIMELINE_EVENTS.ROUTE_REVIEWED, review);
+                    }
+                }),
+                onDecision: (decision) => {
+                    const eventType = {
+                        started: TIMELINE_EVENTS.ROUTE_PLANNING_STARTED,
+                        accepted: TIMELINE_EVENTS.ROUTE_PROPOSAL_ACCEPTED,
+                        rejected: TIMELINE_EVENTS.ROUTE_PROPOSAL_REJECTED,
+                        ignored: TIMELINE_EVENTS.ROUTE_PROPOSAL_IGNORED
+                    }[decision.type];
+                    if (!eventType) return;
+                    timeline.emit(eventType, {
+                        planningGeneration: decision.context.planningGeneration,
+                        baseRevision: decision.context.routeRevision,
+                        resultingRevision: decision.state?.routeRevision ?? null,
+                        reason: decision.reason ?? decision.context.reason,
+                        questionId: decision.context.activeQuestion?.id ?? null,
+                        proposedNodeCount: decision.proposal?.proposedNodes.length ?? null,
+                        proposedNodeIds: decision.proposal?.proposedNodes.map((node) => node.id) ?? [],
+                        // Bounded, presentation-safe route snapshot for the
+                        // post-call Decision Explorer. Never include evidence
+                        // text, customer utterances, action values or query
+                        // parameters here.
+                        proposedNodes: decision.proposal?.proposedNodes.map((node, index) => ({
+                            id: node.id,
+                            order: index + 1,
+                            type: node.type,
+                            objective: node.objective,
+                            requirement: node.requirement,
+                            createdBy: node.createdBy,
+                            topicId: node.semanticIdentity?.topicId ?? null,
+                            evidenceCount: node.evidenceRefs?.length ?? 0,
+                            evidenceRefs: node.evidenceRefs ?? [],
+                            page: (() => {
+                                try {
+                                    const url = new URL(node.pageIntent?.preferredUrl);
+                                    return `${url.origin}${url.pathname}`;
+                                } catch {
+                                    return null;
+                                }
+                            })(),
+                            actionCount: node.actions?.length ?? 0
+                        })) ?? [],
+                        semanticUnits: decision.proposal?.proposedNodes
+                            .filter((node) => node.semanticIdentity)
+                            .map((node) => ({
+                                nodeId: node.id,
+                                topicId: node.semanticIdentity.topicId,
+                                claimIds: node.semanticIdentity.claimIds,
+                                source: node.semanticIdentity.source
+                            })) ?? [],
+                        reviewStatuses: decision.reviews?.map((review) => review.status) ?? []
+                    }, decision.durationMs);
+                    if (decision.type === 'accepted' && dynamicRouteExecutionEnabled
+                        && playbookRuntime && !playbookRuntime.completed) {
+                        const needsDemo = decision.proposal.proposedNodes.some(
+                            (node) => node.type === 'demo'
+                        );
+                        if (!needsDemo || dynamicDemoExecutor) {
+                            try {
+                                const route = projectDynamicRouteForPresentation(
+                                    decision.proposal.proposedNodes
+                                );
+                                if (playbookRuntime.reviseRoute(route, { waitForAnswer: true })) {
+                                    dynamicRouteAdopted = true;
+                                    dynamicRouteAnswerNodeId = decision.proposal.proposedNodes.find(
+                                        (node) => node.type === 'answer'
+                                            && node.sourceQuestionId === decision.context.activeQuestion?.id
+                                    )?.id ?? null;
+                                    dynamicRouteAnswerQuestionId = dynamicRouteAnswerNodeId
+                                        ? decision.context.activeQuestion?.id ?? null : null;
+                                    if (dynamicRouteAnswerQuestionId) {
+                                        dynamicPlaybookStore.dispatch({
+                                            type: 'QUESTION_OPENED',
+                                            questionId: dynamicRouteAnswerQuestionId
+                                        });
+                                    }
+                                    dynamicRouteAnswerMinSpeechSequence = customerAnswerSpeechFloor;
+                                    dynamicDemoCoordinator?.cancel('route_owned_by_runtime');
+                                    log.info('accepted dynamic route now drives playbook runtime', {
+                                        routeRevision: decision.state.routeRevision,
+                                        nodeCount: route.length
+                                    });
+                                    // A question route must wait for the realtime answer.
+                                    // A transcript can arrive before SpeechCreated, so
+                                    // activeSpeechCount===0 is not proof the answer ended.
+                                    if (!decision.context.activeQuestion
+                                        && activeSpeechCount === 0 && !customerSpeaking) {
+                                        playbookRuntime.resumeRoute();
+                                    }
+                                    return;
+                                }
+                            } catch (error) {
+                                log.warn('dynamic route presentation failed; legacy route retained', {
+                                    error: error.message
+                                });
+                            }
+                        }
+                    }
+                    if (dynamicRouteAdopted && decision.type === 'rejected'
+                        && activeSpeechCount === 0 && !customerSpeaking
+                        && !adaptiveSurveyRuntime?.activePayload()) {
+                        playbookRuntime?.resumeRoute();
+                    }
+                    if (decision.type === 'accepted' && dynamicDemoCoordinator) {
+                        const demoNode = decision.proposal.proposedNodes.find((node) => node.type === 'demo');
+                        if (demoNode) {
+                            dynamicDemoCoordinator.schedule(demoNode, {
+                                routeRevision: decision.state.routeRevision,
+                                planningGeneration: decision.context.planningGeneration
+                            });
+                        }
+                    }
+                }
+            });
+            timeline.emit(TIMELINE_EVENTS.DYNAMIC_PLAYBOOK_STATE_STARTED, {
+                contractId: contract.id,
+                sourceVersion: contract.sourceVersion,
+                nodeCount: contract.nodes.length,
+                obligationCount: contract.obligations.length,
+                mode: dynamicRolloutDecision.cohort,
+                legacyFlagCompatibility: legacyDynamicShadowFlag
+            });
+        } catch (err) {
+            // A shadow migration failure can never take down the established
+            // customer path. It stays visible for replay/debugging and the
+            // legacy runtime proceeds unchanged.
+            log.warn('dynamic playbook shadow initialization failed; legacy runtime remains active', {
+                error: err.message
+            });
+            timeline.emit(TIMELINE_EVENTS.ERROR, {
+                source: 'dynamic_playbook_shadow_init',
+                error: err.message
+            });
+        }
+    }
 
     const providerSelection = selectBrowserProvider({
         configuredProvider: product.browserProvider || process.env.COBROWSE_PROVIDER || 'playwright',
@@ -858,6 +1214,23 @@ async function runSession(ctx) {
             timeline.emit(TIMELINE_EVENTS.TOUR_BROWSER_ACTION, {
                 event: 'executed', operationId, action, ok: result?.ok, viewVersion: tourViewVersion
             });
+            // Tells the playbook runtime a real on-screen step actually
+            // happened, not just that the model talked about it — see
+            // playbook-runtime.js's signal('action_performed') and its
+            // 'silence' gate on node.actions. Scoped to the actions a
+            // playbook directive's `actions` list actually describes
+            // (click/fill/hover/key-press on the current page); tab/page
+            // management (listPages/newPage/selectPage) isn't a step a
+            // directive lists, so it's excluded. `fillForm` counts once per
+            // element it filled, since one call can satisfy several listed
+            // steps at once (see the gate's own comment on why this is a
+            // loose total rather than a 1:1 per-step match).
+            if (result?.ok && ['click', 'fill', 'fillForm', 'hover', 'pressKey'].includes(action)) {
+                const weight = action === 'fillForm' && Array.isArray(args?.elements) && args.elements.length > 0
+                    ? args.elements.length
+                    : 1;
+                playbookRuntime?.signal('action_performed', { weight });
+            }
             if (!['listPages'].includes(action)) {
                 const viewVersion = ++tourViewVersion;
                 timeline.emit(TIMELINE_EVENTS.TOUR_BROWSER_ACTION, { event: 'capture', operationId, viewVersion });
@@ -870,6 +1243,61 @@ async function runSession(ctx) {
             return result;
         })
     } : null;
+
+    const dynamicDemoExecutionEnabled = dynamicPlaybookShadowEnabled
+        && (legacyDynamicShadowFlag || dynamicRolloutDecision.demoExecutionEligible)
+        && backend === 'chrome-mcp'
+        && isEnabledFeatureFlag(process.env.DYNAMIC_PLAYBOOK_DEMO_EXECUTION_ENABLED);
+    if (dynamicDemoExecutionEnabled && browserControls && dynamicPlaybookStore) {
+        const executor = createDynamicDemoExecutor({
+            navigation: {
+                ensureAt: async (url) => {
+                    if (isTourActive && tour.currentUrl === url) return { ok: true, reused: true };
+                    return isTourActive ? tourControls.goto(url) : tourControls.openAt(url);
+                }
+            },
+            browser: browserControls,
+            resolveTarget: resolveSnapshotTarget,
+            isCurrent: ({ nodeId, routeRevision }) => {
+                const state = dynamicPlaybookStore.snapshot();
+                return state.routeRevision === routeRevision
+                    && state.route.some((node) => node.id === nodeId);
+            },
+            onEvent: (event, meta) => {
+                if (event === 'started') {
+                    dynamicPlaybookStore.dispatch({ type: 'NODE_STARTED', nodeId: meta.nodeId });
+                    dynamicPlaybookStore.dispatch({ type: 'ACTIVITY_CHANGED', activity: 'demonstrating' });
+                }
+                timeline.emit(TIMELINE_EVENTS.DYNAMIC_DEMO_EXECUTION, { event, ...meta });
+            }
+        });
+        dynamicDemoExecutor = executor;
+        dynamicDemoCoordinator = createAnswerFirstDemoCoordinator({
+            executor,
+            onResult: ({ node, metadata, result }) => {
+                dynamicPlaybookStore.dispatch({
+                    type: result.status === 'completed' ? 'NODE_COMPLETED' : 'NODE_DEFERRED',
+                    nodeId: node.id
+                });
+                dynamicPlaybookStore.dispatch({ type: 'ACTIVITY_CHANGED', activity: 'listening' });
+                timeline.emit(TIMELINE_EVENTS.DYNAMIC_DEMO_EXECUTION, {
+                    event: 'result',
+                    nodeId: node.id,
+                    routeRevision: metadata.routeRevision,
+                    planningGeneration: metadata.planningGeneration,
+                    status: result.status,
+                    reason: result.reason ?? null,
+                    durationMs: result.durationMs ?? null
+                });
+            }
+        });
+    }
+    timeline.emit(TIMELINE_EVENTS.DYNAMIC_DEMO_EXECUTION, {
+        event: 'configured',
+        enabled: Boolean(dynamicDemoCoordinator),
+        backend,
+        mode: dynamicDemoCoordinator ? 'canary' : 'off'
+    });
 
     // ── Customer Screen Vision (Mode B) ────────────────────────────────────
     // Samples the customer's screen-share track at ~1 FPS, downscales to
@@ -1051,18 +1479,34 @@ async function runSession(ctx) {
     // higher-confidence source than extract-lead's post-call regex parse of
     // the raw transcript, and what drives the visitor identity shown live in
     // Console (Sessions list) instead of "Anonim ziyaretçi".
+    let liveSalesOutcomes = null;
     const saveContactInfo = async (field, value) => {
-        if (!['name', 'email', 'phone'].includes(field)) {
-            return { ok: false, error: 'Invalid field. Use name, email, or phone.' };
+        if (!['name', 'email', 'phone', 'company'].includes(field)) {
+            return { ok: false, error: 'Invalid contact field.' };
         }
-        const update = { [`confirmedContact.${field}`]: value };
-        if (field === 'name') update.visitorName = value; // existing UI/analytics already read visitorName
-        await Session.updateOne({ _id: session._id }, { $set: update });
+        if (field === 'company' && !liveSalesOutcomes) {
+            return { ok: false, error: 'company_capture_not_enabled' };
+        }
+        if (liveSalesOutcomes) {
+            if (product.engagementSettings?.captureFields?.[field] === 'off') {
+                return { ok: false, error: 'field_disabled_for_product' };
+            }
+            const persisted = await liveSalesOutcomes.confirmContact({ field, value });
+            if (!persisted.ok) return persisted;
+        }
+        // Keep the legacy single-person projection readable while canonical
+        // participant data lives in LeadContact. Never collapse multiple
+        // participants into Session.confirmedContact.
+        if (!isMultiParty && field !== 'company') {
+            const update = { [`confirmedContact.${field}`]: value };
+            if (field === 'name') update.visitorName = value;
+            await Session.updateOne({ _id: session._id }, { $set: update });
+        }
         await Message.create({
             sessionId: session._id,
             role: 'system',
-            text: `[contact:confirmed] ${field}=${value}`,
-            meta: { action: 'contact_confirmed', field, value }
+            text: `[contact:confirmed] ${field}`,
+            meta: { action: 'contact_confirmed', field }
         }).catch(() => {});
         return { ok: true };
     };
@@ -1120,15 +1564,60 @@ async function runSession(ctx) {
     // one row per unresolved question — a visitor can raise several in one
     // call. `department` stays null until the routing infra referenced in
     // md/backend/playbook_session_log.md exists; this write doesn't wait on it.
-    const flagFollowup = async (question) => {
-        await FollowUpTask.create({ sessionId: session._id, agentId: agentDoc._id, question: question.trim() });
-        await Message.create({
-            sessionId: session._id,
-            role: 'system',
-            text: `[followup:flagged] ${question}`,
-            meta: { action: 'followup_flagged', question }
-        }).catch(() => {});
-        return { ok: true };
+    const capabilityRequests = createCapabilityRequestService({
+        persist: async (request) => {
+            const task = await FollowUpTask.create({
+                sessionId: session._id,
+                agentId: agentDoc._id,
+                question: request.requestedOutcome
+            });
+            await Message.create({
+                sessionId: session._id,
+                role: 'system',
+                text: `[followup:flagged] ${request.requestedOutcome}`,
+                meta: {
+                    action: 'followup_flagged',
+                    question: request.requestedOutcome,
+                    evidenceStatus: request.evidenceStatus,
+                    sourceIntentId: request.sourceIntentId
+                }
+            }).catch(() => {});
+            return { id: String(task._id) };
+        },
+        onCaptured: ({ id, request }) => {
+            dynamicKnowledgeStateAdapter?.onCapabilityRequest(id);
+            timeline.emit(TIMELINE_EVENTS.CAPABILITY_REQUEST_CAPTURED, {
+                requestId: id,
+                evidenceStatus: request.evidenceStatus,
+                sourceIntentId: request.sourceIntentId
+            });
+        }
+    });
+    const flagFollowup = (question, { consentToContact = false } = {}) => {
+        if (consentToContact !== true) {
+            return { ok: false, error: 'explicit_consent_required' };
+        }
+        if (liveSalesOutcomes) {
+            if (product.engagementSettings?.captureFields?.companyQuestion === 'off') {
+                return { ok: false, error: 'company_questions_disabled_for_product' };
+            }
+            return liveSalesOutcomes.captureFollowUp({ question });
+        }
+        return capabilityRequests.capture({
+            requestedOutcome: question,
+            customerContext: null,
+            sourceIntentId: null,
+            evidenceStatus: 'not_found',
+            consentToContact,
+            prioritySignals: []
+        });
+    };
+    const saveMeeting = (input) => {
+        if (!liveSalesOutcomes) return { ok: false, error: 'meeting_capture_not_enabled' };
+        if (!product.engagementSettings?.scheduling?.enabled) {
+            return { ok: false, error: 'scheduling_disabled_for_product' };
+        }
+        return liveSalesOutcomes.confirmMeeting(input);
     };
 
     // A screen action succeeding used to also close out the current playbook
@@ -1149,6 +1638,63 @@ async function runSession(ctx) {
     // wrapper publishes a labelled duration to Prometheus and knows nothing
     // about this session; the timeline wrapper writes this session's own
     // narrative, arguments included. Neither alters the tool's return value.
+    const configuredAdaptiveSurvey = resolveAdaptiveSurveyConfig(product.adaptiveSurvey, true);
+    const adaptiveSurveyActivation = decideAdaptiveSurveyActivation({
+        featureEnabled: isEnabledFeatureFlag(process.env.DYNAMIC_PLAYBOOK_ADAPTIVE_SURVEY_ENABLED),
+        productConfigValid: Boolean(configuredAdaptiveSurvey && dynamicPlaybookStore),
+        rolloutDecision: dynamicRolloutDecision,
+        maxParticipants
+    });
+    const adaptiveSurveyConfig = adaptiveSurveyActivation.enabled
+        ? configuredAdaptiveSurvey : null;
+    timeline.emit(TIMELINE_EVENTS.ADAPTIVE_SURVEY_CONFIG, {
+        enabled: adaptiveSurveyActivation.enabled,
+        reason: adaptiveSurveyActivation.reason,
+        cohort: dynamicRolloutDecision.cohort,
+        configuredFieldCount: adaptiveSurveyConfig?.fields.length ?? 0
+    });
+    let adaptiveSurveyProducer = null;
+    let adaptiveSurveyShadowObserver = null;
+    let adaptiveSurveyShadowProposals = null;
+    let customerSpeaking = false;
+    const dynamicKnowledgeResolver = dynamicRouteExecutionEnabled && dynamicRoutePlanningService
+        ? createProductKnowledgeResolver() : null;
+    const handleKnowledgeResolution = (resolution) => {
+        dynamicKnowledgeStateAdapter?.onResolution(resolution);
+        const timelineType = {
+            grounded: TIMELINE_EVENTS.KNOWLEDGE_RESOLVED,
+            grounded_with_demo: TIMELINE_EVENTS.KNOWLEDGE_RESOLVED,
+            not_found: TIMELINE_EVENTS.KNOWLEDGE_NOT_FOUND,
+            unavailable: TIMELINE_EVENTS.KNOWLEDGE_UNAVAILABLE
+        }[resolution.status];
+        timeline.emit(timelineType, {
+            intentId: resolution.intentId,
+            status: resolution.status,
+            evidenceCount: resolution.evidence.length,
+            demoTargetCount: resolution.demoTargets.length,
+            knowledgeGapStatus: resolution.knowledgeGap.status
+        });
+        if (!dynamicRoutePlanningService) return Promise.resolve();
+        return dynamicRoutePlanningService.replan({
+            reason: `knowledge_${resolution.status}`,
+            activeQuestion: { id: resolution.intentId, text: resolution.query },
+            knowledge: resolution,
+            allowedDemoTargets: resolution.demoTargets
+        }).catch((err) => {
+            log.warn('dynamic route shadow planning failed', { error: err.message });
+            timeline.emit(TIMELINE_EVENTS.ERROR, {
+                source: 'dynamic_route_shadow_planning', error: err.message
+            });
+        });
+    };
+    const customerReplanTrigger = dynamicKnowledgeResolver
+        ? createCustomerReplanTrigger({
+            resolve: (input) => dynamicKnowledgeResolver.resolve(input),
+            onResolution: handleKnowledgeResolution,
+            onError: (error) => log.warn('customer route reconsideration failed', {
+                error: error.message
+            })
+        }) : null;
     const buildSessionTools = (playbookMode) =>
         withToolCallTimeline(
             withToolCallMetrics(buildTools({
@@ -1157,13 +1703,32 @@ async function runSession(ctx) {
                 screen: screenControls,
                 stopScreenShare,
                 saveContactInfo,
+                saveMeeting: product.engagementSettings?.scheduling?.enabled
+                    && isEnabledFeatureFlag(process.env.MULTI_AGENT_LEAD_CAPTURE_ENABLED)
+                    ? saveMeeting : null,
                 siteMap,
                 playbookActive: playbookMode,
                 multiParticipant: isMultiParty,
                 // Group session: hand the floor to the next raised hand.
                 nextParticipant: advanceToNextParticipant,
                 flagFollowup,
+                knowledgeResolver: dynamicKnowledgeResolver,
+                onKnowledgeResolved: (resolution) => {
+                    if (customerReplanTrigger) {
+                        void customerReplanTrigger.onToolResolution(resolution);
+                    } else {
+                        void handleKnowledgeResolution(resolution);
+                    }
+                },
                 browser: browserControls,
+                proposeSurvey: adaptiveSurveyConfig
+                    ? (input) => adaptiveSurveyProducer?.propose(input)
+                        ?? { status: 'rejected', reason: 'survey_not_ready' }
+                    : null,
+                surveyFieldKeys: adaptiveSurveyConfig?.fields
+                    .filter((field) => field.importance !== 'do_not_ask'
+                        && field.preferredInput !== 'voice')
+                    .map((field) => field.key) ?? [],
                 // Not yet awaitable at this point in the source (playbookRuntime
                 // is constructed further down, once agentSession exists) — this
                 // closure only reads it, and by the time the model can actually
@@ -1186,7 +1751,8 @@ async function runSession(ctx) {
                 // above). 7s: within the customer-requested 5-10s window for
                 // a genuine "I asked something, give them time to answer" wait.
                 expectResponse: () => {
-                    silence.expectResponse(7000);
+                    conversationIdlePolicy.onQuestionAsked();
+                    silence.expectResponse(15000);
                     return { ok: true };
                 }
             })),
@@ -1230,6 +1796,150 @@ async function runSession(ctx) {
         userAwayTimeout: null
     });
 
+    // Specialists stay off the realtime response path. A final transcript is
+    // published without awaiting analysis; only validated, participant-scoped
+    // memory may be attached to a later turn.
+    const engagementActivation = resolveEngagementActivation({
+        global: {
+            multiAgentAnalysis: isEnabledFeatureFlag(process.env.MULTI_AGENT_ANALYSIS_ENABLED),
+            participantMemory: isEnabledFeatureFlag(
+                process.env.MULTI_AGENT_PARTICIPANT_MEMORY_ENABLED
+            ),
+            adaptiveSurvey: isEnabledFeatureFlag(
+                process.env.DYNAMIC_PLAYBOOK_ADAPTIVE_SURVEY_ENABLED
+            ),
+            dynamicDemo: isEnabledFeatureFlag(
+                process.env.DYNAMIC_PLAYBOOK_DEMO_EXECUTION_ENABLED
+            ),
+            leadCapture: isEnabledFeatureFlag(process.env.MULTI_AGENT_LEAD_CAPTURE_ENABLED)
+        },
+        productSettings: product.engagementSettings
+    });
+    const multiAgentRollout = createMultiAgentRolloutPolicy({
+        mode: process.env.MULTI_AGENT_ROLLOUT_MODE,
+        canaryPercent: process.env.MULTI_AGENT_CANARY_PERCENT
+    }).decide({
+        sessionId: String(session._id),
+        capabilityEnabled: engagementActivation.multiAgentAnalysis
+    });
+    timeline.emit(TIMELINE_EVENTS.MULTI_AGENT_ROLLOUT_DECISION, {
+        ...multiAgentRollout,
+        participantMemoryEnabled: engagementActivation.participantMemory
+    });
+
+    let speakingBaseInstructions = instructions;
+    let acceptedMemoryNote = '';
+    let pendingMemoryProjection = null;
+    let multiAgentRuntime = null;
+
+    function applyAcceptedMemoryProjection({ atTurnBoundary = false } = {}) {
+        const projection = pendingMemoryProjection;
+        if (!projection || activeSpeechCount > 0 || (customerSpeaking && !atTurnBoundary)) return;
+        pendingMemoryProjection = null;
+        const participant = projection.activeParticipant
+            ? multiAgentRuntime?.registry.getByParticipantId(
+                projection.activeParticipant.participantId
+            ) : null;
+        acceptedMemoryNote = buildSpeakingMemoryNote(projection, {
+            displayName: participant?.claimedDisplayName
+        });
+        try {
+            agentSession.updateAgent(new voice.Agent({
+                instructions: [speakingBaseInstructions, acceptedMemoryNote]
+                    .filter(Boolean).join('\n\n'),
+                tools
+            }));
+            timeline.emit(TIMELINE_EVENTS.MULTI_AGENT_MEMORY_APPLIED, {
+                memoryRevision: projection.revision,
+                participantAttributed: Boolean(projection.activeParticipant)
+            });
+        } catch (error) {
+            log.warn('accepted participant memory could not be applied', { error: error.message });
+        }
+    }
+
+    if (multiAgentRollout.enabled && process.env.OPENAI_API_KEY) {
+        const participantMemoryAnalyst = createParticipantMemoryAnalyst({
+            invoke: createParticipantMemoryModelInvocation({
+                complete: (input) => getLLM('openai').complete(input)
+            }),
+            enabled: () => engagementActivation.participantMemory
+        });
+        const followUpAnalyst = createFollowUpClassificationAnalyst({
+            invoke: createFollowUpClassificationModelInvocation({
+                complete: (input) => getLLM('openai').complete(input)
+            })
+        });
+        multiAgentRuntime = createMultiAgentSessionRuntime({
+            sessionId: String(session._id),
+            initialParticipants: rosterHistory.map((participant) => ({
+                participantId: participant.participantId,
+                identity: participant.identity,
+                name: participant.name,
+                visitorKey: participant.visitorKey,
+                leftAt: participant.leftAt
+            })),
+            analysts: [participantMemoryAnalyst, followUpAnalyst],
+            rolloutDecision: multiAgentRollout,
+            defaultModelRoute: {
+                provider: 'openai',
+                model: process.env.MULTI_AGENT_MODEL
+                    || process.env.OPENAI_LLM_MODEL || 'gpt-5.1',
+                timeoutMs: Number(process.env.MULTI_AGENT_ANALYST_TIMEOUT_MS) || 1200,
+                maxOutputTokens: 500,
+                concurrencyClass: 'turn_background'
+            },
+            onProjection: (projection) => {
+                pendingMemoryProjection = projection;
+            },
+            onAnalystResult: (result) => timeline.emit(
+                TIMELINE_EVENTS.MULTI_AGENT_ANALYST_RESULT,
+                {
+                    analystId: result.analystId,
+                    status: result.status,
+                    proposalType: result.proposal?.proposalType ?? null,
+                    reason: result.errors?.[0]?.code ?? null
+                }
+            ),
+            onTelemetry: (record) => timeline.emit(
+                TIMELINE_EVENTS.MULTI_AGENT_ANALYST_RUN,
+                record,
+                record.durationMs
+            ),
+            onError: (error) => log.warn('multi-agent background analysis failed', {
+                error: error?.message ?? 'unknown'
+            })
+        });
+        for (const participant of ctx.room.remoteParticipants.values()) {
+            if (!participant?.identity?.startsWith('visitor_')) continue;
+            let visitorKey = null;
+            try {
+                visitorKey = JSON.parse(participant.metadata || '{}')?.visitorKey || null;
+            } catch { /* optional visitor metadata is untrusted */ }
+            multiAgentRuntime.registry.upsert({
+                identity: participant.identity,
+                name: participant.name || null,
+                visitorKey
+            });
+        }
+    }
+    if (multiAgentRuntime && engagementActivation.leadCapture) {
+        liveSalesOutcomes = createLiveSalesOutcomeRuntime({
+            repositories: createMongoSalesOutcomeRepositories({
+                LeadContact, Meeting, FollowUpTask
+            }),
+            sessionContext: {
+                sessionId: String(session._id),
+                workspaceId: String(product.workspaceId),
+                agentId: String(agentDoc._id),
+                productId: String(product._id)
+            },
+            participantRegistry: multiAgentRuntime.registry,
+            getParticipantContext: () => multiAgentRuntime.activeParticipantContext(),
+            publishAnalysis: (event) => multiAgentRuntime.publishTrustedEvent(event)
+        });
+    }
+
     // Now that agentSession/tourControls/stopScreenShare all exist, build the
     // actual runtime the tool decorator and silence driver above were only
     // holding a reference to. `screen` is deliberately just these two
@@ -1240,6 +1950,23 @@ async function runSession(ctx) {
     const surveyNodes = playbookNodes.filter((node) => node.type === 'survey');
     function publishSurveyPayload(payload) {
         const encoded = new TextEncoder().encode(JSON.stringify(payload));
+        if (payload.targetParticipantId) {
+            const delivery = resolveTargetedSurveyDelivery({
+                registry: multiAgentRuntime?.registry,
+                targetParticipantId: payload.targetParticipantId
+            });
+            if (!delivery.allowed) {
+                throw new Error(`targeted survey rejected: ${delivery.reason}`);
+            }
+            return ctx.room.localParticipant.publishData(encoded, {
+                reliable: true,
+                topic: 'salesai',
+                destination_identities: delivery.destinationIdentities
+            });
+        }
+        if (isMultiParty && payload.action === 'show') {
+            throw new Error('multi-participant survey requires targetParticipantId');
+        }
         return ctx.room.localParticipant.publishData(encoded, { reliable: true, topic: 'salesai' });
     }
     function publishSurveyAnswerAck(participant, answerId, ok, error = null) {
@@ -1257,11 +1984,130 @@ async function runSession(ctx) {
         });
     }
 
+    // Presentation and persistence are separate from proposal/review authority.
+    const adaptiveSurveyRuntime = adaptiveSurveyConfig
+        ? createAdaptiveSurveyRuntime({
+            store: dynamicPlaybookStore,
+            publish: (payload) => {
+                if (payload.action === 'show' && activeSurveyPayload) {
+                    throw new Error('static survey is active');
+                }
+                return publishSurveyPayload(payload);
+            },
+            persistAnswer: async (record) => {
+                const result = await Session.updateOne(
+                    { _id: session._id, 'surveyAnswers.answerId': { $ne: record.answerId } },
+                    { $push: { surveyAnswers: record } }
+                );
+                if (result.modifiedCount === 0) {
+                    const duplicate = await Session.exists({
+                        _id: session._id, 'surveyAnswers.answerId': record.answerId
+                    });
+                    return { ok: Boolean(duplicate), duplicate: Boolean(duplicate) };
+                }
+                return { ok: true };
+            },
+            replan: ({ reason }) => dynamicRoutePlanningService?.replan({ reason }),
+            onEvent: (event, meta) => {
+                timeline.emit(TIMELINE_EVENTS.ADAPTIVE_SURVEY_LIFECYCLE, { event, ...meta });
+                if (!dynamicRouteAdopted) return;
+                if (event === 'opened') playbookRuntime?.pauseRoute();
+                else if (['dismissed', 'expired', 'cancelled'].includes(event)
+                    && activeSpeechCount === 0 && !customerSpeaking) {
+                    playbookRuntime?.resumeRoute();
+                }
+            }
+        }) : null;
+    if (adaptiveSurveyRuntime) {
+        const surveyService = createAdaptiveSurveyService({
+            store: dynamicPlaybookStore,
+            knownFactResolver: createKnownFactResolver(),
+            reviewers: createSurveyReviewerPipeline({
+                reviewers: [
+                    createKnownFactSurveyReviewer(),
+                    createConversationTimingSurveyReviewer()
+                ]
+            }),
+            policy: adaptiveSurveyConfig.policy,
+            fieldDefinitions: adaptiveSurveyConfig.fields,
+            onDecision: (decision) => timeline.emit(
+                TIMELINE_EVENTS.ADAPTIVE_SURVEY_DECISION, decision
+            )
+        });
+        adaptiveSurveyProducer = createAdaptiveSurveyProducer({
+            store: dynamicPlaybookStore,
+            fields: adaptiveSurveyConfig.fields,
+            review: (proposal, options) => surveyService.review(proposal, options),
+            present: () => adaptiveSurveyRuntime.presentApproved(),
+            canPresent: () => activeSpeechCount === 0
+                && !customerSpeaking
+                && questionQueue.isEmpty()
+                && !activeSurveyPayload
+                && !dynamicDemoCoordinator?.hasPending()
+                && !dynamicDemoCoordinator?.isRunning()
+                && dynamicPlaybookStore.snapshot().openQuestions.length === 0,
+            onEvent: (event, meta) => timeline.emit(
+                TIMELINE_EVENTS.ADAPTIVE_SURVEY_LIFECYCLE, { event, ...meta }
+            )
+        });
+    }
+
+    const shadowSurveyConfig = resolveAdaptiveSurveyConfig(product.adaptiveSurvey, true);
+    if (dynamicPlaybookStore && decideAdaptiveSurveyShadowActivation({
+        featureEnabled: isEnabledFeatureFlag(
+            process.env.DYNAMIC_PLAYBOOK_ADAPTIVE_SURVEY_SHADOW_ENABLED
+        ),
+        productConfigValid: Boolean(shadowSurveyConfig),
+        rolloutDecision: dynamicRolloutDecision,
+        maxParticipants
+    })) {
+        adaptiveSurveyShadowObserver = createAdaptiveSurveyShadowObserver({
+            store: dynamicPlaybookStore,
+            fields: shadowSurveyConfig.fields,
+            knownFactResolver: createKnownFactResolver(),
+            onObservation: (observation) => timeline.emit(
+                TIMELINE_EVENTS.ADAPTIVE_SURVEY_SHADOW_OBSERVATION, observation
+            )
+        });
+        if (isEnabledFeatureFlag(
+            process.env.DYNAMIC_PLAYBOOK_ADAPTIVE_SURVEY_SHADOW_PROPOSALS_ENABLED
+        )) {
+            adaptiveSurveyShadowProposals = createAdaptiveSurveyShadowProposalService({
+                store: dynamicPlaybookStore,
+                planner: createRulesShadowSurveyPlanner(),
+                knownFactResolver: createKnownFactResolver(),
+                policy: shadowSurveyConfig.policy,
+                fields: shadowSurveyConfig.fields,
+                canEvaluate: () => activeSpeechCount === 0 && !customerSpeaking
+                    && questionQueue.isEmpty() && !dynamicDemoCoordinator?.hasPending()
+                    && !dynamicDemoCoordinator?.isRunning(),
+                onDecision: (decision) => timeline.emit(
+                    TIMELINE_EVENTS.ADAPTIVE_SURVEY_SHADOW_PROPOSAL, decision
+                )
+            });
+        }
+    }
+
     if (playbookActive) {
         playbookRuntime = createPlaybookRuntime({
             cursor: playbookCursor,
             languageDisplay,
             lastSpoken: () => utterances.last(),
+            prepareNode: async (node) => {
+                if (node.dynamicNode?.type !== 'demo') return { ok: true };
+                if (!dynamicDemoExecutor) return { ok: false, error: 'demo_executor_unavailable' };
+                const state = dynamicPlaybookStore.snapshot();
+                const result = await dynamicDemoExecutor.execute(node.dynamicNode, {
+                    routeRevision: state.routeRevision,
+                    planningGeneration: state.planning.generation
+                });
+                dynamicPlaybookStore.dispatch({
+                    type: result.status === 'completed' ? 'NODE_COMPLETED' : 'NODE_DEFERRED',
+                    nodeId: node.id
+                });
+                dynamicPlaybookStore.dispatch({ type: 'ACTIVITY_CHANGED', activity: 'listening' });
+                return { ok: result.status === 'completed', error: result.reason ?? null };
+            },
             screen: {
                 // Timed and logged on both sides: the pump awaits this before
                 // it can speak, so a slow navigation is indistinguishable from
@@ -1303,6 +2149,7 @@ async function runSession(ctx) {
             },
             survey: {
                 show: async (node) => {
+                    await adaptiveSurveyRuntime?.cancel('static_survey_started');
                     activeSurveyPayload = {
                         type: 'salesai:survey',
                         action: 'show',
@@ -1317,6 +2164,14 @@ async function runSession(ctx) {
                         total: surveyNodes.length
                     };
                     await publishSurveyPayload(activeSurveyPayload);
+                    dynamicPlaybookStore?.dispatch({
+                        type: 'QUESTION_RECORDED',
+                        question: {
+                            questionKey: node.survey.fieldKey || `survey.${node.id}`,
+                            channel: 'survey',
+                            status: 'asked'
+                        }
+                    });
                     timeline.emit(TIMELINE_EVENTS.SURVEY_SHOWN, {
                         nodeId: node.id,
                         answerType: node.survey.answerType,
@@ -1365,9 +2220,11 @@ async function runSession(ctx) {
                     enter: TIMELINE_EVENTS.PLAYBOOK_NODE_ENTER,
                     redeliver: TIMELINE_EVENTS.PLAYBOOK_NODE_REDELIVER,
                     exit: TIMELINE_EVENTS.PLAYBOOK_NODE_EXIT,
-                    failed: TIMELINE_EVENTS.PLAYBOOK_NODE_FAILED
+                    failed: TIMELINE_EVENTS.PLAYBOOK_NODE_FAILED,
+                    deferred: TIMELINE_EVENTS.PLAYBOOK_NODE_DEFERRED
                 }[phase];
                 if (timelineType) {
+                    const semanticIdentity = dynamicPlaybookSemanticsByNodeId.get(node.id);
                     timeline.emit(timelineType, {
                         order: node.order,
                         nodeId: node.id,
@@ -1378,13 +2235,49 @@ async function runSession(ctx) {
                         // it actually said, without scrolling back.
                         directive: node.directive,
                         actionCount: node.actions?.length ?? 0,
+                        topicId: semanticIdentity?.topicId ?? null,
+                        claimIds: semanticIdentity?.claimIds ?? [],
+                        semanticSource: semanticIdentity?.source ?? null,
                         ...meta
                     });
                 }
+                dynamicPlaybookStateAdapter?.onNodeEvent(node, phase, meta);
+                if (phase === 'exit' && node.id === dynamicRouteAnswerNodeId
+                    && dynamicRouteAnswerQuestionId) {
+                    dynamicPlaybookStore?.dispatch({
+                        type: 'QUESTION_RESOLVED', questionId: dynamicRouteAnswerQuestionId
+                    });
+                    dynamicRouteAnswerNodeId = null;
+                    dynamicRouteAnswerQuestionId = null;
+                }
             },
             onCompleted: () => {
+                const dynamicCompletion = dynamicPlaybookStateAdapter?.onCompleted();
+                if (dynamicCompletion && !dynamicCompletion.accepted) {
+                    log.warn('dynamic playbook shadow completion guard blocked legacy completion', {
+                        reason: dynamicCompletion.reason,
+                        pendingObligations: Object.entries(dynamicCompletion.state.obligations)
+                            .filter(([, obligation]) => !['satisfied', 'declined', 'impossible'].includes(obligation.status))
+                            .map(([id]) => id),
+                        openQuestionCount: dynamicCompletion.state.openQuestions.length,
+                        openConcernCount: dynamicCompletion.state.openConcerns.length
+                    });
+                    timeline.emit(TIMELINE_EVENTS.DYNAMIC_PLAYBOOK_COMPLETION_BLOCKED, {
+                        reason: dynamicCompletion.reason,
+                        pendingObligationCount: Object.values(dynamicCompletion.state.obligations)
+                            .filter((obligation) => !['satisfied', 'declined', 'impossible'].includes(obligation.status)).length,
+                        openQuestionCount: dynamicCompletion.state.openQuestions.length,
+                        openConcernCount: dynamicCompletion.state.openConcerns.length,
+                        mode: dynamicRouteAdopted ? 'canary' : 'shadow'
+                    });
+                    if (dynamicRouteAdopted) return false;
+                }
                 log.info('playbook completed', { sessionId: session._id });
                 timeline.emit(TIMELINE_EVENTS.PLAYBOOK_COMPLETED);
+                // A finished presentation is no longer license for a stream
+                // of self-driven sales turns. Give the visitor room before
+                // the one permitted presence check.
+                silence.expectResponse(15000);
                 // `silence`'s consecutive-fire counter is shared between
                 // playbook advance signals and post-playbook idle nudges
                 // (see silence-driver.js's isCapExempt note) — whatever count
@@ -1416,8 +2309,10 @@ async function runSession(ctx) {
                         browserAutomation: backend === 'chrome-mcp'
                     });
                     const postPlaybookTools = buildSessionTools(false);
+                    speakingBaseInstructions = postPlaybookInstructions;
                     agentSession.updateAgent(new voice.Agent({
-                        instructions: postPlaybookInstructions,
+                        instructions: [postPlaybookInstructions, acceptedMemoryNote]
+                            .filter(Boolean).join('\n\n'),
                         tools: postPlaybookTools
                     }));
                     tools = postPlaybookTools;
@@ -1541,6 +2436,11 @@ async function runSession(ctx) {
             // step needs.
             if (item.role === 'assistant' && text.trim()) {
                 utterances.record(text, { interrupted: item.interrupted === true });
+                if (item.interrupted !== true && conversationIdlePolicy.onAssistantUtterance(text, {
+                    presentationActive: Boolean(playbookRuntime && !playbookRuntime.completed)
+                })) {
+                    silence.expectResponse(15000);
+                }
             }
 
             if (text || item.role === 'tool') {
@@ -1625,25 +2525,21 @@ async function runSession(ctx) {
     const silence = createSilenceDriver({
         idleMs: Number(process.env.AGENT_IDLE_NUDGE_MS ?? 500),
         onIdle: ({ consecutive }) => {
-            // While a playbook is running and hasn't finished, silence is the
-            // presentation's own advance signal — see md/backend/agent_flow.md,
-            // "Adım ilerlemesi" — not a generic re-engagement nudge. Once the
-            // playbook completes, this falls through to the ordinary nudge so
-            // the agent stays proactive for the rest of the conversation.
-            if (playbookActive && playbookRuntime && !playbookRuntime.completed) {
+            const presentationActive = Boolean(playbookActive && playbookRuntime
+                && !playbookRuntime.completed);
+            const action = conversationIdlePolicy.decide({ presentationActive });
+            if (action === 'advance_presentation') {
                 playbookRuntime.signal('silence');
                 return;
             }
+            if (action === 'wait') return;
             try {
                 agentSession.generateReply({
-                    instructions: buildIdleNudgeInstructions({
-                        consecutive,
-                        lastUtterance: utterances.last()?.text,
-                        languageDisplay
-                    })
+                    instructions: buildPresenceCheckInstructions(languageDisplay),
+                    toolChoice: 'none'
                 });
-                log.info('idle nudge sent', { consecutive });
-                timeline.emit(TIMELINE_EVENTS.NUDGE_SENT, { consecutive });
+                log.info('single presence check sent', { consecutive });
+                timeline.emit(TIMELINE_EVENTS.NUDGE_SENT, { consecutive, kind: 'presence_check' });
             } catch (err) {
                 // generateReply THROWS synchronously (it does not reject) when
                 // the session isn't running yet or is already closing — the
@@ -1692,7 +2588,14 @@ async function runSession(ctx) {
     });
     agentSession.on(voice.AgentSessionEventTypes.UserStateChanged, (ev) => {
         timeline.emit(TIMELINE_EVENTS.USER_STATE, { from: ev.oldState, to: ev.newState });
-        if (ev.newState === 'speaking') tourChoreographer?.cancel('customer_interrupted');
+        customerSpeaking = ev.newState === 'speaking';
+        if (ev.newState === 'speaking') {
+            if (dynamicRouteAdopted) playbookRuntime?.pauseRoute();
+            adaptiveSurveyProducer?.cancel('customer_interrupted');
+            tourChoreographer?.cancel('customer_interrupted');
+            dynamicDemoCoordinator?.cancel('customer_interrupted');
+            void adaptiveSurveyRuntime?.cancel('customer_interrupted');
+        }
         if (greetingSent) silence.handleUserState(ev.newState);
     });
     // Ground truth for `activeSpeechCount` (declared above): every
@@ -1702,9 +2605,52 @@ async function runSession(ctx) {
     // calls, audio playout, everything) has actually finished, not just
     // that AgentState happened to read 'listening' for a moment.
     agentSession.on(voice.AgentSessionEventTypes.SpeechCreated, (ev) => {
+        const speechIndex = ++speechSequence;
         activeSpeechCount++;
         ev.speechHandle.addDoneCallback(() => {
             activeSpeechCount = Math.max(0, activeSpeechCount - 1);
+            if (activeSpeechCount === 0) {
+                applyAcceptedMemoryProjection();
+                void (async () => {
+                    await dynamicDemoCoordinator?.answerDelivered();
+                    await adaptiveSurveyProducer?.answerDelivered();
+                    if (dynamicRouteAdopted && speechIndex >= Math.max(
+                        dynamicRouteAnswerMinSpeechSequence, customerAnswerSpeechFloor
+                    )
+                        && !customerSpeaking
+                        && !adaptiveSurveyRuntime?.activePayload()) {
+                        const answered = speechIndex >= dynamicRouteAnswerMinSpeechSequence
+                            && ev.speechHandle.chatItems?.some((item) =>
+                                item.type === 'message' && item.role === 'assistant');
+                        if (answered && dynamicRouteAnswerNodeId
+                            && playbookRuntime?.acknowledgeHeldNode(dynamicRouteAnswerNodeId)) {
+                            dynamicPlaybookStore?.dispatch({
+                                type: 'NODE_COMPLETED', nodeId: dynamicRouteAnswerNodeId
+                            });
+                            if (dynamicRouteAnswerQuestionId) {
+                                dynamicPlaybookStore?.dispatch({
+                                    type: 'QUESTION_RESOLVED',
+                                    questionId: dynamicRouteAnswerQuestionId
+                                });
+                            }
+                            dynamicRouteAnswerNodeId = null;
+                            dynamicRouteAnswerQuestionId = null;
+                        }
+                        playbookRuntime?.resumeRoute();
+                    }
+                    const shadowObservations = await adaptiveSurveyShadowObserver?.observe({
+                        canObserve: () => activeSpeechCount === 0 && !customerSpeaking
+                            && questionQueue.isEmpty()
+                    }) ?? [];
+                    for (const observation of shadowObservations) {
+                        if (observation.status === 'unknown_field_candidate') {
+                            await adaptiveSurveyShadowProposals?.evaluateCandidate(
+                                observation.questionKey
+                            );
+                        }
+                    }
+                })().catch((err) => log.warn('post-answer action failed', { error: err.message }));
+            }
             // Group session: the agent just finished a turn — answer anything
             // that piled up in the room while it was talking.
             if (activeSpeechCount === 0 && isMultiParty && presentationStarted && !questionQueue.isEmpty()) {
@@ -1733,14 +2679,62 @@ async function runSession(ctx) {
     });
     ctx.room.on(RoomEvent.ParticipantConnected, (participant) => {
         timeline.emit(TIMELINE_EVENTS.PARTICIPANT_JOIN, { participant: participant?.identity });
+        if (!participant?.identity?.startsWith('visitor_')) return;
+        let visitorKey = null;
+        try {
+            visitorKey = JSON.parse(participant.metadata || '{}')?.visitorKey || null;
+        } catch { /* optional visitor metadata is untrusted */ }
+        multiAgentRuntime?.registry.upsert({
+            identity: participant.identity,
+            name: participant.name || null,
+            visitorKey
+        });
     });
     ctx.room.on(RoomEvent.ParticipantDisconnected, (participant) => {
         timeline.emit(TIMELINE_EVENTS.PARTICIPANT_LEAVE, { participant: participant?.identity });
+        multiAgentRuntime?.registry.markDisconnected(participant?.identity);
     });
     // A completed visitor utterance is the clearest sign someone is still
     // there, so the nudge budget starts over.
     agentSession.on(voice.AgentSessionEventTypes.UserInputTranscribed, (ev) => {
         if (!ev.isFinal) return;
+        // A previous turn's accepted projection is installed only at this
+        // next-turn boundary (or after the prior speech completed), never in
+        // the middle of an answer being generated.
+        applyAcceptedMemoryProjection();
+        if (ev.transcript) {
+            const routeRevision = dynamicPlaybookStore?.snapshot().routeRevision ?? 0;
+            const published = multiAgentRuntime?.publishTranscript({
+                text: ev.transcript,
+                eventSpeakerId: ev.speakerId,
+                fallbackIdentity: currentSpeakerIdentity
+                    || (isMultiParty ? null : rosterList()[0]?.identity ?? null),
+                micOnFor: (identity) => {
+                    const participant = ctx.room.remoteParticipants.get(identity);
+                    return participant ? micOn(participant) : false;
+                },
+                routeRevision,
+                language: agentDoc.persona?.language || null
+            });
+            if (published) {
+                // Switch to this speaker's already-accepted memory (or clear
+                // the prior speaker's note) before the realtime reply starts.
+                pendingMemoryProjection = multiAgentRuntime.projection();
+                applyAcceptedMemoryProjection({ atTurnBoundary: true });
+                timeline.emit(TIMELINE_EVENTS.MULTI_AGENT_EVENT_PUBLISHED, {
+                    eventType: published.event.type,
+                    turnIndex: published.event.turnIndex,
+                    participantAttributed: Boolean(published.event.participantId)
+                });
+            }
+        }
+        conversationIdlePolicy.onVisitorTurn();
+        customerAnswerSpeechFloor = speechSequence + 1;
+        adaptiveSurveyProducer?.cancel('new_customer_utterance');
+        dynamicPlaybookStore?.dispatch({ type: 'MEMORY_TURN_ADVANCED' });
+        if (customerReplanTrigger && ev.transcript) {
+            void customerReplanTrigger.onUtterance(ev.transcript, String(product._id));
+        }
         silence.resetConsecutive();
         // While the multi-party room is still filling, a visitor's answer to
         // the "shall we start?" check decides whether to begin now.
@@ -1779,6 +2773,7 @@ async function runSession(ctx) {
     async function endSession(reason) {
         if (sessionEnded) return;
         sessionEnded = true;
+        multiAgentRuntime?.dispose();
         // Emitted before the teardown below, not after: `tour.close()` and
         // the DB update can both throw, and a timeline that just stops
         // mid-stream tells you nothing about why the call ended.
@@ -1786,6 +2781,9 @@ async function runSession(ctx) {
         try {
             // Cleanup: stop tour publish loop, heartbeat, and close browser
             silence.dispose();
+            adaptiveSurveyProducer?.cancel('session_ended');
+            await adaptiveSurveyRuntime?.cancel('session_ended');
+            adaptiveSurveyRuntime?.dispose();
             playbookRuntime?.stop();
             tourFrameObserver.abandonPending('session_ended');
             if (tourPublishTimer) {
@@ -2027,6 +3025,12 @@ async function runSession(ctx) {
             const raw = new TextDecoder().decode(payload);
             const data = JSON.parse(raw);
             if (data.type === 'salesai:survey_ready') {
+                const adaptive = adaptiveSurveyRuntime?.activePayload();
+                if (adaptive) {
+                    publishSurveyPayload(adaptive).catch((err) =>
+                        log.warn('adaptive survey resync publish failed', { error: err.message })
+                    );
+                }
                 if (activeSurveyPayload) {
                     publishSurveyPayload(activeSurveyPayload).catch((err) =>
                         log.warn('survey resync publish failed', { error: err.message })
@@ -2040,6 +3044,25 @@ async function runSession(ctx) {
                     publishSurveyAnswerAck(participant, answerId, true).catch((err) =>
                         log.warn('duplicate survey answer ack failed', { answerId, error: err.message })
                     );
+                    return;
+                }
+                if (adaptiveSurveyRuntime?.isActive(data.nodeId)) {
+                    const result = await adaptiveSurveyRuntime.answer({
+                        proposalId: data.nodeId,
+                        answerId,
+                        value: data.answer,
+                        skipped: data.skipped === true
+                    });
+                    publishSurveyAnswerAck(participant, answerId, result.ok,
+                        result.ok ? null : result.reason === 'persistence_failed'
+                            ? 'Answer could not be saved'
+                            : 'Answer no longer matches the active question'
+                    ).catch((err) => log.warn('adaptive survey ack failed', { error: err.message }));
+                    return;
+                }
+                if (adaptiveSurveyRuntime?.activePayload()) {
+                    publishSurveyAnswerAck(participant, answerId, false,
+                        'Answer no longer matches the active question').catch(() => {});
                     return;
                 }
                 const node = playbookRuntime?.activeNode();
@@ -2078,6 +3101,30 @@ async function runSession(ctx) {
                     }).catch((err) => log.warn('survey transcript audit write failed', { answerId, error: err.message }));
                     log.info('survey answer persisted and delivered', { nodeId, ...answerMeta });
                     timeline.emit(TIMELINE_EVENTS.SURVEY_ANSWERED, { nodeId, ...answerMeta });
+                    const questionKey = node.survey.fieldKey || `survey.${node.id}`;
+                    dynamicPlaybookStore?.dispatch({
+                        type: 'QUESTION_RECORDED',
+                        question: {
+                            questionKey,
+                            channel: 'survey',
+                            status: normalized.skipped ? 'dismissed' : 'answered',
+                            answerRef: normalized.skipped
+                                ? null
+                                : `survey_answer:${answerId || node.id}`
+                        }
+                    });
+                    if (!normalized.skipped && node.survey.fieldKey) {
+                        dynamicPlaybookStore?.dispatch({
+                            type: 'FACT_DISCOVERED',
+                            fact: {
+                                key: node.survey.fieldKey,
+                                value: normalized.answerValue,
+                                source: 'survey',
+                                confidence: 1,
+                                evidenceRef: `survey_answer:${answerId || node.id}`
+                            }
+                        });
+                    }
                     playbookRuntime.signal('survey_answer', answerMeta);
                     publishSurveyAnswerAck(participant, answerId, true).catch((err) =>
                         log.warn('survey answer ack publish failed', { answerId, error: err.message })

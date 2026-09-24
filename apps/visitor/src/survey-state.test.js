@@ -37,6 +37,17 @@ describe('in-call survey messages', () => {
         }))).toBeNull();
     });
 
+    it('decodes adaptive answer types and expiry without changing static surveys', () => {
+        const state = applySurveyMessage(null, encode({
+            type: 'salesai:survey', action: 'show', mode: 'adaptive', nodeId: 'a1',
+            question: 'Hangi alanlar?', answerType: 'multi_select', expiresAt: 123456,
+            options: [{ value: 'finance', label: 'Finans' }, { value: 'saas', label: 'SaaS' }],
+            required: false
+        }));
+        expect(state).toMatchObject({ mode: 'adaptive', answerType: 'multi_select',
+            expiresAt: 123456, required: false });
+    });
+
     it('ignores malformed and unrelated messages', () => {
         expect(decodeSurveyMessage(new TextEncoder().encode('nope'))).toBeNull();
         const current = { nodeId: 'broker' };

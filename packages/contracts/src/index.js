@@ -1,6 +1,13 @@
 import { z } from 'zod';
 import { getDomain } from 'tldts';
 
+export * from './dynamic-playbook.js';
+export * from './conversation-events.js';
+export * from './analyst-proposals.js';
+export * from './participant-memory.js';
+export * from './sales-outcomes.js';
+export * from './engagement-settings.js';
+
 /**
  * Returns 4, 6, or 0 (not an IP literal) — a browser-safe stand-in for
  * node:net's `isIP`. This module is shared between the API (Node) and the
@@ -109,6 +116,21 @@ export const ProductInput = z.object({
         })
     ).default([]),
     demoSession: z.any().optional()
+});
+
+/** Console-facing discovery authoring; runtime policy is compiled server-side. */
+export const ProductDiscoveryInput = z.object({
+    enabled: z.boolean(),
+    priorities: z.object({
+        industry: z.enum(['important', 'helpful', 'off']).default('off'),
+        teamSize: z.enum(['important', 'helpful', 'off']).default('off'),
+        primaryGoal: z.enum(['important', 'helpful', 'off']).default('off')
+    }).strict()
+}).strict().superRefine((value, ctx) => {
+    if (value.enabled && Object.values(value.priorities).every((priority) => priority === 'off')) {
+        ctx.addIssue({ code: z.ZodIssueCode.custom, path: ['priorities'],
+            message: 'At least one discovery field must be enabled' });
+    }
 });
 
 // ─── Integrations / Webhooks ──────────────────────────────────
@@ -410,6 +432,16 @@ export const EmbedConfigInput = z.object({
 
 export const PlaybookNodeMode = z.enum(['important', 'situational', 'skip-if-no-answer']);
 
+// Optional migration bridge into the dynamic obligation model. `mode` keeps
+// governing the proven legacy runtime; requirement is inert there and is
+// consumed only by the shadow/new runtime compiler.
+export const PlaybookNodeRequirement = z.enum([
+    'required_before_close',
+    'required_if_relevant',
+    'preferred',
+    'optional'
+]);
+
 export const PlaybookNodeType = z.enum(['narrative', 'survey']);
 
 export const PlaybookSurveyFieldKeyInput = z
@@ -488,6 +520,7 @@ export const PlaybookNodeInput = z.object({
      *  playbooks are upgraded. normalizePlaybook converts it at the boundary. */
     attach: z.string().trim().max(200).nullable().optional(),
     mode: PlaybookNodeMode.default('situational'),
+    requirement: PlaybookNodeRequirement.nullable().default(null),
     survey: PlaybookSurveyInput.nullable().default(null)
 }).superRefine((node, ctx) => {
     if (node.type === 'survey' && !node.survey) {

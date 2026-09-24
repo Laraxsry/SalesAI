@@ -3,6 +3,8 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { ArrowLeft, ExternalLink, BookOpen, Bot, Key, AlertTriangle, Trash2 } from 'lucide-react';
 import { useState } from 'react';
 import { productsApi } from '../lib/api.js';
+import { DiscoverySettings } from './DiscoverySettings.jsx';
+import { EngagementSettings } from './EngagementSettings.jsx';
 
 function DemoSessionForm({ product }) {
     const queryClient = useQueryClient();
@@ -277,6 +279,8 @@ export function ProductDetail() {
             </div>
 
             <DemoSessionForm product={product} />
+            <DiscoverySettings key={product.id} product={product} />
+            <EngagementSettings key={`${product.id}:engagement`} product={product} />
         </div>
     );
 }

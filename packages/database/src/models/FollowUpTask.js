@@ -24,7 +24,14 @@ const FollowUpTaskSchema = new Schema(
     {
         sessionId: { type: Schema.Types.ObjectId, ref: 'Session', required: true, index: true },
         agentId: { type: Schema.Types.ObjectId, ref: 'Agent', required: true, index: true },
+        workspaceId: { type: Schema.Types.ObjectId, ref: 'Workspace', index: true },
+        productId: { type: Schema.Types.ObjectId, ref: 'Product', index: true },
+        leadId: { type: Schema.Types.ObjectId, ref: 'Lead', index: true },
+        requestedByParticipantId: { type: String, index: true },
+        sourceEventId: { type: String },
+        forwardingConsentEventId: { type: String },
         question: { type: String, required: true },
+        category: { type: String, default: null },
         status: {
             type: String,
             enum: ['pending', 'routed', 'resolved'],
@@ -34,6 +41,11 @@ const FollowUpTaskSchema = new Schema(
         department: { type: String, default: null }
     },
     { timestamps: true }
+);
+
+FollowUpTaskSchema.index(
+    { sessionId: 1, sourceEventId: 1 },
+    { unique: true, partialFilterExpression: { sourceEventId: { $type: 'string' } } }
 );
 
 export const FollowUpTask = model('FollowUpTask', FollowUpTaskSchema);

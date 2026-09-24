@@ -2,12 +2,16 @@ import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 
 vi.mock('@repo/utils', async (importOriginal) => ({
     ...(await importOriginal()),
-    checkSSRFUrl: vi.fn().mockResolvedValue(undefined)
+    checkSSRFUrl: vi.fn().mockResolvedValue(undefined),
+    safeFetch: vi.fn()
 }));
 vi.mock('@repo/screen', () => ({ loginWithCredentials: vi.fn() }));
+vi.mock('@repo/rag', () => ({ extractDocumentText: vi.fn() }));
 vi.mock('playwright', () => ({ chromium: { launch: vi.fn() } }));
 
 const { chromium } = await import('playwright');
+const { checkSSRFUrl, safeFetch } = await import('@repo/utils');
+const { extractDocumentText } = await import('@repo/rag');
 const { extractFromUrl, waitForStableContent, extractPageComponents, discoverTabVariants, discoverToggleVariants } =
     await import('./url.js');
 
@@ -502,5 +506,128 @@ describe('discoverToggleVariants', () => {
 
         await expect(discoverToggleVariants(page, 'https://example.com')).resolves.toEqual([]);
         expect(page.locator).not.toHaveBeenCalled();
+    });
+});
+
+describe('extractFromUrl — PDF link handling', () => {
+    const PDF_URL = 'https://example.com/spec-sheet.pdf';
+
+    /** Fakes a fetch Response streamed in one or more chunks via `.body.getReader()`. */
+    function makeStreamResponse({ status = 200, contentType = 'application/pdf', contentLength = null, chunks }) {
+        let i = 0;
+        return {
+            ok: status < 400,
+            status,
+            headers: { get: (name) => (name === 'content-length' ? contentLength : name === 'content-type' ? contentType : null) },
+            body: {
+                getReader: () => ({
+                    read: async () => (i < chunks.length ? { done: false, value: chunks[i++] } : { done: true, value: undefined }),
+                    cancel: vi.fn(async () => {})
+                })
+            }
+        };
+    }
+
+    /** Root page whose only link is the PDF above — reuses the previous describe block's fake-page shape. */
+    function makeRootPage() {
+        const content = { text: 'home page', links: [{ label: 'Spec Sheet', targetUrl: PDF_URL, kind: 'link' }] };
+        const page = {
+            currentUrl: null,
+            url: () => page.currentUrl,
+            goto: vi.fn(async (url) => {
+                page.currentUrl = url;
+                return { status: () => 200 };
+            }),
+            goBack: vi.fn(async () => {}),
+            $$: vi.fn(async () => []),
+            waitForTimeout: vi.fn(async () => {}),
+            locator: vi.fn(() => ({ first: () => ({ count: vi.fn().mockResolvedValue(0) }) })),
+            evaluate: vi.fn(async (fn) => {
+                const src = fn.toString();
+                if (src.includes('querySelectorAll(sel)')) return [];
+                if (src.includes("closest('nav, header')")) return [];
+                if (src.includes('h1, h2, h3, h4, h5, h6')) return EMPTY_COMPONENTS;
+                if (src.includes('.remove()')) return { text: content.text, links: content.links };
+                return content.text.length;
+            })
+        };
+        return page;
+    }
+
+    let fakePage;
+
+    beforeEach(() => {
+        fakePage = makeRootPage();
+        chromium.launch.mockResolvedValue({
+            newContext: async () => ({ newPage: async () => fakePage }),
+            close: vi.fn(async () => {})
+        });
+        safeFetch.mockReset();
+        extractDocumentText.mockReset();
+        checkSSRFUrl.mockReset().mockResolvedValue(undefined);
+    });
+
+    it('downloads and parses a discovered PDF link instead of navigating it with Playwright', async () => {
+        const chunk = Buffer.from('%PDF-1.4 fake pdf bytes');
+        safeFetch.mockImplementation(async (url) => {
+            if (url === PDF_URL) return makeStreamResponse({ chunks: [chunk] });
+            throw new Error(`unexpected safeFetch call: ${url}`);
+        });
+        extractDocumentText.mockResolvedValue('parsed pdf text');
+
+        const result = await extractFromUrl('https://example.com/a');
+
+        expect(safeFetch).toHaveBeenCalledWith(PDF_URL);
+        expect(extractDocumentText).toHaveBeenCalledWith(expect.any(Buffer), { mime: 'application/pdf', ext: 'pdf' });
+        expect(fakePage.goto).not.toHaveBeenCalledWith(PDF_URL, expect.anything());
+        expect(result.pages).toContainEqual({ url: PDF_URL, text: 'parsed pdf text' });
+        expect(result.pagesIndex[PDF_URL].components).toEqual(EMPTY_COMPONENTS);
+        expect(result.pagesIndex[PDF_URL].isPdf).toBe(true);
+        expect(result.pagesIndex['https://example.com/a'].isPdf).toBeUndefined();
+    });
+
+    it('rejects a PDF download that exceeds the byte cap without aborting the rest of the crawl', async () => {
+        // Fake a single oversized chunk — no real allocation needed, only
+        // byteLength is read before the cap check throws.
+        const oversizedChunk = { byteLength: 21 * 1024 * 1024 };
+        safeFetch.mockImplementation(async (url) => {
+            if (url === PDF_URL) return makeStreamResponse({ chunks: [oversizedChunk] });
+            throw new Error(`unexpected safeFetch call: ${url}`);
+        });
+
+        const result = await extractFromUrl('https://example.com/a');
+
+        expect(extractDocumentText).not.toHaveBeenCalled();
+        expect(result.pages.map((p) => p.url)).not.toContain(PDF_URL);
+        expect(result.pages.map((p) => p.url)).toContain('https://example.com/a');
+    });
+
+    it('skips a .pdf-looking URL whose bytes are not actually a PDF, without aborting the crawl', async () => {
+        const chunk = Buffer.from('<html>not a pdf</html>');
+        safeFetch.mockImplementation(async (url) => {
+            if (url === PDF_URL) return makeStreamResponse({ chunks: [chunk], contentType: 'text/html' });
+            throw new Error(`unexpected safeFetch call: ${url}`);
+        });
+        extractDocumentText.mockRejectedValue(new Error('Desteklenmeyen veya bozuk dosya formatı'));
+
+        const result = await extractFromUrl('https://example.com/a');
+
+        expect(result.pages.map((p) => p.url)).not.toContain(PDF_URL);
+        expect(result.pages.map((p) => p.url)).toContain('https://example.com/a');
+    });
+
+    it('never fetches a PDF link the SSRF guard rejects', async () => {
+        checkSSRFUrl.mockImplementation(async (url) => {
+            if (url === PDF_URL) throw new Error('SSRF Guard: blocked');
+        });
+        safeFetch.mockImplementation(async (url) => {
+            throw new Error(`safeFetch should not be called for ${url}`);
+        });
+
+        const result = await extractFromUrl('https://example.com/a');
+
+        expect(safeFetch).not.toHaveBeenCalled();
+        expect(extractDocumentText).not.toHaveBeenCalled();
+        expect(result.pages.map((p) => p.url)).toContain('https://example.com/a');
     });
 });

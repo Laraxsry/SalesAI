@@ -71,6 +71,19 @@ describe('buildTools', () => {
         expect(toolNames(group)).toEqual([...BASE_TOOL_NAMES, 'next_participant']);
     });
 
+    it('shows the discovery proposal tool only when configured with allowed fields', async () => {
+        const proposeSurvey = vi.fn(async () => ({ status: 'queued' }));
+        expect(toolNames(buildTools({ productId: 'p1', proposeSurvey })))
+            .not.toContain('propose_discovery_survey');
+        const tools = buildTools({
+            productId: 'p1', proposeSurvey, surveyFieldKeys: ['company.industry']
+        });
+        const surveyTool = findTool(tools, 'propose_discovery_survey');
+        expect(surveyTool.parameters.properties.questionKey.enum).toEqual(['company.industry']);
+        expect(await surveyTool.handler({ questionKey: 'company.industry' }))
+            .toEqual({ status: 'queued' });
+    });
+
     it('composes follow-up, group-floor and playbook tools without dropping any capability', () => {
         const tools = buildTools({
             productId: 'p1',
@@ -84,6 +97,20 @@ describe('buildTools', () => {
             'advance_step'
         ]);
         expect(toolNames(tools)).toContain('flag_followup_needed');
+    });
+
+    it('forwards only explicit normalized meeting data to the persistence boundary', async () => {
+        const saveMeeting = vi.fn(async () => ({ ok: true }));
+        const tools = buildTools({ productId: 'p1', saveMeeting });
+        const input = {
+            startsAt: '2026-09-24T13:00:00.000Z',
+            timezone: 'Europe/Brussels',
+            durationMinutes: 30,
+            originalPhrase: 'Perşembe saat üç'
+        };
+        await expect(findTool(tools, 'save_meeting').handler(input))
+            .resolves.toEqual({ ok: true });
+        expect(saveMeeting).toHaveBeenCalledWith(input);
     });
 
     it('offers one MCP browser control surface and removes legacy selector actions', async () => {
@@ -577,15 +604,37 @@ describe('buildTools', () => {
             const flagFollowup = vi.fn().mockResolvedValue({ ok: true });
             const tools = buildTools({ productId: 'p1', flagFollowup });
 
-            const result = await findTool(tools, 'flag_followup_needed').handler({ question: 'Ürün X ile entegre olur mu?' });
+            const result = await findTool(tools, 'flag_followup_needed').handler({
+                question: 'Ürün X ile entegre olur mu?',
+                consentConfirmed: true
+            });
 
-            expect(flagFollowup).toHaveBeenCalledWith('Ürün X ile entegre olur mu?');
+            expect(flagFollowup).toHaveBeenCalledWith(
+                'Ürün X ile entegre olur mu?',
+                { consentToContact: true }
+            );
             expect(result).toEqual({ ok: true });
+        });
+
+        it('rejects missing explicit consent before calling persistence', async () => {
+            const flagFollowup = vi.fn();
+            const tools = buildTools({ productId: 'p1', flagFollowup });
+
+            const result = await findTool(tools, 'flag_followup_needed').handler({
+                question: 'Ürün X ile entegre olur mu?',
+                consentConfirmed: false
+            });
+
+            expect(result).toEqual({ ok: false, error: 'explicit_consent_required' });
+            expect(flagFollowup).not.toHaveBeenCalled();
         });
 
         it('falls back to { ok: false } when flagFollowup is missing', async () => {
             const tools = buildTools({ productId: 'p1' });
-            const result = await findTool(tools, 'flag_followup_needed').handler({ question: 'x' });
+            const result = await findTool(tools, 'flag_followup_needed').handler({
+                question: 'x',
+                consentConfirmed: true
+            });
             expect(result).toEqual({ ok: false });
         });
     });

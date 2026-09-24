@@ -6,6 +6,14 @@ import { isTourNavigableUrl } from '@repo/contracts';
 import { ArrowLeft, Globe, Paperclip, Trash2, Target, Info, AlertCircle, Check, GripVertical, Sparkles } from 'lucide-react';
 import { agentsApi } from '../lib/api.js';
 import { toEditorSurvey } from '../lib/playbookSurvey.js';
+import {
+    PLAYBOOK_IMPORTANCE_OPTIONS,
+    authoringFieldsForImportance,
+    buildPlaybookBehaviorPreview,
+    importanceFromPlaybookNode,
+    importanceHelp,
+    summarizePlaybookAuthoring
+} from '../lib/playbookAuthoring.js';
 
 /**
  * Hedefler (playbook) editörü — agent'ın her ziyaretçide izleyeceği genel
@@ -16,12 +24,6 @@ import { toEditorSurvey } from '../lib/playbookSurvey.js';
  * sıradaki ilk hedef olur — bkz. GET /agents/:id/playbook, "Faz sırası"
  * bölümü.
  */
-
-const MODE_OPTIONS = [
-    { value: 'situational', label: 'Duruma göre' },
-    { value: 'important', label: 'Zorunlu' },
-    { value: 'skip-if-no-answer', label: 'Cevap yoksa geç' }
-];
 
 const NODE_TYPE_OPTIONS = [
     { value: 'narrative', label: 'Anlatım' },
@@ -71,7 +73,16 @@ function actionPlaceholderIndex(actions) {
 }
 
 function emptyRow() {
-    return { id: makeRowId(), type: 'narrative', directive: '', url: null, actions: null, mode: 'situational', survey: null };
+    return {
+        id: makeRowId(),
+        type: 'narrative',
+        directive: '',
+        url: null,
+        actions: null,
+        mode: 'situational',
+        requirement: 'preferred',
+        survey: null
+    };
 }
 
 function rowText(row) {
@@ -81,14 +92,18 @@ function rowText(row) {
 /** Server nodes -> editor rows, with the first-step seed and a trailing
  *  empty row always guaranteed. */
 function rowsFromServer(nodes) {
-    const rows = (nodes || []).map((n) => ({
-        id: n.id || makeRowId(),
-        type: n.type || 'narrative',
-        directive: n.directive || '',
-        url: n.url ?? null,
-        actions: n.actions?.length ? withTrailingEmptyAction(n.actions) : null,
-        mode: n.mode || 'situational',
-        survey: n.type === 'survey' && n.survey
+    const rows = (nodes || []).map((n) => {
+        const importance = importanceFromPlaybookNode(n);
+        const authoring = authoringFieldsForImportance(importance);
+        return {
+            id: n.id || makeRowId(),
+            type: n.type || 'narrative',
+            directive: n.directive || '',
+            url: n.url ?? null,
+            actions: n.actions?.length ? withTrailingEmptyAction(n.actions) : null,
+            mode: authoring.mode,
+            requirement: authoring.requirement,
+            survey: n.type === 'survey' && n.survey
             ? toEditorSurvey(
                   n.survey,
                   n.survey.answerType === 'text'
@@ -99,7 +114,8 @@ function rowsFromServer(nodes) {
                         })))
               )
             : null
-    }));
+        };
+    });
 
     if (rows.length === 0) {
         rows.push({ ...emptyRow(), directive: 'Kullanıcıya kısaca ürünü özetle' });
@@ -386,6 +402,8 @@ export function AgentGoals() {
     }
 
     const filledRows = useMemo(() => rows.filter((r) => rowText(r).trim()), [rows]);
+    const behaviorPreview = useMemo(() => buildPlaybookBehaviorPreview(filledRows), [filledRows]);
+    const authoringSummary = useMemo(() => summarizePlaybookAuthoring(filledRows), [filledRows]);
 
     async function onGenerate() {
         setError('');
@@ -430,6 +448,7 @@ export function AgentGoals() {
                     url: r.url?.trim() || null,
                     actions: (r.actions || []).map((a) => a.trim()).filter(Boolean),
                     mode: r.mode,
+                    requirement: r.requirement,
                     survey: r.type === 'survey'
                         ? {
                               ...r.survey,
@@ -470,8 +489,8 @@ export function AgentGoals() {
             <div className="mb-6">
                 <h1 className="text-xl font-semibold text-text">Hedefler</h1>
                 <p className="mt-1 text-sm text-text-muted">
-                    Agent'ın her ziyaretçide izleyeceği genel güzergah. Sırayla ilerler, ziyaretçinin
-                    sorularına göre esner.
+                    Görüşmenin hikâyesini ve şirket hedeflerini belirleyin. Agent müşterinin açık
+                    sorusuna öncelik verir, ardından önemli hedeflere doğal biçimde geri döner.
                 </p>
             </div>
 
@@ -596,7 +615,11 @@ export function AgentGoals() {
                             {generatedDraft.nodes.map((node, index) => (
                                 <li key={node.id || index} className="flex gap-2 text-xs text-text-muted">
                                     <span className="text-brand-light">{index + 1}.</span>
-                                    <span>{node.type === 'survey' ? `Soru: ${node.survey?.question}` : node.directive}</span>
+                                    <span className="flex-1">{node.type === 'survey' ? `Soru: ${node.survey?.question}` : node.directive}</span>
+                                    <span className="rounded-full border border-border px-2 py-0.5 text-[10px]">
+                                        {PLAYBOOK_IMPORTANCE_OPTIONS.find((option) =>
+                                            option.value === importanceFromPlaybookNode(node))?.label}
+                                    </span>
                                 </li>
                             ))}
                         </ol>
@@ -607,13 +630,63 @@ export function AgentGoals() {
             <div className="mb-5 flex items-start gap-2.5 rounded-[var(--radius-input)] border border-brand/30 bg-brand/5 px-3.5 py-3">
                 <Info size={15} className="mt-0.5 shrink-0 text-brand-light" />
                 <p className="text-[13px] leading-relaxed text-text-muted">
-                    Ne anlatılacağını maddele — agent hepsini kapsayana kadar sonraki adıma geçmez.
+                    Her adımda ulaşılacak amacı yazın; konuşma metni hazırlamanız gerekmez.
                     Bir adımda ekran gösterilecekse <Globe size={12} className="inline align-[-1px]" />{' '}
                     ikonuna, ekranda bir şey yapılacaksa (tıklama, seçim, yazma — birden fazla adım
                     sırayla eklenebilir){' '}
                     <Paperclip size={12} className="inline align-[-1px]" /> ikonuna bas.
                 </p>
             </div>
+
+            <section className="mb-5 rounded-[var(--radius-card)] border border-border bg-surface p-4">
+                <div className="flex flex-wrap items-start justify-between gap-3">
+                    <div>
+                        <h2 className="text-sm font-semibold text-text">Agent bunu nasıl uygular?</h2>
+                        <p className="mt-0.5 text-xs text-text-muted">
+                            Kaydedilecek davranışın teknik terimler olmadan kısa önizlemesi.
+                        </p>
+                    </div>
+                    <div className="flex flex-wrap gap-1.5 text-[11px] text-text-muted">
+                        <span className="rounded-full bg-surface-raised px-2.5 py-1">{authoringSummary.stepCount} hedef</span>
+                        <span className="rounded-full bg-surface-raised px-2.5 py-1">{authoringSummary.screenStepCount} ekran adımı</span>
+                        <span className="rounded-full bg-surface-raised px-2.5 py-1">{authoringSummary.surveyCount} soru</span>
+                        <span className={`rounded-full px-2.5 py-1 ${authoringSummary.closingCount
+                            ? 'bg-brand/15 text-brand-light'
+                            : 'bg-amber-500/10 text-amber-400'}`}
+                        >
+                            {authoringSummary.closingCount} kapanış hedefi
+                        </span>
+                    </div>
+                </div>
+                {behaviorPreview.length > 0 ? (
+                    <ol className="mt-3 grid gap-2">
+                        {behaviorPreview.map((item) => (
+                            <li key={item.id} className="flex gap-3 rounded-[var(--radius-input)] bg-bg px-3 py-2.5">
+                                <span className="mt-0.5 text-xs font-semibold text-brand-light">{item.position}</span>
+                                <div className="min-w-0">
+                                    <div className="flex flex-wrap items-center gap-2">
+                                        <p className="truncate text-xs font-medium text-text">{item.objective}</p>
+                                        <span className="rounded-full border border-border px-2 py-0.5 text-[10px] text-text-muted">
+                                            {item.importanceLabel}
+                                        </span>
+                                    </div>
+                                    <p className="mt-1 text-[11px] leading-relaxed text-text-muted">
+                                        {item.behavior}{item.screenBehavior ? ` Ayrıca ${item.screenBehavior}.` : ''}
+                                    </p>
+                                </div>
+                            </li>
+                        ))}
+                    </ol>
+                ) : (
+                    <p className="mt-3 text-xs text-text-muted">İlk hedefi yazdığınızda davranış önizlemesi burada oluşur.</p>
+                )}
+                {behaviorPreview.length > 0 && authoringSummary.closingCount === 0 && (
+                    <p className="mt-3 text-xs text-amber-400">
+                        Henüz bağlayıcı bir kapanış hedefi yok. İletişim veya demo planlama hedefiniz varsa
+                        önemini “Kapanıştan önce tamamla” olarak seçebilirsiniz.
+                    </p>
+                )}
+            </section>
 
             <div className="flex flex-col gap-2.5">
                 {rows.map((row, index) => {
@@ -688,12 +761,15 @@ export function AgentGoals() {
                                 />
 
                                 <select
-                                    value={row.mode}
-                                    onChange={(e) => updateRow(row.id, { mode: e.target.value })}
-                                    title="Bu adımın kesintiye toleransı"
-                                    className="h-10 w-[9.5rem] shrink-0 rounded-[var(--radius-input)] border border-border bg-bg px-2 text-xs text-text outline-none focus:border-brand"
+                                    value={importanceFromPlaybookNode(row)}
+                                    onChange={(e) => updateRow(
+                                        row.id,
+                                        authoringFieldsForImportance(e.target.value)
+                                    )}
+                                    title={importanceHelp(importanceFromPlaybookNode(row))}
+                                    className="h-10 w-[12.5rem] shrink-0 rounded-[var(--radius-input)] border border-border bg-bg px-2 text-xs text-text outline-none focus:border-brand"
                                 >
-                                    {MODE_OPTIONS.map((opt) => (
+                                    {PLAYBOOK_IMPORTANCE_OPTIONS.map((opt) => (
                                         <option key={opt.value} value={opt.value}>
                                             {opt.label}
                                         </option>
@@ -745,7 +821,7 @@ export function AgentGoals() {
                                         placeholder="https://www.cyberverse.com.tr/kvkk"
                                         className="h-9 min-w-0 flex-1 rounded-[var(--radius-input)] border border-border bg-bg px-3 text-[13px] text-brand-light outline-none placeholder:text-text-muted/60 focus:border-brand"
                                     />
-                                    <span className="h-9 w-[9.5rem] shrink-0" aria-hidden="true" />
+                                    <span className="h-9 w-[12.5rem] shrink-0" aria-hidden="true" />
                                     <span className="h-9 w-10 shrink-0" aria-hidden="true" />
                                     <span className="h-9 w-10 shrink-0" aria-hidden="true" />
                                     <span className="h-9 w-10 shrink-0" aria-hidden="true" />
@@ -874,7 +950,7 @@ export function AgentGoals() {
                                                         : 'Sıradaki adım, örn. "Staff" yaz'}
                                                     className="h-9 min-w-0 flex-1 rounded-[var(--radius-input)] border border-border bg-bg px-3 text-[13px] text-text outline-none placeholder:text-text-muted/60 focus:border-brand"
                                                 />
-                                                <span className="h-9 w-[9.5rem] shrink-0" aria-hidden="true" />
+                                                <span className="h-9 w-[12.5rem] shrink-0" aria-hidden="true" />
                                                 <span className="h-9 w-10 shrink-0" aria-hidden="true" />
                                                 <span className="h-9 w-10 shrink-0" aria-hidden="true" />
                                                 {isActionPlaceholder ? (

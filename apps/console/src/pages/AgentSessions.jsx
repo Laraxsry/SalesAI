@@ -1,8 +1,11 @@
 import { useState } from 'react';
 import { useParams, useSearchParams, Link } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
-import { ArrowLeft, MessageSquare, User, Bot as BotIcon, Search } from 'lucide-react';
+import { ArrowLeft, MessageSquare, User, Bot as BotIcon, Search, GitBranch, Layers3, Wrench } from 'lucide-react';
 import { agentsApi, sessionsApi } from '../lib/api.js';
+import {
+    AnalystExplorer, DecisionSummary, RouteExplorer, TechnicalTimeline
+} from '../components/SessionDecisionExplorer.jsx';
 
 const STATUS_STYLE = {
     live: 'text-emerald-400 bg-emerald-500/10',
@@ -56,12 +59,12 @@ function TranscriptPanel({ sessionId }) {
             )}
 
             {messagesLoading && <p className="text-sm text-text-muted">Yükleniyor…</p>}
-            {!messagesLoading && messages?.length === 0 && (
+            {!messagesLoading && messages?.filter((message) => message.role !== 'system').length === 0 && (
                 <p className="text-sm text-text-muted">Henüz mesaj yok.</p>
             )}
 
             <div className="flex flex-col gap-2">
-                {messages?.map((m) => (
+                {messages?.filter((message) => message.role !== 'system').map((m) => (
                     <div
                         key={m._id}
                         className={`flex items-start gap-2 rounded-[var(--radius-input)] border border-border p-3 ${
@@ -78,6 +81,68 @@ function TranscriptPanel({ sessionId }) {
                     </div>
                 ))}
             </div>
+        </div>
+    );
+}
+
+const SESSION_TABS = [
+    { id: 'conversation', label: 'Görüşme', icon: MessageSquare },
+    { id: 'route', label: 'Karar Rotası', icon: GitBranch },
+    { id: 'analysts', label: 'Uzmanlar', icon: Layers3 },
+    { id: 'technical', label: 'Teknik Detay', icon: Wrench }
+];
+
+function SessionDetail({ sessionId }) {
+    const [activeTab, setActiveTab] = useState('conversation');
+    const [selectedRevision, setSelectedRevision] = useState(null);
+    const { data: trace, isLoading: traceLoading, error: traceError } = useQuery({
+        queryKey: ['session-decision-trace', sessionId],
+        queryFn: () => sessionsApi.decisionTrace(sessionId),
+        enabled: !!sessionId,
+        retry: false
+    });
+    const effectiveRevision = selectedRevision ?? trace?.activeRevision ?? 0;
+
+    return (
+        <div className="space-y-4">
+            <DecisionSummary trace={trace} />
+            <div className="overflow-x-auto border-b border-border">
+                <div className="flex min-w-max gap-1" role="tablist" aria-label="Oturum detayları">
+                    {SESSION_TABS.map((tab) => {
+                        const Icon = tab.icon;
+                        const active = activeTab === tab.id;
+                        return (
+                            <button
+                                key={tab.id}
+                                type="button"
+                                role="tab"
+                                aria-selected={active}
+                                onClick={() => setActiveTab(tab.id)}
+                                className={`inline-flex items-center gap-1.5 border-b-2 px-3 py-2.5 text-xs font-medium transition-colors ${active ? 'border-brand text-brand-light' : 'border-transparent text-text-muted hover:text-text'}`}
+                            >
+                                <Icon size={14} /> {tab.label}
+                            </button>
+                        );
+                    })}
+                </div>
+            </div>
+
+            {activeTab === 'conversation' && <TranscriptPanel sessionId={sessionId} />}
+            {activeTab !== 'conversation' && traceLoading && <p className="text-sm text-text-muted">Karar izi yükleniyor…</p>}
+            {activeTab !== 'conversation' && traceError && (
+                <div className="rounded-xl border border-red-400/20 bg-red-400/5 p-4 text-sm text-red-300">
+                    Karar izi yüklenemedi: {traceError.message}
+                </div>
+            )}
+            {activeTab === 'route' && trace && (
+                <RouteExplorer
+                    trace={trace}
+                    selectedRevision={effectiveRevision}
+                    onRevisionChange={setSelectedRevision}
+                />
+            )}
+            {activeTab === 'analysts' && trace && <AnalystExplorer trace={trace} />}
+            {activeTab === 'technical' && trace && <TechnicalTimeline trace={trace} />}
         </div>
     );
 }
@@ -191,7 +256,7 @@ export function AgentSessions() {
 
                 <div>
                     {selectedSessionId ? (
-                        <TranscriptPanel sessionId={selectedSessionId} />
+                        <SessionDetail key={selectedSessionId} sessionId={selectedSessionId} />
                     ) : (
                         <div className="flex h-full flex-col items-center justify-center rounded-[var(--radius-card)] border border-dashed border-border py-16 text-center">
                             <MessageSquare size={24} className="mb-3 text-text-muted" />

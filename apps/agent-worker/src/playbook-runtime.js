@@ -115,6 +115,7 @@ import { buildSurveyAcknowledgementInstructions, wrapDirective } from '@repo/age
 export function createPlaybookRuntime({
     cursor,
     screen,
+    prepareNode = null,
     survey = { show: () => {}, hide: () => {} },
     speak,
     languageDisplay = null,
@@ -132,6 +133,7 @@ export function createPlaybookRuntime({
     let pendingPoke = false;
     let generation = 0;
     let completedFlag = false;
+    let routePaused = false;
     /** The node `pump()` is currently (or was most recently) dispatching —
      *  see the P0 note above. Fixed the instant a node is picked up, and
      *  only ever changed by `pump()` itself when it moves to a genuinely
@@ -214,6 +216,16 @@ export function createPlaybookRuntime({
     const emptyRetries = new Map();
     const EMPTY_RETRY_CAP = 2;
 
+    /** Node id -> weighted count of real on-screen actions observed while that
+     *  node was active (see signal('action_performed') below). A node whose
+     *  directive lists `actions` (e.g. "click Add", "fill the name field")
+     *  can pass `hasSpoken()` by narrating what it's ABOUT to do without ever
+     *  calling the matching browser tool — the model describes the steps
+     *  instead of performing them. This is what lets 'silence' tell those
+     *  two cases apart instead of treating a purely descriptive turn the
+     *  same as a completed one. */
+    const actionSignals = new Map();
+
     /** Requests one more real attempt at the given (already-`delivered`,
      *  never-actually-spoken) node instead of accepting the empty turn as
      *  final. Returns false once the per-node budget is spent, so the caller
@@ -229,7 +241,8 @@ export function createPlaybookRuntime({
     }
 
     async function pump() {
-        if (stopped || dispatching) {
+        if (stopped || routePaused) return;
+        if (dispatching) {
             pendingPoke = true;
             return;
         }
@@ -239,8 +252,11 @@ export function createPlaybookRuntime({
             const node = cursor.current();
             if (!node) {
                 if (!completedFlag) {
+                    if (onCompleted() === false) {
+                        routePaused = true;
+                        return;
+                    }
                     completedFlag = true;
-                    onCompleted();
                 }
                 return;
             }
@@ -292,6 +308,23 @@ export function createPlaybookRuntime({
                 if (stopped || generation !== epoch) return;
                 lastShownUrl = null;
                 screenVisible = false;
+            }
+
+            // A route-specific presentation port can prepare a grounded demo
+            // after the preceding answer has finished, before narrating it.
+            if (prepareNode && node.dynamicNode) {
+                const preparation = await prepareNode(node);
+                if (stopped || generation !== epoch) return;
+                if (preparation?.ok === false) {
+                    onNodeEvent(node, 'failed', {
+                        url: node.url, error: preparation.error, screenVisible: false
+                    });
+                    cursor.satisfy(node.id, 'failed');
+                    onNodeEvent(node, 'deferred', { reason: preparation.error });
+                    cursor.advance();
+                    pendingPoke = true;
+                    return;
+                }
             }
 
             // Survey presentation is a UI side effect, kept behind its own
@@ -373,12 +406,78 @@ export function createPlaybookRuntime({
             pump();
         },
 
+        /** Accept a new route without cutting off the customer's current
+         * answer. Late tool/advance signals from the old turn are ignored. */
+        reviseRoute(nodes, { waitForAnswer = false } = {}) {
+            if (stopped || completedFlag || typeof cursor.replace !== 'function') return false;
+            cursor.replace(nodes);
+            if (activeNode?.type === 'survey') survey.hide(activeNode);
+            activeNode = null;
+            activeHandle = null;
+            generation += 1;
+            routePaused = waitForAnswer;
+            delivered.clear();
+            redelivered.clear();
+            interruptedIds.clear();
+            interruptedText.clear();
+            pendingRedeliver.clear();
+            actionSignals.clear();
+            pendingSurveyAnswer = null;
+            if (dispatching) pendingPoke = true;
+            else if (!routePaused) pump();
+            return true;
+        },
+
+        pauseRoute() {
+            if (stopped || completedFlag) return false;
+            routePaused = true;
+            generation += 1;
+            if (activeNode) delivered.delete(activeNode.id);
+            activeNode = null;
+            activeHandle = null;
+            return true;
+        },
+
+        resumeRoute() {
+            if (stopped || !routePaused) return false;
+            routePaused = false;
+            pendingPoke = false;
+            if (dispatching) pendingPoke = true;
+            else pump();
+            return true;
+        },
+
+        /** A separate customer-answer turn already covered the first route
+         * node while this runtime was held; never narrate it a second time. */
+        acknowledgeHeldNode(nodeId) {
+            if (!routePaused || cursor.current()?.id !== nodeId) return false;
+            if (!cursor.satisfy(nodeId, 'answered')) return false;
+            cursor.advance();
+            return true;
+        },
+
         /**
-         * @param {'tool'|'advance_step'|'silence'|'answered'|'followup_suppressed'|'survey_answer'} kind
+         * @param {'tool'|'advance_step'|'silence'|'answered'|'followup_suppressed'|'survey_answer'|'action_performed'} kind
          * @param {object} [meta]
          */
         signal(kind, meta) {
-            if (stopped) return;
+            if (stopped || routePaused) return;
+
+            // Pure bookkeeping, not a progress signal: records that a real
+            // browser tool call (click/fill/etc.) completed while `activeNode`
+            // was on screen, so the 'silence' path below can tell "narrated
+            // the steps" apart from "actually did them". Deliberately does
+            // NOT touch the cursor or `delivered` — unlike 'tool', it must
+            // never by itself close or advance a node (a single early click
+            // closing a 5-step node the moment the first step lands would be
+            // worse than today's behavior, not better).
+            if (kind === 'action_performed') {
+                if (!activeNode) return;
+                const weight = typeof meta?.weight === 'number' && meta.weight > 0 ? meta.weight : 1;
+                actionSignals.set(activeNode.id, (actionSignals.get(activeNode.id) ?? 0) + weight);
+                return;
+            }
+
             // 'tool'/'advance_step' close out whatever node's turn most
             // recently opened — resolved against the fixed `activeNode`,
             // not the cursor's live position (see the P0 note atop this
@@ -489,6 +588,41 @@ export function createPlaybookRuntime({
             if (kind === 'silence' && !hasSpoken() && !interruptedIds.has(node.id)) {
                 if (requestEmptyRetry(node)) {
                     onSignalIgnored(node, kind, 'nothing_spoken');
+                    return;
+                }
+                onSignalIgnored(node, kind, 'empty_retry_cap_reached');
+                // fall through — close anyway, content loss accepted
+            }
+
+            // *** WHY 'silence' ALSO REQUIRES listed on-screen actions to be attempted ***
+            // Live-observed (asset-group demo, 17.09.2026): a node listing 5
+            // on-screen steps (click Add, pick a category, fill two fields,
+            // submit) got ONE real browser_click, then the model narrated a
+            // single summary sentence describing all 5 steps in future tense
+            // ("you fill these in and press Add") without calling the other
+            // four tools, then stopped talking. `hasSpoken()` above is true —
+            // it DID narrate — so without this check the node closed exactly
+            // like a fully-completed one, leaving the form on screen empty.
+            // Gated on `actionSignals` (see signal('action_performed')) being
+            // short of `node.actions.length`. Loose (a total count, not a
+            // 1:1 per-step match) on purpose: a single browser_fill_form call
+            // can legitimately satisfy several listed steps at once, and this
+            // only needs to catch "described but never touched", not verify
+            // every step landed on the exact right element. Shares the same
+            // retry budget as the P2 check above — same underlying failure
+            // ("this node isn't actually done"), just caught by counting
+            // actions instead of counting words. Excludes `interruptedIds`
+            // for the same reason P2 does: an interrupted node already has
+            // its own, older, deliberately different handling.
+            const actionsRequired = Array.isArray(node.actions) ? node.actions.length : 0;
+            if (
+                kind === 'silence'
+                && actionsRequired > 0
+                && !interruptedIds.has(node.id)
+                && (actionSignals.get(node.id) ?? 0) < actionsRequired
+            ) {
+                if (requestEmptyRetry(node)) {
+                    onSignalIgnored(node, kind, 'actions_incomplete');
                     return;
                 }
                 onSignalIgnored(node, kind, 'empty_retry_cap_reached');

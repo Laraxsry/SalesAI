@@ -1,12 +1,22 @@
 import { Router } from 'express';
 import { validate } from '@repo/validation';
-import { ProductInput, ProductUpdateInput } from '@repo/contracts';
+import {
+    ProductInput,
+    ProductUpdateInput,
+    ProductDiscoveryInput,
+    ProductEngagementSettingsInput
+} from '@repo/contracts';
 import { Product, Membership, Agent, ShareLink, Session, KnowledgeSource } from '@repo/database';
 import { requireAuth } from '@repo/auth';
-import { requirePermission } from '@repo/access';
+import { requirePermission, can } from '@repo/access';
 import { resolveTenant, resolveMember } from '../middleware/tenant.js';
 import { encryptField, decryptField } from '@repo/utils';
 import { enqueueIngestion } from '../lib/ingestion.js';
+import { compileProductDiscovery, projectProductDiscovery } from '../lib/product-discovery.js';
+import {
+    compileProductEngagementSettings,
+    projectProductEngagementSettings
+} from '../lib/product-engagement.js';
 
 export const productsRouter = Router();
 
@@ -183,6 +193,8 @@ productsRouter.get('/:id', requireAuth, async (req, res, next) => {
             description: product.description,
             websiteUrl: product.websiteUrl,
             tourAllowedDomains: product.tourAllowedDomains,
+            discovery: projectProductDiscovery(product.adaptiveSurvey),
+            engagementSettings: projectProductEngagementSettings(product.engagementSettings),
             demoSession: product.demoSession ? JSON.parse(decryptField(product.demoSession)) : undefined,
             createdAt: product.createdAt
         });
@@ -228,6 +240,55 @@ productsRouter.get('/', requireAuth, async (req, res, next) => {
         next(err);
     }
 });
+
+/** Authoring-only update: no arbitrary policy JSON crosses this boundary. */
+productsRouter.patch('/:id/discovery', requireAuth, validate({ body: ProductDiscoveryInput }), async (req, res, next) => {
+    try {
+        const product = await Product.findById(req.params.id);
+        if (!product) return res.status(404).json({ error: 'Product not found' });
+        const membership = await Membership.findOne({
+            workspaceId: product.workspaceId, userId: req.user.sub
+        });
+        if (!membership || !can(membership.role, 'product:update')) {
+            return res.status(403).json({ error: 'Forbidden', required: 'product:update' });
+        }
+        const compiled = compileProductDiscovery(req.body);
+        await Product.updateOne({ _id: product._id }, { $set: { adaptiveSurvey: compiled } });
+        return res.json({ discovery: projectProductDiscovery(compiled) });
+    } catch (err) {
+        next(err);
+    }
+});
+
+/** Product-owned multi-agent and sales-outcome controls; env remains kill-switch. */
+productsRouter.patch(
+    '/:id/engagement',
+    requireAuth,
+    validate({ body: ProductEngagementSettingsInput }),
+    async (req, res, next) => {
+        try {
+            const product = await Product.findById(req.params.id);
+            if (!product) return res.status(404).json({ error: 'Product not found' });
+            const membership = await Membership.findOne({
+                workspaceId: product.workspaceId,
+                userId: req.user.sub
+            });
+            if (!membership || !can(membership.role, 'product:update')) {
+                return res.status(403).json({ error: 'Forbidden', required: 'product:update' });
+            }
+            const compiled = compileProductEngagementSettings(req.body);
+            await Product.updateOne(
+                { _id: product._id },
+                { $set: { engagementSettings: compiled } }
+            );
+            return res.json({
+                engagementSettings: projectProductEngagementSettings(compiled)
+            });
+        } catch (err) {
+            next(err);
+        }
+    }
+);
 
 /**
  * PATCH /products/:id

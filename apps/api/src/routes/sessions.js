@@ -1,14 +1,38 @@
 import { Router } from 'express';
 import { validate } from '@repo/validation';
 import { CreateSessionInput } from '@repo/contracts';
-import { Session, Message } from '@repo/database';
+import { Session, Message, SessionEvent, Agent, Product, Membership } from '@repo/database';
 import { requireAuth } from '@repo/auth';
 import { enqueue, QUEUES } from '@repo/queue';
 import { resolveShareLink, mintSession } from '../services/share-link-sessions.js';
 import { requestTimeout } from '../middleware/request-timeout.js';
 import { lightPublicRateLimit } from '../middleware/public-rate-limits.js';
+import { projectSessionDecisionTrace } from '../services/session-decision-trace.js';
 
 export const sessionsRouter = Router();
+
+async function loadAuthorizedSession(sessionId, req) {
+    const session = await Session.findById(sessionId).lean();
+    if (!session) return { status: 404, error: 'Session not found' };
+    const agent = await Agent.findById(session.agentId).select('productId').lean();
+    const product = agent
+        ? await Product.findById(agent.productId).select('workspaceId').lean()
+        : null;
+    if (!product) return { status: 404, error: 'Session owner not found' };
+
+    if (req.authType === 'api-key') {
+        if (String(req.user?.workspaceId) !== String(product.workspaceId)) {
+            return { status: 403, error: 'Forbidden' };
+        }
+    } else {
+        const membership = await Membership.findOne({
+            workspaceId: product.workspaceId,
+            userId: req.user?.sub
+        }).select('_id').lean();
+        if (!membership) return { status: 403, error: 'Forbidden' };
+    }
+    return { session };
+}
 
 /**
  * Public: a customer opens a share link -> we create a room + LiveKit token.
@@ -196,6 +220,30 @@ sessionsRouter.get('/search', requireAuth, async (req, res, next) => {
 });
 
 /**
+ * Safe, read-only projection of route decisions and specialist outcomes.
+ * Raw transcript, model reasoning, tool arguments and form values are never
+ * returned by this endpoint.
+ */
+sessionsRouter.get('/:id/decision-trace', requireAuth, async (req, res, next) => {
+    try {
+        if (!req.params.id.match(/^[0-9a-fA-F]{24}$/)) {
+            return res.status(404).json({ error: 'Session not found' });
+        }
+        const authorization = await loadAuthorizedSession(req.params.id, req);
+        if (!authorization.session) {
+            return res.status(authorization.status).json({ error: authorization.error });
+        }
+        const events = await SessionEvent.find({ sessionId: authorization.session._id })
+            .sort({ seq: 1 })
+            .select('type seq t at durationMs meta')
+            .lean();
+        res.json(projectSessionDecisionTrace(events));
+    } catch (err) {
+        next(err);
+    }
+});
+
+/**
  * DELETE /sessions/:id
  * Cascade-deletes a session and all its messages (GDPR / data cleanup).
  * Returns 409 if the session is currently live.
@@ -248,5 +296,4 @@ sessionsRouter.get('/:id/summary', requireAuth, async (req, res, next) => {
         next(err);
     }
 });
-
 

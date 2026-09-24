@@ -142,6 +142,149 @@ describe('createPlaybookRuntime — order and isolation', () => {
     });
 });
 
+describe('createPlaybookRuntime — accepted route revision', () => {
+    it('lets the current speech finish, then narrates the revised first node', async () => {
+        const h = makeHarness();
+        const cursor = createPlaybookCursor([node('old', 1), node('close', 2)]);
+        const runtime = createPlaybookRuntime({ cursor, screen: h.screen, speak: h.speak });
+        runtime.start();
+        await flush();
+        expect(runtime.reviseRoute([node('answer', 1), node('close', 2)])).toBe(true);
+        runtime.signal('advance_step'); // late tool from the old speech
+        expect(cursor.current()?.id).toBe('answer');
+        expect(h.speak).toHaveBeenCalledTimes(1);
+        await h.finishSpeaking();
+        expect(h.speak).toHaveBeenCalledTimes(2);
+        expect(h.speak.mock.calls[1][0]).toContain('TOPIC_answer');
+        expect(cursor.current()?.id).toBe('answer');
+    });
+
+    it('rejects revision after the runtime stops', async () => {
+        const h = makeHarness();
+        const runtime = createPlaybookRuntime({
+            cursor: createPlaybookCursor([node('old', 1)]),
+            screen: h.screen, speak: h.speak
+        });
+        runtime.stop();
+        expect(runtime.reviseRoute([node('answer', 1)])).toBe(false);
+    });
+
+    it('prepares a revised demo before narrating it', async () => {
+        const h = makeHarness();
+        const prepareNode = vi.fn(async (step) => {
+            h.log.push(`prepare:${step.id}`);
+            return { ok: true };
+        });
+        const runtime = createPlaybookRuntime({
+            cursor: createPlaybookCursor([node('old', 1)]),
+            screen: h.screen, speak: h.speak, prepareNode
+        });
+        runtime.start();
+        await flush();
+        runtime.reviseRoute([node('demo', 1, {
+            url: 'https://example.test/demo', dynamicNode: { type: 'demo' }
+        })]);
+        await h.finishSpeaking();
+        expect(h.log.slice(-3)).toEqual([
+            'showUrl:https://example.test/demo',
+            'prepare:demo',
+            expect.stringContaining('speak:')
+        ]);
+    });
+
+    it('defers a failed dynamic demo without claiming it was narrated', async () => {
+        const h = makeHarness();
+        const onNodeEvent = vi.fn();
+        const runtime = createPlaybookRuntime({
+            cursor: createPlaybookCursor([node('demo', 1, {
+                dynamicNode: { type: 'demo' }
+            }), node('check', 2)]),
+            screen: h.screen, speak: h.speak,
+            prepareNode: async () => ({ ok: false, error: 'target_missing' }),
+            onNodeEvent
+        });
+        runtime.start();
+        await flush();
+        expect(h.speak).toHaveBeenCalledTimes(1);
+        expect(h.speak.mock.calls[0][0]).toContain('TOPIC_check');
+        expect(onNodeEvent.mock.calls.map((call) => [call[0].id, call[1]]))
+            .toEqual([['demo', 'failed'], ['demo', 'deferred'], ['check', 'enter']]);
+    });
+
+    it('holds a revised route until the customer answer finishes', async () => {
+        const h = makeHarness();
+        const cursor = createPlaybookCursor([node('old', 1)]);
+        const runtime = createPlaybookRuntime({ cursor, screen: h.screen, speak: h.speak });
+        runtime.start();
+        await flush();
+        runtime.reviseRoute([node('answer', 1)], { waitForAnswer: true });
+        await h.finishSpeaking();
+        expect(h.speak).toHaveBeenCalledTimes(1);
+        runtime.signal('silence');
+        expect(cursor.current()?.id).toBe('answer');
+        expect(runtime.resumeRoute()).toBe(true);
+        await flush();
+        expect(h.speak.mock.calls[1][0]).toContain('TOPIC_answer');
+    });
+
+    it('does not repeat an answer already spoken in the customer turn', async () => {
+        const h = makeHarness();
+        const cursor = createPlaybookCursor([node('old', 1)]);
+        const runtime = createPlaybookRuntime({ cursor, screen: h.screen, speak: h.speak });
+        runtime.start();
+        await flush();
+        runtime.reviseRoute([node('answer', 1), node('check', 2)], { waitForAnswer: true });
+        await h.finishSpeaking();
+        expect(runtime.acknowledgeHeldNode('answer')).toBe(true);
+        expect(runtime.acknowledgeHeldNode('answer')).toBe(false);
+        runtime.resumeRoute();
+        await flush();
+        expect(h.speak.mock.calls[1][0]).toContain('TOPIC_check');
+        expect(cursor.isSatisfied('answer')).toBe(true);
+    });
+
+    it('pauses a dynamic route during customer speech and resumes its node once', async () => {
+        const h = makeHarness();
+        const runtime = createPlaybookRuntime({
+            cursor: createPlaybookCursor([node('answer', 1)]),
+            screen: h.screen, speak: h.speak
+        });
+        runtime.start();
+        await flush();
+        expect(runtime.pauseRoute()).toBe(true);
+        await h.finishSpeaking();
+        expect(h.speak).toHaveBeenCalledTimes(1);
+        runtime.resumeRoute();
+        await flush();
+        expect(h.speak).toHaveBeenCalledTimes(2);
+    });
+
+    it('keeps the route open when mandatory completion is blocked', async () => {
+        const h = makeHarness();
+        const onCompleted = vi.fn().mockReturnValueOnce(false).mockReturnValue(true);
+        const runtime = createPlaybookRuntime({
+            cursor: createPlaybookCursor([node('check', 1)]),
+            screen: h.screen, speak: h.speak, onCompleted
+        });
+        runtime.start();
+        await flush();
+        h.markSpoken();
+        await h.finishSpeaking();
+        runtime.signal('advance_step');
+        await flush();
+        expect(runtime.completed).toBe(false);
+        expect(onCompleted).toHaveBeenCalledTimes(1);
+        expect(runtime.reviseRoute([node('close', 1)])).toBe(true);
+        await flush();
+        h.markSpoken();
+        await h.finishSpeaking();
+        runtime.signal('advance_step');
+        await flush();
+        expect(runtime.completed).toBe(true);
+        expect(onCompleted).toHaveBeenCalledTimes(2);
+    });
+});
+
 describe('createPlaybookRuntime — advancing', () => {
     it('advances to the next node on advance_step, after playout finishes', async () => {
         const h = makeHarness();
@@ -1045,6 +1188,136 @@ describe('createPlaybookRuntime — P2: followup_suppressed redelivers the same 
         await h.finishSpeaking();
         runtime.signal('silence'); // attempt 3 — cap exceeded, closes
         await flush();
+
+        expect(cursor.current()?.id).toBe('b');
+    });
+});
+
+describe('createPlaybookRuntime — silence requires listed on-screen actions to actually happen', () => {
+    // Live-observed (asset-group demo, 17.09.2026): a node listing 5 on-screen
+    // steps got one real click, then the model narrated a single summary
+    // sentence describing the rest ("you fill these in and press Add")
+    // without ever calling the matching tools, then stopped talking. It HAD
+    // spoken, so the pre-existing P2 hasSpoken() check alone let it close as
+    // if fully done, leaving the form empty. `action_performed` (fired by
+    // agent.js's browser.perform wrapper on a real tool success) is how the
+    // runtime tells "narrated" apart from "actually did it".
+
+    it('retries a spoken node whose actions were only narrated, not performed', async () => {
+        const h = makeHarness();
+        const cursor = createPlaybookCursor([
+            node('a', 1, { actions: ['Add\'e tıkla', 'Category seç', 'İsmi doldur'] })
+        ]);
+        const onSignalIgnored = vi.fn();
+        const runtime = createPlaybookRuntime({ cursor, screen: h.screen, speak: h.speak, onSignalIgnored });
+
+        runtime.start();
+        await flush();
+        h.markSpoken();
+        await h.finishSpeaking();
+        runtime.signal('silence'); // spoke, but zero action_performed signals
+        await flush();
+
+        expect(onSignalIgnored).toHaveBeenCalledWith(
+            expect.objectContaining({ id: 'a' }),
+            'silence',
+            'actions_incomplete'
+        );
+        expect(cursor.current()?.id).toBe('a'); // still stuck on a, not advanced
+        expect(h.speak).toHaveBeenCalledTimes(2); // original + one forced retry
+    });
+
+    it('closes normally once enough real actions were observed', async () => {
+        const h = makeHarness();
+        const cursor = createPlaybookCursor([
+            node('a', 1, { actions: ['Add\'e tıkla', 'Category seç', 'İsmi doldur'] }),
+            node('b', 2)
+        ]);
+        const runtime = createPlaybookRuntime({ cursor, screen: h.screen, speak: h.speak });
+
+        runtime.start();
+        await flush();
+        h.markSpoken();
+        runtime.signal('action_performed'); // weight 1 (click)
+        runtime.signal('action_performed'); // weight 1 (click)
+        runtime.signal('action_performed'); // weight 1 (fill)
+        await h.finishSpeaking();
+        runtime.signal('silence');
+        await flush();
+
+        expect(cursor.current()?.id).toBe('b');
+        expect(h.speak).toHaveBeenCalledTimes(2); // a once, then b — no retry
+    });
+
+    it('a single higher-weight signal (e.g. one fill_form call for several fields) can satisfy multiple listed steps at once', async () => {
+        const h = makeHarness();
+        const cursor = createPlaybookCursor([
+            node('a', 1, { actions: ['Category seç', 'İsmi doldur', 'Sırayı doldur'] }),
+            node('b', 2)
+        ]);
+        const runtime = createPlaybookRuntime({ cursor, screen: h.screen, speak: h.speak });
+
+        runtime.start();
+        await flush();
+        h.markSpoken();
+        runtime.signal('action_performed', { weight: 3 }); // one fill_form call, 3 elements
+        await h.finishSpeaking();
+        runtime.signal('silence');
+        await flush();
+
+        expect(cursor.current()?.id).toBe('b');
+    });
+
+    it('does not gate a node with no listed actions', async () => {
+        const h = makeHarness();
+        const cursor = createPlaybookCursor([node('a', 1), node('b', 2)]);
+        const runtime = createPlaybookRuntime({ cursor, screen: h.screen, speak: h.speak });
+
+        runtime.start();
+        await flush();
+        h.markSpoken();
+        await h.finishSpeaking();
+        runtime.signal('silence'); // no actions on this node — must close immediately
+        await flush();
+
+        expect(cursor.current()?.id).toBe('b');
+    });
+
+    it('never lets action_performed alone close or advance a node', async () => {
+        // Pure bookkeeping — a single early click must not satisfy a 3-step
+        // node before the rest has even been attempted.
+        const h = makeHarness();
+        const cursor = createPlaybookCursor([
+            node('a', 1, { actions: ['1', '2', '3'] }),
+            node('b', 2)
+        ]);
+        const runtime = createPlaybookRuntime({ cursor, screen: h.screen, speak: h.speak });
+
+        runtime.start();
+        await flush();
+        runtime.signal('action_performed');
+        await flush();
+
+        expect(cursor.current()?.id).toBe('a');
+        expect(h.speak).toHaveBeenCalledTimes(1);
+    });
+
+    it('eventually accepts content loss once the retry budget is spent, instead of stalling forever', async () => {
+        const h = makeHarness();
+        const cursor = createPlaybookCursor([
+            node('a', 1, { actions: ['1', '2'] }),
+            node('b', 2)
+        ]);
+        const runtime = createPlaybookRuntime({ cursor, screen: h.screen, speak: h.speak });
+
+        runtime.start();
+        await flush();
+        for (let i = 0; i < 3; i += 1) {
+            h.markSpoken();
+            await h.finishSpeaking();
+            runtime.signal('silence'); // retries twice, then closes on the 3rd
+            await flush();
+        }
 
         expect(cursor.current()?.id).toBe('b');
     });

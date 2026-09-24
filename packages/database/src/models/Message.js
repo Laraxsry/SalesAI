@@ -5,6 +5,8 @@ const MessageSchema = new Schema(
         // voice sessions: sessionId is set; text chat: agentId is set directly
         sessionId: { type: Schema.Types.ObjectId, ref: 'Session', index: true },
         agentId:   { type: Schema.Types.ObjectId, ref: 'Agent',   index: true },
+        participantId: { type: String, index: true },
+        speakerIdentity: { type: String },
         /** 'voice' = LiveKit realtime session, 'text' = REST chat endpoint */
         channel: { type: String, enum: ['voice', 'text'], default: 'voice' },
         role: { type: String, enum: ['user', 'assistant', 'tool', 'system'], required: true },

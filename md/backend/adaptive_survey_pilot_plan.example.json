@@ -1,0 +1,26 @@
+{
+  "phase": "bootstrap",
+  "sessionId": "example-session-7",
+  "agentId": "example-agent",
+  "productId": "example-product",
+  "maxParticipants": 1,
+  "productAdaptiveSurvey": {
+    "enabled": true,
+    "policy": { "enabled": true },
+    "fields": [
+      {
+        "key": "company.industry",
+        "importance": "recommended",
+        "affects": ["demo_route"],
+        "preferredInput": "single_select"
+      }
+    ]
+  },
+  "dynamicRollout": {
+    "mode": "canary",
+    "canaryPercent": 5
+  },
+  "survey": {
+    "enabled": true
+  }
+}

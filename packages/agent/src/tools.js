@@ -1,4 +1,20 @@
 import { retrieve } from '@repo/rag';
+import {
+    createKnowledgeResolver,
+    knowledgeResolutionToToolResult
+} from './knowledge-resolution.js';
+
+/** Shared retrieval adapter for tool calls and customer-triggered replanning. */
+export function createProductKnowledgeResolver() {
+    return createKnowledgeResolver({
+        retrieveChunks: ({ productId, query, topK, preferredAudience }) => retrieve({
+            productId,
+            query,
+            topK,
+            ...(preferredAudience === 'technical' && { preferredAudience })
+        })
+    });
+}
 
 /** Bound on how many find_page candidates are returned per call — keeps the tool result small/scannable for the model. */
 const MAX_FIND_PAGE_CANDIDATES = 5;
@@ -190,7 +206,7 @@ function searchSiteElements(siteMap, query, elementKey) {
  * moves the floor to the next visitor with a raised hand, which is meaningless
  * (and a passivity trap, like `advance_step`) in a 1-on-1 call.
  *
- * @param {{ productId:string, tour?:object, screen?:object, stopScreenShare?:Function, saveContactInfo?:Function, advanceStep?:Function, siteMap?:object[], playbookActive?:boolean, multiParticipant?:boolean, expectResponse?:Function, nextParticipant?:Function, flagFollowup?:Function }} ctx
+ * @param {{ productId:string, tour?:object, screen?:object, stopScreenShare?:Function, saveContactInfo?:Function, saveMeeting?:Function, advanceStep?:Function, siteMap?:object[], playbookActive?:boolean, multiParticipant?:boolean, expectResponse?:Function, nextParticipant?:Function, flagFollowup?:Function, knowledgeResolver?:object, onKnowledgeResolved?:Function }} ctx
  */
 export function buildTools({
     productId,
@@ -198,6 +214,7 @@ export function buildTools({
     screen,
     stopScreenShare,
     saveContactInfo,
+    saveMeeting,
     advanceStep,
     siteMap = [],
     playbookActive = false,
@@ -205,8 +222,14 @@ export function buildTools({
     expectResponse,
     nextParticipant,
     flagFollowup,
-    browser
+    browser,
+    knowledgeResolver,
+    onKnowledgeResolved,
+    proposeSurvey,
+    surveyFieldKeys = []
 }) {
+    const resolver = knowledgeResolver ?? createProductKnowledgeResolver();
+
     const tools = [
         {
             name: 'search_knowledge',
@@ -221,7 +244,15 @@ export function buildTools({
                 required: ['query']
             },
             handler: async ({ query, topK = 8 }) => {
-                const chunks = await retrieve({ productId, query, topK });
+                const resolution = await resolver.resolve({ productId, query, topK });
+                try {
+                    onKnowledgeResolved?.(resolution);
+                } catch {
+                    // Observability cannot change a customer-facing lookup.
+                }
+                if (resolution.status === 'unavailable') {
+                    throw resolution.cause ?? new Error('knowledge retrieval unavailable');
+                }
                 // `pageUrl` (from a url/api crawl segment's metadata) is the
                 // single most reliable "where do I show this" signal we
                 // have — real DB testing found nav-link labels are often
@@ -234,26 +265,7 @@ export function buildTools({
                 // when absent — e.g. topic-doc-sourced chunks have no single
                 // source page — so the model isn't tempted to navigate_to
                 // "undefined".
-                return chunks.map((c) => ({
-                    text: c.text,
-                    score: c.score,
-                    sourceId: c.sourceId,
-                    ...(c.metadata?.pageUrl && { pageUrl: c.metadata.pageUrl }),
-                    // Set when this chunk came from a same-page tab/panel
-                    // variant (see discoverTabVariants in worker-ingestion) —
-                    // real testing found a page can have its default-shown
-                    // tab reported as "content not visible" by read_tour_screen
-                    // even though search_knowledge just found this exact fact
-                    // on that page, because it's actually behind a DIFFERENT
-                    // tab than whichever one happened to be showing. Omitted
-                    // (not `tabLabel: undefined`) when the chunk isn't
-                    // tab-scoped, same convention as `pageUrl` above.
-                    ...(c.metadata?.tabLabel && { tabLabel: c.metadata.tabLabel }),
-                    ...(c.metadata?.elementKey && { elementKey: c.metadata.elementKey }),
-                    ...(c.metadata?.elementPath && { elementPath: c.metadata.elementPath }),
-                    ...(c.metadata?.elementType && { elementType: c.metadata.elementType }),
-                    ...(c.metadata?.heading && { heading: c.metadata.heading })
-                }));
+                return knowledgeResolutionToToolResult(resolution);
             }
         },
         {
@@ -389,16 +401,32 @@ export function buildTools({
         {
             name: 'save_contact_info',
             description:
-                'Save a confirmed piece of contact info (name, email, or phone). Call this ONLY after reading the value back out loud to the visitor and receiving their explicit confirmation that it is correct — never before. Call once per field, right after it is confirmed.',
+                'Save a confirmed piece of contact info (name, email, phone, or company). Call this ONLY after reading the value back out loud to the visitor and receiving their explicit confirmation that it is correct — never before. Call once per field, right after it is confirmed.',
             parameters: {
                 type: 'object',
                 properties: {
-                    field: { type: 'string', enum: ['name', 'email', 'phone'] },
+                    field: { type: 'string', enum: ['name', 'email', 'phone', 'company'] },
                     value: { type: 'string' }
                 },
                 required: ['field', 'value']
             },
             handler: async ({ field, value }) => saveContactInfo?.(field, value) ?? { ok: false }
+        },
+        {
+            name: 'save_meeting',
+            description:
+                'Save a follow-up meeting only after the visitor explicitly confirms the exact date, time, timezone, duration, and attendees. startsAt must be an ISO datetime with offset. Never guess a missing value.',
+            parameters: {
+                type: 'object',
+                properties: {
+                    startsAt: { type: 'string', description: 'Confirmed ISO datetime with UTC offset.' },
+                    timezone: { type: 'string', description: 'Confirmed IANA timezone, e.g. Europe/Brussels.' },
+                    durationMinutes: { type: 'number', minimum: 5, maximum: 480 },
+                    originalPhrase: { type: 'string', description: 'The visitor\'s original scheduling phrase.' }
+                },
+                required: ['startsAt', 'timezone', 'durationMinutes', 'originalPhrase']
+            },
+            handler: async (input) => saveMeeting?.(input) ?? { ok: false }
         },
         {
             name: 'expect_response',
@@ -414,13 +442,30 @@ export function buildTools({
             parameters: {
                 type: 'object',
                 properties: {
-                    question: { type: 'string' }
+                    question: { type: 'string' },
+                    consentConfirmed: {
+                        type: 'boolean',
+                        description: 'True only after the visitor explicitly agreed to have this unanswered question forwarded.'
+                    }
                 },
-                required: ['question']
+                required: ['question', 'consentConfirmed']
             },
-            handler: async ({ question }) => flagFollowup?.(question) ?? { ok: false }
+            handler: async ({ question, consentConfirmed }) => {
+                if (consentConfirmed !== true) {
+                    return { ok: false, error: 'explicit_consent_required' };
+                }
+                return flagFollowup?.(question, { consentToContact: true }) ?? { ok: false };
+            }
         }
     ];
+
+    // Do not advertise scheduling when the product/runtime did not grant the
+    // capability; a visible no-op tool invites the model to promise outcomes
+    // it cannot persist.
+    if (!saveMeeting) {
+        const index = tools.findIndex((entry) => entry.name === 'save_meeting');
+        if (index >= 0) tools.splice(index, 1);
+    }
 
     if (browser) {
         const replaced = new Set(['find_element', 'highlight', 'click_element', 'scroll_page']);
@@ -538,6 +583,33 @@ export function buildTools({
                 "Group session only. Call this ONCE you have fully answered whoever currently has the floor AND they have confirmed they have nothing else — it hands the floor to the next visitor who raised their hand and returns their name (or {next:null} if nobody is waiting). NEVER call it while the current person still has questions, or while others are actively discussing the current topic.",
             parameters: { type: 'object', properties: {} },
             handler: async () => nextParticipant?.() ?? { ok: false }
+        });
+    }
+
+    if (typeof proposeSurvey === 'function' && surveyFieldKeys.length > 0) {
+        tools.push({
+            name: 'propose_discovery_survey',
+            description: `Optional, non-blocking in-call discovery question. Only propose after answering the visitor's current question; the question appears after your spoken answer finishes if policy permits. Never claim it was shown until confirmed. Allowed field keys: ${surveyFieldKeys.join(', ')}. Use only when the answer materially changes the demo or conversation path; do not ask for secrets or contact details.`,
+            parameters: {
+                type: 'object',
+                properties: {
+                    questionKey: { type: 'string', enum: surveyFieldKeys },
+                    purpose: { type: 'string', enum: ['qualification', 'personalization', 'pricing_context', 'demo_routing'] },
+                    question: { type: 'string' },
+                    reason: { type: 'string' },
+                    answerType: { type: 'string', enum: ['single_select', 'multi_select', 'short_text', 'number'] },
+                    options: {
+                        type: 'array',
+                        items: {
+                            type: 'object',
+                            properties: { value: { type: 'string' }, label: { type: 'string' } },
+                            required: ['value', 'label']
+                        }
+                    }
+                },
+                required: ['questionKey', 'purpose', 'question', 'reason', 'answerType']
+            },
+            handler: async (input) => proposeSurvey(input)
         });
     }
 

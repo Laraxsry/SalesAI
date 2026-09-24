@@ -212,6 +212,7 @@ describe('PlaybookNodeInput', () => {
         expect(result.data.actions).toEqual([]);
         expect(result.data.survey).toBeNull();
         expect(result.data.mode).toBe('situational');
+        expect(result.data.requirement).toBeNull();
     });
 
     it('accepts a configured single-choice survey node', () => {
@@ -259,6 +260,18 @@ describe('PlaybookNodeInput', () => {
         expect(result.success).toBe(true);
         expect(result.data.mode).toBe('important');
         expect(result.data.actions).toEqual(['Rapor Ekle butonuna tıkla', 'Başlık alanına yaz']);
+    });
+
+    it('accepts an explicit dynamic requirement without changing legacy mode', () => {
+        const result = PlaybookNodeInput.safeParse({
+            ...base,
+            mode: 'important',
+            requirement: 'required_before_close'
+        });
+
+        expect(result.success).toBe(true);
+        expect(result.data.mode).toBe('important');
+        expect(result.data.requirement).toBe('required_before_close');
     });
 
     it('caps actions at 10', () => {
@@ -394,6 +407,16 @@ describe('normalizePlaybook', () => {
         expect(result[0].mode).toBe('situational');
         expect(result[0].type).toBe('narrative');
         expect(result[0].survey).toBeNull();
+    });
+
+    it('preserves an explicitly authored closing requirement through normalization', () => {
+        const result = normalizePlaybook([{
+            id: 'close', order: 1, directive: 'Demo gününü netleştir',
+            mode: 'important', requirement: 'required_before_close'
+        }]);
+        expect(result[0]).toMatchObject({
+            mode: 'important', requirement: 'required_before_close'
+        });
     });
 
     it('returns an empty array for an empty or undefined input', () => {

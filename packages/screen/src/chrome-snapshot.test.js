@@ -7,6 +7,18 @@ describe('Chrome MCP snapshot semantics', () => {
             .toEqual([expect.objectContaining({ uid: '4_2', role: 'textbox', name: 'E-posta adresi' })]);
     });
 
+    it('distinguishes a modal-opening Add from a form-submitting Add', () => {
+        const elements = parseSnapshotElements([
+            'uid=1_0 button "Add"',
+            'uid=1_1 dialog "New asset"',
+            '  uid=1_2 form',
+            '    uid=1_3 textbox "Asset name"',
+            '    uid=1_4 button "Add"'
+        ].join('\n'));
+        expect(elements.find((element) => element.uid === '1_0').insideForm).toBe(false);
+        expect(elements.find((element) => element.uid === '1_4').insideForm).toBe(true);
+    });
+
     it('resolves two anonymously named login fields by their form order', () => {
         expect(resolveLoginControls([
             'uid=1_1 textbox',

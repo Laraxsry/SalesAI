@@ -129,3 +129,22 @@ describe('createPlaybookCursor — snapshot', () => {
         expect(cursor.snapshot()).toEqual({ index: 1, total: 3, satisfied: ['c'] });
     });
 });
+
+describe('createPlaybookCursor — accepted route replacement', () => {
+    it('starts the revised route at its first unfinished node', () => {
+        const cursor = createPlaybookCursor([node('old', 1), node('close', 2)]);
+        cursor.satisfy('old', 'advance_step');
+        cursor.advance();
+        cursor.replace([node('answer', 1), node('old', 2), node('close', 3)]);
+        expect(cursor.current()?.id).toBe('answer');
+        cursor.satisfy('answer', 'advance_step');
+        cursor.advance();
+        expect(cursor.current()?.id).toBe('close');
+    });
+
+    it('rejects malformed or duplicate replacement nodes', () => {
+        const cursor = createPlaybookCursor([]);
+        expect(() => cursor.replace([node('a', 1), node('a', 2)])).toThrow(/duplicate/);
+        expect(() => cursor.replace(null)).toThrow(/required/);
+    });
+});

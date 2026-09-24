@@ -5,5 +5,6 @@ export { ChromeMcpAdapter, DEFAULT_ALLOWED_TOOLS, INTERNAL_ALLOWED_TOOLS } from 
 export { ChromeMcpTour } from './chrome-mcp-tour.js';
 export { BrowserActionPolicy } from './browser-action-policy.js';
 export { findCookieConsentCandidate, parseSnapshotElements, resolveLoginControls } from './chrome-snapshot.js';
+export { resolveSnapshotTarget } from './semantic-target-resolver.js';
 export { normalizeElementGeometry } from './element-geometry.js';
 export { analyzeFrame } from './vision.js';

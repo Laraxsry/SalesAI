@@ -103,6 +103,10 @@ export const productsApi = {
     get: (id) => apiFetch(`/products/${id}`),
     create: (payload) => apiFetch('/products', { method: 'POST', body: payload }),
     update: (id, payload) => apiFetch(`/products/${id}`, { method: 'PATCH', body: payload }),
+    updateDiscovery: (id, payload) => apiFetch(`/products/${id}/discovery`, { method: 'PATCH', body: payload }),
+    updateEngagement: (id, payload) => apiFetch(`/products/${id}/engagement`, {
+        method: 'PATCH', body: payload
+    }),
     remove: (id) => apiFetch(`/products/${id}`, { method: 'DELETE' })
 };
 
@@ -200,6 +204,7 @@ export const sessionsApi = {
     get: (id) => apiFetch(`/sessions/${id}`),
     transcript: (id) => apiFetch(`/sessions/${id}/transcript`, { auth: false }),
     summary: (id) => apiFetch(`/sessions/${id}/summary`),
+    decisionTrace: (id) => apiFetch(`/sessions/${id}/decision-trace`),
     search: ({ q, agentId, from, to, sentiment, limit, skip }) => {
         const params = new URLSearchParams({ q });
         if (agentId) params.set('agentId', agentId);

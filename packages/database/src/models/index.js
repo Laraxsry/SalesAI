@@ -18,6 +18,8 @@ export { Lead } from './Lead.js';
 export { KnowledgeGapReport } from './KnowledgeGapReport.js';
 export { KnowledgeTopic } from './KnowledgeTopic.js';
 export { FollowUpTask } from './FollowUpTask.js';
+export { LeadContact } from './LeadContact.js';
+export { Meeting } from './Meeting.js';
 // Phase 5: Embeddable SDK & Widget
 export { EmbedConfig } from './EmbedConfig.js';
 export { EmbedDomain } from './EmbedDomain.js';

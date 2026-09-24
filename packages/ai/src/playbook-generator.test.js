@@ -127,6 +127,20 @@ describe('compileGeneratedPlaybook', () => {
         expect(result.nodes[1].survey.fieldKey).toBeNull();
         expect(result.nodes[2].directive).toBe('Cevapları ürün değerine bağla.');
     });
+
+    it('compiles simple authoring importance into explicit runtime requirements', () => {
+        const result = compileGeneratedPlaybook({ nodes: [
+            { type: 'narrative', directive: 'İhtiyacı açıkla', importance: 'flexible' },
+            { type: 'narrative', directive: 'Demo randevusunu netleştir', importance: 'closing' }
+        ] });
+
+        expect(result.nodes[0]).toMatchObject({
+            mode: 'situational', requirement: 'preferred'
+        });
+        expect(result.nodes[1]).toMatchObject({
+            mode: 'important', requirement: 'required_before_close'
+        });
+    });
 });
 
 describe('generatePlaybookDraft', () => {
@@ -146,6 +160,7 @@ describe('generatePlaybookDraft', () => {
         expect(result.generatedBy).toBe('preset');
         expect(result.nodes.some((node) => node.type === 'survey')).toBe(true);
         expect(result.nodes.some((node) => node.url === 'https://gelirgider.example/')).toBe(true);
+        expect(result.nodes.at(-1).requirement).toBe('required_before_close');
     });
 
     it('grounds the LLM prompt in company knowledge and compiles its response', async () => {

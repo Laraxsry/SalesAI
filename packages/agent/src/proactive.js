@@ -232,7 +232,7 @@ export function wrapDirective(
     if (node.actions?.length && screenVisible) {
         const steps = node.actions.map((action, index) => `${index + 1}. ${action}`).join('\n');
         lines.push(
-            "As part of this, also make the following happen on screen, in order — resolve each one to whichever action actually fits (clicking, pointing/highlighting, scrolling, or filling/typing a field), never force one into a click it isn't, and say what it does as you do it:",
+            "As part of this, also make the following happen on screen, in order — resolve each one to whichever action actually fits (clicking, pointing/highlighting, scrolling, or filling/typing a field), never force one into a click it isn't. Perform each step with the matching tool call BEFORE moving to the next one, briefly narrating as you go — never describe several of these steps in one summary sentence ('you'd fill these in and submit') without actually calling the tools for them; a description is not a substitute for doing it. Do not stop until every listed step has actually been done, not just mentioned.",
             steps
         );
     }

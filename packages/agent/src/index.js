@@ -1,5 +1,10 @@
 export { buildSystemPrompt } from './persona.js';
-export { buildTools } from './tools.js';
+export { buildTools, createProductKnowledgeResolver } from './tools.js';
+export {
+    createKnowledgeResolutionIntent,
+    createKnowledgeResolver,
+    knowledgeResolutionToToolResult
+} from './knowledge-resolution.js';
 export {
     buildIdleNudgeInstructions,
     buildSurveyAcknowledgementInstructions,

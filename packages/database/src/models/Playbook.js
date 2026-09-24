@@ -34,6 +34,15 @@ const PlaybookNodeSchema = new Schema(
             enum: ['important', 'situational', 'skip-if-no-answer'],
             default: 'situational'
         },
+        /** Explicit migration bridge for the dynamic obligation ledger.
+         *  Null is intentionally different from inferring hard requirements
+         *  from legacy `important`; the new runtime only treats an author-
+         *  approved value as binding. */
+        requirement: {
+            type: String,
+            enum: ['required_before_close', 'required_if_relevant', 'preferred', 'optional'],
+            default: null
+        },
         survey: {
             type: new Schema(
                 {

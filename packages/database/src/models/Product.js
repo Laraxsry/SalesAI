@@ -21,7 +21,13 @@ const ProductSchema = new Schema(
 
         // Phase 3: Single demo session injected into the agent's browser
         // Always encrypted before saving to DB.
-        demoSession: { type: Schema.Types.Mixed }
+        demoSession: { type: Schema.Types.Mixed },
+        // Internal, opt-in discovery policy. Runtime validates the full shape
+        // and refuses unknown fields; console authoring is a later migration.
+        adaptiveSurvey: { type: Schema.Types.Mixed, default: null },
+        // Product-owned daily controls. Global environment flags remain the
+        // emergency kill-switch; this validated object controls product opt-in.
+        engagementSettings: { type: Schema.Types.Mixed, default: null }
     },
     { timestamps: true }
 );

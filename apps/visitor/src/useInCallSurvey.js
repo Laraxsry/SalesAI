@@ -43,6 +43,14 @@ export function useInCallSurvey(room) {
         };
     }, [room]);
 
+    useEffect(() => {
+        if (!survey?.expiresAt) return undefined;
+        const timer = window.setTimeout(() => {
+            setSurvey((current) => current?.nodeId === survey.nodeId ? null : current);
+        }, Math.max(0, survey.expiresAt - Date.now()));
+        return () => window.clearTimeout(timer);
+    }, [survey?.nodeId, survey?.expiresAt]);
+
     const answer = useCallback(async (nodeId, value, { skipped = false } = {}) => {
         if (room.state !== ConnectionState.Connected) {
             throw new Error('survey disconnected');
@@ -52,7 +60,7 @@ export function useInCallSurvey(room) {
             type: 'salesai:survey_answer',
             answerId,
             nodeId,
-            answer: skipped ? null : String(value || '').trim(),
+            answer: skipped ? null : Array.isArray(value) ? value : String(value ?? '').trim(),
             skipped
         }));
         return new Promise((resolve, reject) => {

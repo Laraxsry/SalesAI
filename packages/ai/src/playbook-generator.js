@@ -7,6 +7,29 @@ import { getLLM } from './llm/index.js';
 
 const clip = (value, max) => String(value || '').trim().slice(0, max);
 const NODE_MODES = new Set(['important', 'situational', 'skip-if-no-answer']);
+const NODE_REQUIREMENTS = new Set([
+    'required_before_close', 'required_if_relevant', 'preferred', 'optional'
+]);
+
+function authoredPolicy(candidate, fallbackMode) {
+    const fromImportance = {
+        flexible: { mode: 'situational', requirement: 'preferred' },
+        important: { mode: 'important', requirement: 'required_if_relevant' },
+        closing: { mode: 'important', requirement: 'required_before_close' },
+        optional: { mode: 'skip-if-no-answer', requirement: 'optional' }
+    }[candidate.importance];
+    if (fromImportance) return fromImportance;
+
+    const mode = NODE_MODES.has(candidate.mode) ? candidate.mode : fallbackMode;
+    const requirement = NODE_REQUIREMENTS.has(candidate.requirement)
+        ? candidate.requirement
+        : mode === 'important'
+            ? 'required_if_relevant'
+            : mode === 'skip-if-no-answer'
+                ? 'optional'
+                : 'preferred';
+    return { mode, requirement };
+}
 
 function parseJsonObject(text) {
     const cleaned = String(text || '')
@@ -41,6 +64,7 @@ export function compileGeneratedPlaybook(raw, {
         if (isSurvey && !canUseSurvey) continue;
 
         if (isSurvey) {
+            const policy = authoredPolicy(candidate, 'important');
             const question = clip(candidate.question || candidate.survey?.question || candidate.directive, 400);
             if (!question) continue;
             const rawOptions = Array.isArray(candidate.options)
@@ -62,7 +86,7 @@ export function compileGeneratedPlaybook(raw, {
                 directive: question,
                 url: null,
                 actions: [],
-                mode: NODE_MODES.has(candidate.mode) ? candidate.mode : 'important',
+                ...policy,
                 survey: {
                     question,
                     fieldKey: normalizePlaybookSurveyFieldKey(
@@ -91,6 +115,7 @@ export function compileGeneratedPlaybook(raw, {
         const requestedActions = Array.isArray(candidate.actions)
             ? candidate.actions
             : candidate.attach ? [candidate.attach] : [];
+        const policy = authoredPolicy(candidate, 'situational');
         compiled.push({
             id: `generated_${compiled.length + 1}`,
             order: compiled.length + 1,
@@ -104,7 +129,7 @@ export function compileGeneratedPlaybook(raw, {
                 .map((action) => clip(action, 200))
                 .filter((action) => action && pageAttachments.has(action))
                 .slice(0, 10),
-            mode: NODE_MODES.has(candidate.mode) ? candidate.mode : 'situational',
+            ...policy,
             survey: null
         });
     }
@@ -132,7 +157,8 @@ function buildPresetNodes(preset, { product, topics = [], siteMap = [], includeS
               fieldKey: 'qualification.priority',
               options: [primaryTopic, secondaryTopic, 'Süreçleri hızlandırmak', 'Diğer'],
               allowFreeText: true,
-              required: true
+              required: true,
+              importance: 'important'
           }]
         : [];
 
@@ -150,7 +176,7 @@ function buildPresetNodes(preset, { product, topics = [], siteMap = [], includeS
             {
                 type: 'narrative',
                 directive: `${productName} çözümünü ziyaretçinin verdiği cevaplara bağla; uygunluk sinyallerini özetle ve baskı kurmadan net bir sonraki adım öner.`,
-                mode: 'important'
+                importance: 'closing'
             }
         ];
     }
@@ -162,18 +188,18 @@ function buildPresetNodes(preset, { product, topics = [], siteMap = [], includeS
                 type: 'narrative',
                 directive: `${productName} ürününün değerini ziyaretçinin önceliğine göre kısaca çerçevele; özellik listesi okuma.`,
                 url: firstUrl,
-                mode: 'important'
+                importance: 'important'
             },
             {
                 type: 'narrative',
                 directive: `${primaryTopic} konusunu somut bir önce/sonra iş akışı üzerinden göster ve yalnızca bilgi merkezinde doğrulanan faydaları kullan.`,
                 url: secondUrl,
-                mode: 'situational'
+                importance: 'flexible'
             },
             {
                 type: 'narrative',
                 directive: 'Ziyaretçinin sorularını al, ilgi gösterdiği noktaları özetle ve uygun bir sonraki adımı birlikte netleştir.',
-                mode: 'important'
+                importance: 'closing'
             }
         ];
     }
@@ -183,18 +209,18 @@ function buildPresetNodes(preset, { product, topics = [], siteMap = [], includeS
         {
             type: 'narrative',
             directive: `Ziyaretçinin mevcut durumunu ve hedefini kendi kelimeleriyle yansıt; ardından ${productName} ile en ilgili bağlantıyı kur.`,
-            mode: 'important'
+            importance: 'important'
         },
         {
             type: 'narrative',
             directive: `${primaryTopic} ve ${secondaryTopic} başlıklarından yalnızca ziyaretçinin ihtiyacına uyan kanıtları kullanarak kısa bir çözüm hikâyesi anlat.`,
             url: firstUrl,
-            mode: 'situational'
+            importance: 'flexible'
         },
         {
             type: 'narrative',
             directive: 'Karar kriterlerini ve olası çekinceleri sor; cevaba göre netleştir ve doğal bir sonraki adımla kapat.',
-            mode: 'skip-if-no-answer'
+            importance: 'closing'
         }
     ];
 }
@@ -223,6 +249,7 @@ Sales design principles:
 - Set actions only to a list of exact clickableElements labels from that same page, in the order they should happen. Omit actions (or leave the list empty) when the page has no matching listed element; never write an instruction or invented sentence there.
 - Use natural, restrained language; no hype, fake urgency or unsupported superlatives.
 - Return at most ${request.maxNodes} nodes.
+- Set importance to flexible, important, closing, or optional. Use closing only for a genuine end-of-conversation objective that should be revisited after customer questions are resolved.
 ${request.includeSurvey && context.canUseSurvey ? '- Include 1-3 useful survey nodes.' : '- Do not include survey nodes.'}
 
 Strategy emphasis: ${request.strategy}
@@ -234,8 +261,8 @@ Available pages: ${JSON.stringify(pages)}
 
 Respond ONLY with valid JSON, no markdown:
 {"nodes":[
-  {"type":"survey","question":"...","answerType":"single-choice|text","options":["..."],"allowFreeText":true,"required":true,"mode":"important|situational|skip-if-no-answer"},
-  {"type":"narrative","directive":"private instruction describing what to accomplish and how to connect it to prior answers","url":"exact available URL or omit","actions":["optional exact clickableElements labels, in order"],"mode":"important|situational|skip-if-no-answer"}
+  {"type":"survey","question":"...","answerType":"single-choice|text","options":["..."],"allowFreeText":true,"required":true,"importance":"flexible|important|closing|optional"},
+  {"type":"narrative","directive":"private instruction describing what to accomplish and how to connect it to prior answers","url":"exact available URL or omit","actions":["optional exact clickableElements labels, in order"],"importance":"flexible|important|closing|optional"}
 ]}`;
 }
 

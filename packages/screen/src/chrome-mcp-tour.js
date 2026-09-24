@@ -179,6 +179,11 @@ export class ChromeMcpTour {
         if (referencedUids.some((uid) => !this.liveUids.has(uid))) {
             throw new Error('[ChromeMcpTour] Element UID is stale or was not returned by the latest snapshot.');
         }
+        if (capability === 'agent' && action === 'pressKey'
+            && /(?:^|\+)enter$/iu.test(String(args.key ?? ''))
+            && [...this.uidElements.values()].some((element) => element.role === 'form')) {
+            throw new Error('[ChromeMcpTour] Enter may submit the visible form; use a verified non-persistent action.');
+        }
         if (args.uid) {
             this.actionPolicy.assertAllowed({
                 action,

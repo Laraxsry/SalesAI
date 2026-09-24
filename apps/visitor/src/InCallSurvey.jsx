@@ -11,12 +11,14 @@ const SUBMIT_ERRORS = {
 export function InCallSurvey({ survey, onAnswer }) {
     const [freeText, setFreeText] = useState('');
     const [selectedValue, setSelectedValue] = useState('');
+    const [selectedValues, setSelectedValues] = useState([]);
     const [submitting, setSubmitting] = useState(false);
     const [submitError, setSubmitError] = useState('');
 
     useEffect(() => {
         setFreeText('');
         setSelectedValue('');
+        setSelectedValues([]);
         setSubmitting(false);
         setSubmitError('');
     }, [survey?.nodeId]);
@@ -44,7 +46,11 @@ export function InCallSurvey({ survey, onAnswer }) {
         }
     }
 
-    const showText = survey.answerType === 'text' || survey.allowFreeText;
+    const showText = survey.answerType === 'text'
+        || survey.answerType === 'short_text'
+        || survey.answerType === 'number'
+        || survey.allowFreeText;
+    const multiSelect = survey.answerType === 'multi_select';
     const answerValue = freeText.trim() || selectedValue;
     return (
         <div className="pointer-events-none absolute inset-x-0 bottom-5 z-30 flex justify-center px-4 sm:bottom-6">
@@ -71,14 +77,22 @@ export function InCallSurvey({ survey, onAnswer }) {
                                 key={option.value}
                                 type="button"
                                 disabled={submitting}
-                                aria-pressed={selectedValue === option.value}
+                                aria-pressed={multiSelect
+                                    ? selectedValues.includes(option.value)
+                                    : selectedValue === option.value}
                                 onClick={() => {
-                                    setSelectedValue(option.value);
+                                    if (multiSelect) {
+                                        setSelectedValues((current) => current.includes(option.value)
+                                            ? current.filter((value) => value !== option.value)
+                                            : [...current, option.value]);
+                                    } else {
+                                        setSelectedValue(option.value);
+                                    }
                                     setFreeText('');
                                     setSubmitError('');
                                 }}
                                 className={`min-h-10 rounded-xl border px-3 py-2 text-sm font-medium text-white transition disabled:opacity-50 ${
-                                    selectedValue === option.value
+                                    (multiSelect ? selectedValues.includes(option.value) : selectedValue === option.value)
                                         ? 'border-[#d7f95b] bg-[#d7f95b]/15 shadow-[0_0_0_1px_rgba(215,249,91,0.2)]'
                                         : 'border-white/10 bg-white/[0.07] hover:border-[#d7f95b]/60 hover:bg-white/[0.11]'
                                 }`}
@@ -99,6 +113,7 @@ export function InCallSurvey({ survey, onAnswer }) {
                     >
                         <input
                             value={freeText}
+                            type={survey.answerType === 'number' ? 'number' : 'text'}
                             onChange={(event) => {
                                 setFreeText(event.target.value);
                                 if (event.target.value) setSelectedValue('');
@@ -123,8 +138,8 @@ export function InCallSurvey({ survey, onAnswer }) {
                 {!showText && survey.options.length > 0 && (
                     <button
                         type="button"
-                        disabled={submitting || !selectedValue}
-                        onClick={() => submit(selectedValue)}
+                        disabled={submitting || (multiSelect ? selectedValues.length === 0 : !selectedValue)}
+                        onClick={() => submit(multiSelect ? selectedValues : selectedValue)}
                         className="mt-3 flex h-10 w-full items-center justify-center gap-2 rounded-xl bg-[#d7f95b] text-sm font-semibold text-[#071713] transition hover:bg-[#e1ff72] disabled:cursor-not-allowed disabled:opacity-40"
                     >
                         <Send size={16} /> Cevabı gönder

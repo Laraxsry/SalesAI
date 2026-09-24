@@ -22,3 +22,36 @@ describe('Playbook survey persistence schema', () => {
             .toBe('qualification.priority');
     });
 });
+
+describe('Playbook dynamic requirement persistence schema', () => {
+    it('keeps an explicit requirement without deriving it from legacy mode', () => {
+        const playbook = new Playbook({
+            agentId: '507f1f77bcf86cd799439011',
+            nodes: [{
+                id: 'closing',
+                order: 1,
+                directive: 'İletişim ve uygunluk bilgisi iste',
+                mode: 'important',
+                requirement: 'required_before_close'
+            }]
+        });
+
+        const node = playbook.toObject().nodes[0];
+        expect(node.mode).toBe('important');
+        expect(node.requirement).toBe('required_before_close');
+    });
+
+    it('leaves legacy important nodes without an inferred requirement', () => {
+        const playbook = new Playbook({
+            agentId: '507f1f77bcf86cd799439011',
+            nodes: [{
+                id: 'legacy',
+                order: 1,
+                directive: 'Önemli eski adım',
+                mode: 'important'
+            }]
+        });
+
+        expect(playbook.toObject().nodes[0].requirement).toBeNull();
+    });
+});

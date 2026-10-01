@@ -66,7 +66,7 @@ const styles = StyleSheet.create({
         backgroundColor: COLORS.lime,
     },
     controlButtonDanger: {
-        borderColor: 'rgba(231,88,74,0.45)',
+        borderColor: 'rgba(244,63,94,0.45)',
         backgroundColor: COLORS.danger,
     },
 });

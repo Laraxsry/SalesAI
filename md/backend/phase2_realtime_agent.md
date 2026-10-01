@@ -180,6 +180,20 @@
      playbook'u (`planToPlaybookNodes`), statik `Playbook` yerine; hazır
      `narration` `wrapDirective` ile modele verilir; 1. sayfa greeting'te ısıtılır.
      Testler: `backend_tests/unit/pre-call-helpers.mjs` + `packages/agent` vitest.
+   - [x] **Empatik ve İkna Edici İletişim Standartları + Ses Esnekliği** — `packages/agent/src/persona.js`
+     ve `apps/agent-worker/src/agent.js` güncellendi:
+     - *İtiraz ve Endişe Karşılama:* Ziyaretçi fiyat, güvenlik, entegrasyon veya geçiş zorluğu
+       belirttiğinde savunmacı olmadan önce kısa bir empati ifadesiyle ("Anlıyorum, bu çok haklı bir soru")
+       doğrulanıp ardından bilgi tabanından somut çözüm sunuluyor.
+     - *Değer ve Çıktı Odaklı İletişim:* Ham teknik özellikler yerine ziyaretçinin elde edeceği somut
+       iş çıktısı (zaman tasarrufu, manuel adımların kalkması, riskin önlenmesi) vurgulanıyor.
+     - *Aktif Dinleme ve Doğal Bağlantı:* Ziyaretçinin ifadesine doğal konuşma onaylarıyla ("Kesinlikle",
+       "Harika bir soru", "Tam olarak şöyle") insansı ve akıcı geçiş yapılıyor.
+     - *Satın Alma Sinyallerini Yakalama:* İlgi ve başlama niyetinde doğal biçimde demo/toplantı
+       veya iletişim bilgisi alma adımlarına yumuşak geçiş sağlanıyor.
+     - *Ses ve Transkripsiyon Güçlendirmesi:* Agent worker'da `agentDoc.persona?.voice` desteği
+       ve OpenAI `inputAudioTranscription` için 2 harfli ISO dil kodu normalizasyonu eklendi.
+     Testler: `@repo/agent` vitest (164 test), `apps/agent-worker` vitest (442 test), `backend_tests/unit/system-prompt-structure.mjs`.
 
 ---
 

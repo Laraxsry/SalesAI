@@ -200,6 +200,19 @@ export const KnowledgeTopicUpdateInput = z
  */
 export const MAX_ROOM_PARTICIPANTS = 20;
 
+export const REALTIME_VOICES = [
+    { id: 'cedar', label: 'Cedar (Doğal, Güvenilir)' },
+    { id: 'coral', label: 'Coral (Enerjik, Sıcak)' },
+    { id: 'marin', label: 'Marin (Berrak, Samimi)' },
+    { id: 'shimmer', label: 'Shimmer (Net, Açık)' },
+    { id: 'alloy', label: 'Alloy (Dengeli, Nötr)' },
+    { id: 'echo', label: 'Echo (Sakin, Derin)' },
+    { id: 'ash', label: 'Ash (Kendinden Emin)' },
+    { id: 'sage', label: 'Sage (Profesyonel, Olgun)' },
+    { id: 'verse', label: 'Verse (Akıcı, Dinamik)' },
+    { id: 'ballad', label: 'Ballad (Yumuşak, Anlatıcı)' }
+];
+
 export const AgentConfigInput = z.object({
     productId: z.string(),
     name: z.string().min(1),
@@ -211,7 +224,8 @@ export const AgentConfigInput = z.object({
             guardrails: z.array(z.string()).default([]),
             // 'custom' default mirrors the Mongoose schema default — see
             // Agent.js's comment for why 'marketing' would be unsafe here.
-            archetype: z.enum(['marketing', 'technical', 'custom']).default('custom')
+            archetype: z.enum(['marketing', 'technical', 'custom']).default('custom'),
+            voice: z.string().default('cedar')
         })
         .default({}),
     avatarProvider: AvatarProvider.default('voice-only'),
@@ -245,7 +259,8 @@ export const AgentUpdateInput = z.object({
             language: z.string().optional(),
             goals: z.array(z.string()).optional(),
             guardrails: z.array(z.string()).optional(),
-            archetype: z.enum(['marketing', 'technical', 'custom']).optional()
+            archetype: z.enum(['marketing', 'technical', 'custom']).optional(),
+            voice: z.string().optional()
         })
         .optional(),
     avatarProvider: AvatarProvider.optional(),

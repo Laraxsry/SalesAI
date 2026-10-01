@@ -83,7 +83,7 @@ const createStyles = (colors) => StyleSheet.create({
     empty: { color: colors.muted, textAlign: 'center', marginTop: 60 },
     message: { maxWidth: '88%', borderRadius: 16, padding: 14 },
     assistant: { alignSelf: 'flex-start', backgroundColor: colors.surface, borderWidth: 1, borderColor: colors.line },
-    visitor: { alignSelf: 'flex-end', backgroundColor: colors.tealDark },
+    visitor: { alignSelf: 'flex-end', backgroundColor: colors.teal },
     role: { color: colors.teal, fontSize: 11, fontWeight: '700', marginBottom: 4, textTransform: 'uppercase' },
     visitorRole: { color: 'rgba(255,255,255,0.72)' },
     messageText: { color: colors.text, fontSize: 15, lineHeight: 21 },

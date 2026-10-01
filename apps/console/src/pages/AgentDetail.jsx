@@ -3,7 +3,7 @@ import { useParams, Link, useNavigate } from 'react-router-dom';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { Button } from '@repo/ui';
 import { ArrowLeft, Bot, Rocket, Pause, Copy, Check, ExternalLink, AlertCircle, Trash2, MessageSquare, Code, Target } from 'lucide-react';
-import { MAX_ROOM_PARTICIPANTS } from '@repo/contracts';
+import { MAX_ROOM_PARTICIPANTS, REALTIME_VOICES } from '@repo/contracts';
 import { agentsApi } from '../lib/api.js';
 
 const STATUS_STYLE = {
@@ -180,6 +180,33 @@ export function AgentDetail() {
                         <div className="flex justify-between gap-4">
                             <dt className="text-text-muted">Dil</dt>
                             <dd className="text-text">{agent.persona?.language?.toUpperCase()}</dd>
+                        </div>
+                        <div className="flex items-center justify-between gap-4">
+                            <dt className="text-text-muted">Ses (Realtime)</dt>
+                            <dd>
+                                <select
+                                    value={agent.persona?.voice || 'cedar'}
+                                    disabled={busy}
+                                    onChange={async (e) => {
+                                        const newVoice = e.target.value;
+                                        setError('');
+                                        setBusy(true);
+                                        try {
+                                            await agentsApi.update(id, { persona: { voice: newVoice } });
+                                            await queryClient.invalidateQueries({ queryKey: ['agent', id] });
+                                        } catch (err) {
+                                            setError(err.message);
+                                        } finally {
+                                            setBusy(false);
+                                        }
+                                    }}
+                                    className="h-8 rounded-[var(--radius-input)] border border-border bg-bg px-2 text-xs text-text outline-none focus:border-brand"
+                                >
+                                    {REALTIME_VOICES.map((v) => (
+                                        <option key={v.id} value={v.id}>{v.label}</option>
+                                    ))}
+                                </select>
+                            </dd>
                         </div>
                         {agent.persona?.goals?.length > 0 && (
                             <div className="flex justify-between gap-4">

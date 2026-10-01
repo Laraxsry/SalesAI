@@ -101,7 +101,8 @@ const AgentSchema = new Schema(
                 type: String,
                 enum: ['marketing', 'technical', 'custom'],
                 default: 'custom'
-            }
+            },
+            voice: { type: String, default: 'cedar' }
         },
         avatarProvider: {
             type: String,

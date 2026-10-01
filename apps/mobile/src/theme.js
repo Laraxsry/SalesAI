@@ -1,40 +1,40 @@
 import { Platform } from 'react-native';
 
 const BASE_LIGHT_COLORS = {
-    ink: '#071426',
-    inkSoft: '#0F2547',
-    inkRaised: '#193B69',
-    canvas: '#EEF2FB',
+    ink: '#050705',
+    inkSoft: '#0E140F',
+    inkRaised: '#17221A',
+    canvas: '#F6F9F7',
     surface: '#FFFFFF',
-    surfaceMuted: '#E6EDFA',
-    line: '#D3DEF1',
-    text: '#0C1A33',
-    muted: '#5A6B88',
-    soft: '#8A99B5',
-    teal: '#2563EB',
-    tealDark: '#1D4ED8',
-    lime: '#38BDF8',
-    amber: '#F3B64A',
-    danger: '#E7584A',
+    surfaceMuted: '#EDF3EF',
+    line: '#D5E2D9',
+    text: '#050705',
+    muted: '#526357',
+    soft: '#7E9184',
+    teal: '#047857',
+    tealDark: '#064E3B',
+    lime: '#10B981',
+    amber: '#D97706',
+    danger: '#DC2626',
     white: '#FFFFFF',
 };
 
 const BASE_DARK_COLORS = {
-    ink: '#071426',
-    inkSoft: '#0F2547',
-    inkRaised: '#193B69',
-    canvas: '#050C18',
-    surface: '#0B1830',
-    surfaceMuted: '#10284B',
-    line: '#25466F',
-    text: '#F3F6FF',
-    muted: '#94A8C5',
-    soft: '#60789B',
-    teal: '#67E8F9',
-    tealDark: '#4D7CFF',
-    lime: '#67E8F9',
-    amber: '#FFD166',
-    danger: '#FF7568',
+    ink: '#050705',
+    inkSoft: '#0C120E',
+    inkRaised: '#141E17',
+    canvas: '#050705',
+    surface: '#0B110D',
+    surfaceMuted: '#121C15',
+    line: '#1B2B20',
+    text: '#FFFFFF',
+    muted: '#94A89A',
+    soft: '#627768',
+    teal: '#047857',
+    tealDark: '#064E3B',
+    lime: '#FFFFFF',
+    amber: '#F59E0B',
+    danger: '#F43F5E',
     white: '#FFFFFF',
 };
 
@@ -42,7 +42,7 @@ export const LIGHT_COLORS = BASE_LIGHT_COLORS;
 export const DARK_COLORS = BASE_DARK_COLORS;
 
 // Dark-only live meeting components keep using the established static palette.
-export const COLORS = LIGHT_COLORS;
+export const COLORS = DARK_COLORS;
 
 export const FONT = {
     regular: Platform.select({ ios: 'Avenir Next', android: 'sans-serif', default: 'sans-serif' }),
@@ -52,17 +52,17 @@ export const FONT = {
 
 export const SHADOWS = {
     card: {
-        shadowColor: COLORS.ink,
-        shadowOffset: { width: 0, height: 16 },
-        shadowOpacity: 0.12,
+        shadowColor: '#000000',
+        shadowOffset: { width: 0, height: 14 },
+        shadowOpacity: 0.35,
         shadowRadius: 30,
-        elevation: 8,
+        elevation: 7,
     },
     button: {
-        shadowColor: COLORS.ink,
+        shadowColor: '#047857',
         shadowOffset: { width: 0, height: 8 },
-        shadowOpacity: 0.2,
-        shadowRadius: 16,
-        elevation: 5,
+        shadowOpacity: 0.42,
+        shadowRadius: 18,
+        elevation: 6,
     },
 };

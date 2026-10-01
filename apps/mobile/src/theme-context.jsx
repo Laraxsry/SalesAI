@@ -18,7 +18,7 @@ export function AppThemeProvider({ children }) {
             .catch(() => {});
     }, []);
 
-    const theme = preference || (systemScheme === 'dark' ? 'dark' : 'light');
+    const theme = preference || (systemScheme === 'light' ? 'dark' : 'dark');
     const isDark = theme === 'dark';
 
     const setTheme = (nextTheme) => {

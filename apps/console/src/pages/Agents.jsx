@@ -4,7 +4,7 @@ import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { useForm, Controller } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { z } from 'zod';
-import { AgentConfigInput, MAX_ROOM_PARTICIPANTS } from '@repo/contracts';
+import { AgentConfigInput, MAX_ROOM_PARTICIPANTS, REALTIME_VOICES } from '@repo/contracts';
 import { Button, Input } from '@repo/ui';
 import { Plus, Bot, X, AlertCircle } from 'lucide-react';
 import { productsApi, agentsApi } from '../lib/api.js';
@@ -75,7 +75,8 @@ function buildAgentFormSchema(productId) {
                 language: data?.language,
                 goals,
                 guardrails: [],
-                archetype: data?.archetype
+                archetype: data?.archetype,
+                voice: data?.voice || 'cedar'
             },
             avatarProvider: data?.avatarProvider,
             screenModes: data?.screenModes || [],
@@ -101,6 +102,7 @@ function NewAgentModal({ productId, onClose, onCreated }) {
             // box. This is a UI-layer default only; the DB/contract default is
             // 'custom' (safe fallback for agents that predate this field).
             archetype: 'marketing',
+            voice: 'cedar',
             tone: DEFAULT_PERSONA_TONE,
             language: 'tr',
             goalsText: DEFAULT_PERSONA_GOALS,
@@ -221,6 +223,20 @@ function NewAgentModal({ productId, onClose, onCreated }) {
                             {AVATAR_PROVIDERS.map((p) => (
                                 <option key={p.value} value={p.value}>
                                     {p.label}
+                                </option>
+                            ))}
+                        </select>
+                    </label>
+
+                    <label className="mb-4 block text-sm">
+                        <span className="mb-1.5 block font-medium text-text-muted">Ses (Realtime Voice)</span>
+                        <select
+                            {...register('voice')}
+                            className="h-10 w-full rounded-[var(--radius-input)] border border-border bg-bg px-3 text-[13.5px] text-text outline-none focus:border-brand"
+                        >
+                            {REALTIME_VOICES.map((v) => (
+                                <option key={v.id} value={v.id}>
+                                    {v.label}
                                 </option>
                             ))}
                         </select>

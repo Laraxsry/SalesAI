@@ -69,19 +69,21 @@ export function SellerAuthField({ icon, error, ...props }) {
     );
 }
 
-export function SellerAuthButton({ loading, children, ...props }) {
+export function SellerAuthButton({ loading, children, label, ...props }) {
     const { colors, isDark } = useAppTheme();
     const styles = createStyles(colors, isDark);
 
     return (
         <TouchableOpacity style={styles.button} activeOpacity={0.88} disabled={loading} {...props}>
+            <Text style={styles.buttonText}>{children || label}</Text>
             {loading ? (
-                <ActivityIndicator size="small" color={colors.white} />
+                <View style={styles.buttonIcon}>
+                    <ActivityIndicator size="small" color={colors.ink} />
+                </View>
             ) : (
-                <>
-                    <Text style={styles.buttonText}>{children}</Text>
-                    <View style={styles.buttonIcon}><Ionicons name="arrow-forward" size={17} color={colors.ink} /></View>
-                </>
+                <View style={styles.buttonIcon}>
+                    <Ionicons name="arrow-forward" size={17} color={colors.ink} />
+                </View>
             )}
         </TouchableOpacity>
     );
@@ -97,7 +99,7 @@ const createSellerAuthStyles = (colors) => StyleSheet.create({
     error: { marginTop: 12, color: colors.danger, fontFamily: FONT.medium, fontSize: 12.5, lineHeight: 18 },
     footerLink: { marginTop: 22, alignItems: 'center', paddingVertical: 6 },
     footerText: { color: colors.muted, fontFamily: FONT.medium, fontSize: 12.5 },
-    footerStrong: { color: colors.tealDark, fontFamily: FONT.bold },
+    footerStrong: { color: colors.teal, fontFamily: FONT.bold },
     visitorLink: { marginTop: 10, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 6, paddingVertical: 8 },
     visitorLinkText: { color: colors.soft, fontFamily: FONT.medium, fontSize: 11.5 },
 });
@@ -118,20 +120,20 @@ const createStyles = (colors, isDark) => StyleSheet.create({
         width: 280,
         height: 280,
         borderRadius: 140,
-        backgroundColor: 'rgba(37,99,235,0.12)',
+        backgroundColor: 'rgba(6, 78, 59, 0.25)',
         right: -130,
         top: -86,
     },
     brandRow: { flexDirection: 'row', alignItems: 'center' },
     brand: { color: colors.white, fontFamily: FONT.bold, fontSize: 19, letterSpacing: -0.5 },
-    brandAccent: { color: colors.lime },
+    brandAccent: { color: '#10B981' },
     headerActions: { marginLeft: 'auto', flexDirection: 'row', alignItems: 'center', gap: 8 },
-    themeButton: { width: 32, height: 32, alignItems: 'center', justifyContent: 'center', borderRadius: 16, borderWidth: 1, borderColor: 'rgba(255,255,255,0.1)', backgroundColor: 'rgba(255,255,255,0.05)' },
-    consolePill: { borderRadius: 20, borderWidth: 1, borderColor: 'rgba(255,255,255,0.1)', paddingHorizontal: 9, paddingVertical: 6 },
-    consolePillText: { color: 'rgba(255,255,255,0.48)', fontFamily: FONT.bold, fontSize: 8.5, letterSpacing: 1.2 },
-    eyebrow: { marginTop: 50, color: colors.lime, fontFamily: FONT.bold, fontSize: 9.5, letterSpacing: 1.6 },
+    themeButton: { width: 32, height: 32, alignItems: 'center', justifyContent: 'center', borderRadius: 16, borderWidth: 1, borderColor: 'rgba(255,255,255,0.12)', backgroundColor: 'rgba(255,255,255,0.06)' },
+    consolePill: { borderRadius: 20, borderWidth: 1, borderColor: 'rgba(255,255,255,0.12)', paddingHorizontal: 9, paddingVertical: 6 },
+    consolePillText: { color: 'rgba(255,255,255,0.6)', fontFamily: FONT.bold, fontSize: 8.5, letterSpacing: 1.2 },
+    eyebrow: { marginTop: 50, color: '#10B981', fontFamily: FONT.bold, fontSize: 9.5, letterSpacing: 1.6 },
     title: { marginTop: 10, color: colors.white, fontFamily: FONT.bold, fontSize: 34, lineHeight: 40, letterSpacing: -1.2 },
-    subtitle: { marginTop: 11, maxWidth: 325, color: 'rgba(255,255,255,0.55)', fontFamily: FONT.regular, fontSize: 14, lineHeight: 21 },
+    subtitle: { marginTop: 11, maxWidth: 325, color: 'rgba(255,255,255,0.65)', fontFamily: FONT.regular, fontSize: 14, lineHeight: 21 },
     sheet: {
         flex: 1,
         marginTop: -32,
@@ -151,10 +153,10 @@ const createStyles = (colors, isDark) => StyleSheet.create({
         borderRadius: 15,
         borderWidth: 1,
         borderColor: colors.line,
-        backgroundColor: isDark ? colors.surfaceMuted : '#F7F9F7',
+        backgroundColor: colors.surfaceMuted,
         paddingHorizontal: 15,
     },
-    fieldError: { borderColor: colors.danger, backgroundColor: isDark ? '#321D1B' : '#FFF8F7' },
+    fieldError: { borderColor: colors.danger, backgroundColor: isDark ? 'rgba(244,63,94,0.12)' : '#FFF1F2' },
     fieldInput: { flex: 1, color: colors.text, fontFamily: FONT.medium, fontSize: 15, paddingVertical: 14 },
     button: {
         minHeight: 55,
@@ -163,10 +165,10 @@ const createStyles = (colors, isDark) => StyleSheet.create({
         alignItems: 'center',
         justifyContent: 'center',
         borderRadius: 16,
-        backgroundColor: isDark ? colors.tealDark : colors.ink,
+        backgroundColor: colors.teal,
         paddingHorizontal: 8,
         ...SHADOWS.button,
     },
     buttonText: { color: colors.white, fontFamily: FONT.bold, fontSize: 15 },
-    buttonIcon: { position: 'absolute', right: 8, width: 39, height: 39, alignItems: 'center', justifyContent: 'center', borderRadius: 12, backgroundColor: colors.lime },
+    buttonIcon: { position: 'absolute', right: 8, width: 39, height: 39, alignItems: 'center', justifyContent: 'center', borderRadius: 12, backgroundColor: '#FFFFFF' },
 });

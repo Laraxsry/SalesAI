@@ -1772,10 +1772,11 @@ async function runSession(ctx) {
     // model, so it isn't subject to the /v1/chat/completions
     // reasoning_effort/function-tools restriction that a chained
     // chat-completions LLM call would hit.
+    const transcriptionLanguage = (agentDoc.persona?.language || 'en').slice(0, 2).toLowerCase();
     const agentSession = new voice.AgentSession({
         llm: new openai.realtime.RealtimeModel({
             model: process.env.OPENAI_REALTIME_MODEL || 'gpt-realtime-2',
-            voice: 'cedar',
+            voice: agentDoc.persona?.voice || process.env.OPENAI_REALTIME_VOICE || 'cedar',
             // Without an explicit `language`, the transcription model
             // (visitor speech -> text, separate from the realtime voice
             // itself) has to auto-detect it turn by turn — observed live as
@@ -1785,7 +1786,7 @@ async function runSession(ctx) {
             // (`gpt-4o-mini-transcribe`, see @livekit/agents-plugin-openai)
             // an ISO-639-1 hint instead of guessing costs nothing and only
             // ever helps accuracy.
-            inputAudioTranscription: { model: 'gpt-4o-mini-transcribe', language: agentDoc.persona?.language || 'en' }
+            inputAudioTranscription: { model: 'gpt-4o-mini-transcribe', language: transcriptionLanguage }
         }),
         // Disables the SDK's own quiet-detector so it doesn't run on a second,
         // differently-timed clock against the same silence our driver is

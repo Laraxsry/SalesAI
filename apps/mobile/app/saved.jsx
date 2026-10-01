@@ -226,7 +226,7 @@ const createStyles = (colors) => StyleSheet.create({
         paddingVertical: 10,
     },
     syncButton: {
-        backgroundColor: colors.tealDark,
+        backgroundColor: colors.teal,
         borderRadius: 10,
         paddingHorizontal: 16,
         alignItems: 'center',
@@ -251,7 +251,7 @@ const createStyles = (colors) => StyleSheet.create({
     cardTitle: { color: colors.text, fontSize: 15, fontWeight: '600' },
     cardDate: { color: colors.muted, fontSize: 12, marginTop: 2 },
     resumeButton: {
-        backgroundColor: colors.tealDark,
+        backgroundColor: colors.teal,
         borderRadius: 10,
         paddingVertical: 8,
         paddingHorizontal: 14,

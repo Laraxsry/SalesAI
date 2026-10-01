@@ -72,7 +72,7 @@ const createStyles = (colors) => StyleSheet.create({
     text: { color: colors.muted, fontSize: 14, textAlign: 'center', marginTop: 12, lineHeight: 20 },
     button: {
         marginTop: 24,
-        backgroundColor: colors.tealDark,
+        backgroundColor: colors.teal,
         borderRadius: 12,
         paddingVertical: 14,
         paddingHorizontal: 28,

@@ -5,6 +5,8 @@ import { useLocalSearchParams, useRouter } from 'expo-router';
 import { io } from 'socket.io-client';
 import { useAuth } from '../_layout';
 import { CONFIG } from '../../../config';
+import { useAppTheme } from '../../../src/theme-context';
+import { FONT } from '../../../src/theme';
 
 // Session status can't change without a page-visible action (agent-worker
 // isn't wired to publish session:started/ended over Socket.IO yet — only
@@ -16,6 +18,8 @@ export default function SessionMonitorScreen() {
     const { id } = useLocalSearchParams();
     const router = useRouter();
     const { token, apiFetch } = useAuth();
+    const { colors, isDark } = useAppTheme();
+    const styles = createStyles(colors, isDark);
     const flatListRef = useRef(null);
 
     const [loading, setLoading] = useState(true);
@@ -293,21 +297,22 @@ export default function SessionMonitorScreen() {
     );
 }
 
-const styles = StyleSheet.create({
+const createStyles = (colors, isDark) => StyleSheet.create({
     container: {
         flex: 1,
-        backgroundColor: '#0b0b12',
+        backgroundColor: colors.canvas,
     },
     centerContainer: {
         flex: 1,
-        backgroundColor: '#0b0b12',
+        backgroundColor: colors.canvas,
         justifyContent: 'center',
         alignItems: 'center',
         padding: 24,
     },
     loadingText: {
-        color: '#9ba1b0',
-        fontSize: 16,
+        color: colors.muted,
+        fontFamily: FONT.medium,
+        fontSize: 15,
         marginTop: 16,
     },
     header: {
@@ -318,34 +323,35 @@ const styles = StyleSheet.create({
         paddingTop: Platform.OS === 'ios' ? 60 : 40,
         paddingBottom: 16,
         borderBottomWidth: 1,
-        borderColor: '#1e1e2f',
-        backgroundColor: '#10101a',
+        borderColor: colors.line,
+        backgroundColor: colors.surface,
     },
     backButton: {
-        paddingVertical: 6,
+        paddingVertical: 7,
         paddingHorizontal: 12,
-        borderRadius: 8,
-        backgroundColor: '#1b1b2a',
+        borderRadius: 10,
+        backgroundColor: colors.surfaceMuted,
         borderWidth: 1,
-        borderColor: '#2d2d44',
+        borderColor: colors.line,
     },
     backButtonText: {
-        color: '#9ba1b0',
-        fontSize: 14,
-        fontWeight: '600',
+        color: colors.text,
+        fontFamily: FONT.bold,
+        fontSize: 13,
     },
     headerTitleContainer: {
         flex: 1,
         marginHorizontal: 12,
     },
     headerTitle: {
-        color: '#ffffff',
-        fontSize: 18,
-        fontWeight: '700',
+        color: colors.text,
+        fontFamily: FONT.bold,
+        fontSize: 17,
     },
     headerSubtitle: {
-        color: '#6c727f',
-        fontSize: 12,
+        color: colors.muted,
+        fontFamily: FONT.medium,
+        fontSize: 11.5,
         marginTop: 1,
     },
     statusBadge: {
@@ -354,49 +360,59 @@ const styles = StyleSheet.create({
         borderRadius: 12,
     },
     badgeLive: {
-        backgroundColor: 'rgba(16, 185, 129, 0.15)',
+        backgroundColor: 'rgba(56, 189, 248, 0.15)',
     },
     badgeEnded: {
-        backgroundColor: 'rgba(108, 114, 127, 0.15)',
+        backgroundColor: isDark ? 'rgba(255, 255, 255, 0.08)' : 'rgba(100, 116, 139, 0.12)',
     },
     badgeText: {
-        fontSize: 11,
-        fontWeight: '800',
+        fontSize: 10.5,
+        fontFamily: FONT.bold,
+        letterSpacing: 0.5,
     },
     badgeLiveText: {
-        color: '#10b981',
+        color: colors.lime,
     },
     badgeEndedText: {
-        color: '#9ba1b0',
+        color: colors.muted,
     },
     toggleContainer: {
         flexDirection: 'row',
-        backgroundColor: '#10101a',
-        padding: 6,
-        borderBottomWidth: 1,
-        borderColor: '#1e1e2f',
+        backgroundColor: colors.surfaceMuted,
+        padding: 4,
+        marginHorizontal: 20,
+        marginVertical: 12,
+        borderRadius: 12,
+        borderWidth: 1,
+        borderColor: colors.line,
     },
     toggleBtn: {
         flex: 1,
         paddingVertical: 8,
         alignItems: 'center',
-        borderRadius: 8,
+        borderRadius: 9,
     },
     toggleBtnActive: {
-        backgroundColor: '#6d5efc',
+        backgroundColor: colors.surface,
+        shadowColor: colors.ink,
+        shadowOffset: { width: 0, height: 2 },
+        shadowOpacity: 0.08,
+        shadowRadius: 4,
+        elevation: 2,
     },
     toggleBtnText: {
-        color: '#9ba1b0',
+        color: colors.muted,
+        fontFamily: FONT.medium,
         fontSize: 13,
-        fontWeight: '600',
     },
     toggleBtnActiveText: {
-        color: '#ffffff',
+        color: colors.text,
+        fontFamily: FONT.bold,
     },
     liveBanner: {
-        backgroundColor: 'rgba(109, 94, 252, 0.15)',
+        backgroundColor: 'rgba(37, 99, 235, 0.12)',
         borderBottomWidth: 1,
-        borderColor: 'rgba(109, 94, 252, 0.3)',
+        borderColor: 'rgba(37, 99, 235, 0.25)',
         paddingVertical: 8,
         paddingHorizontal: 20,
         flexDirection: 'row',
@@ -404,16 +420,16 @@ const styles = StyleSheet.create({
         justifyContent: 'center',
     },
     pulseDot: {
-        width: 8,
-        height: 8,
-        borderRadius: 4,
-        backgroundColor: '#10b981',
+        width: 7,
+        height: 7,
+        borderRadius: 3.5,
+        backgroundColor: colors.lime,
         marginRight: 8,
     },
     liveBannerText: {
-        color: '#6d5efc',
+        color: colors.teal,
+        fontFamily: FONT.bold,
         fontSize: 12,
-        fontWeight: '600',
     },
     listContent: {
         padding: 20,
@@ -435,41 +451,38 @@ const styles = StyleSheet.create({
         justifyContent: 'flex-end',
     },
     bubble: {
-        maxWidth: '80%',
-        borderRadius: 20,
+        maxWidth: '82%',
+        borderRadius: 18,
         paddingHorizontal: 16,
         paddingVertical: 12,
-        shadowColor: '#000',
-        shadowOffset: { width: 0, height: 2 },
-        shadowOpacity: 0.1,
-        shadowRadius: 4,
-        elevation: 2,
     },
     bubbleUser: {
-        backgroundColor: '#1b1b2a',
+        backgroundColor: colors.surface,
         borderBottomLeftRadius: 4,
         borderWidth: 1,
-        borderColor: '#2d2d44',
+        borderColor: colors.line,
     },
     bubbleAssistant: {
-        backgroundColor: '#6d5efc',
+        backgroundColor: colors.teal,
         borderBottomRightRadius: 4,
     },
     bubbleRole: {
-        fontSize: 11,
-        fontWeight: '700',
+        fontSize: 10.5,
+        fontFamily: FONT.bold,
         marginBottom: 4,
-        color: '#9ba1b0',
+        color: colors.muted,
+        textTransform: 'uppercase',
     },
     bubbleText: {
-        color: '#ffffff',
-        fontSize: 15,
-        lineHeight: 22,
+        color: colors.text,
+        fontFamily: FONT.regular,
+        fontSize: 14.5,
+        lineHeight: 21,
     },
     bubbleTime: {
         alignSelf: 'flex-end',
-        fontSize: 10,
-        color: 'rgba(255, 255, 255, 0.5)',
+        fontSize: 9.5,
+        color: colors.soft,
         marginTop: 4,
     },
     systemMessageContainer: {
@@ -482,12 +495,12 @@ const styles = StyleSheet.create({
     systemDivider: {
         flex: 1,
         height: 1,
-        backgroundColor: '#1e1e2f',
+        backgroundColor: colors.line,
     },
     systemText: {
-        color: '#6c727f',
-        fontSize: 12,
-        fontWeight: '600',
+        color: colors.muted,
+        fontFamily: FONT.medium,
+        fontSize: 11.5,
         marginHorizontal: 10,
         textAlign: 'center',
     },
@@ -496,8 +509,9 @@ const styles = StyleSheet.create({
         alignItems: 'center',
     },
     errorText: {
-        color: '#f87171',
-        fontSize: 15,
+        color: colors.danger,
+        fontFamily: FONT.medium,
+        fontSize: 14,
         textAlign: 'center',
     },
     emptyContainer: {
@@ -506,29 +520,31 @@ const styles = StyleSheet.create({
         justifyContent: 'center',
     },
     emptyText: {
-        color: '#4e5564',
+        color: colors.soft,
+        fontFamily: FONT.regular,
         fontSize: 14,
         textAlign: 'center',
     },
     summaryCard: {
-        backgroundColor: '#13131e',
-        borderRadius: 16,
+        backgroundColor: colors.surface,
+        borderRadius: 18,
         padding: 20,
         borderWidth: 1,
-        borderColor: '#242436',
+        borderColor: colors.line,
     },
     summaryLabel: {
-        color: '#6d5efc',
-        fontSize: 14,
-        fontWeight: '700',
+        color: colors.teal,
+        fontFamily: FONT.bold,
+        fontSize: 13,
         marginTop: 20,
         marginBottom: 8,
         textTransform: 'uppercase',
         letterSpacing: 0.5,
     },
     summaryTextValue: {
-        color: '#ffffff',
-        fontSize: 15,
+        color: colors.text,
+        fontFamily: FONT.regular,
+        fontSize: 14.5,
         lineHeight: 22,
     },
     chipsRow: {
@@ -537,32 +553,36 @@ const styles = StyleSheet.create({
         gap: 8,
     },
     chip: {
-        backgroundColor: 'rgba(109, 94, 252, 0.15)',
+        backgroundColor: isDark ? 'rgba(59, 130, 246, 0.15)' : 'rgba(37, 99, 235, 0.08)',
         paddingVertical: 6,
         paddingHorizontal: 12,
         borderRadius: 12,
+        borderWidth: 1,
+        borderColor: isDark ? 'rgba(59, 130, 246, 0.25)' : 'rgba(37, 99, 235, 0.15)',
     },
     chipText: {
-        color: '#6d5efc',
+        color: colors.teal,
+        fontFamily: FONT.bold,
         fontSize: 12,
-        fontWeight: '600',
     },
     noDataText: {
-        color: '#4e5564',
-        fontSize: 14,
+        color: colors.soft,
+        fontFamily: FONT.regular,
+        fontSize: 13.5,
         fontStyle: 'italic',
     },
     unansweredList: {
         gap: 6,
     },
     unansweredItem: {
-        color: '#ffffff',
+        color: colors.text,
+        fontFamily: FONT.regular,
         fontSize: 14,
         lineHeight: 20,
     },
     nextStepText: {
-        color: '#10b981',
+        color: colors.lime,
+        fontFamily: FONT.bold,
         fontSize: 14,
-        fontWeight: '600',
     },
 });

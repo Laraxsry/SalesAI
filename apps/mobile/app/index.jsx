@@ -129,12 +129,12 @@ export default function Home() {
 
                     <View style={styles.assuranceRow}>
                         <View style={styles.assuranceItem}>
-                            <Ionicons name="mic-outline" size={15} color={colors.tealDark} />
+                            <Ionicons name="mic-outline" size={15} color={colors.teal} />
                             <Text style={styles.assuranceText}>Sesli görüşme</Text>
                         </View>
                         <View style={styles.assuranceDivider} />
                         <View style={styles.assuranceItem}>
-                            <Ionicons name="shield-checkmark-outline" size={15} color={colors.tealDark} />
+                            <Ionicons name="shield-checkmark-outline" size={15} color={colors.teal} />
                             <Text style={styles.assuranceText}>Şifreli bağlantı</Text>
                         </View>
                     </View>
@@ -144,20 +144,20 @@ export default function Home() {
                     {savedCount > 0 && (
                         <TouchableOpacity style={styles.secondaryAction} onPress={() => router.push('/saved')} activeOpacity={0.75}>
                             <View style={styles.secondaryActionIcon}>
-                                <Ionicons name="time-outline" size={19} color={colors.text} />
+                                <Ionicons name="time-outline" size={18} color={colors.text} />
                             </View>
                             <View style={styles.secondaryActionCopy}>
                                 <Text style={styles.secondaryActionTitle}>Geçmiş görüşmeler</Text>
                                 <Text style={styles.secondaryActionText}>{savedCount} kayıtlı görüşme</Text>
                             </View>
-                            <Ionicons name="chevron-forward" size={18} color={colors.soft} />
+                            <Ionicons name="chevron-forward" size={16} color={colors.soft} />
                         </TouchableOpacity>
                     )}
 
-                    <TouchableOpacity style={styles.sellerLink} onPress={() => router.push('/console')} activeOpacity={0.75}>
-                        <Ionicons name="business-outline" size={16} color={colors.muted} />
+                    <TouchableOpacity style={styles.sellerLink} onPress={() => router.push('/console')} activeOpacity={0.7}>
+                        <Ionicons name="business-outline" size={15} color={colors.muted} />
                         <Text style={styles.sellerLinkText}>Satıcı mısınız? Yönetim konsoluna girin</Text>
-                        <Ionicons name="arrow-forward" size={15} color={colors.muted} />
+                        <Ionicons name="arrow-forward" size={13} color={colors.muted} />
                     </TouchableOpacity>
                 </View>
 
@@ -184,7 +184,7 @@ const createStyles = (colors, isDark) => StyleSheet.create({
         height: 280,
         borderRadius: 140,
         borderWidth: 42,
-        borderColor: 'rgba(215,249,91,0.055)',
+        borderColor: 'rgba(4, 120, 87, 0.12)',
         right: -118,
         top: 86,
     },
@@ -193,7 +193,7 @@ const createStyles = (colors, isDark) => StyleSheet.create({
         width: 190,
         height: 190,
         borderRadius: 95,
-        backgroundColor: 'rgba(37,99,235,0.09)',
+        backgroundColor: 'rgba(6, 78, 59, 0.2)',
         left: -110,
         top: -68,
     },
@@ -208,8 +208,8 @@ const createStyles = (colors, isDark) => StyleSheet.create({
         justifyContent: 'center',
         borderRadius: 17,
         borderWidth: 1,
-        borderColor: 'rgba(255,255,255,0.1)',
-        backgroundColor: 'rgba(255,255,255,0.05)',
+        borderColor: 'rgba(255,255,255,0.12)',
+        backgroundColor: 'rgba(255,255,255,0.06)',
     },
     securePill: {
         flexDirection: 'row',
@@ -217,17 +217,17 @@ const createStyles = (colors, isDark) => StyleSheet.create({
         gap: 6,
         borderRadius: 20,
         borderWidth: 1,
-        borderColor: 'rgba(255,255,255,0.1)',
-        backgroundColor: 'rgba(255,255,255,0.05)',
+        borderColor: 'rgba(255,255,255,0.12)',
+        backgroundColor: 'rgba(255,255,255,0.06)',
         paddingHorizontal: 10,
         paddingVertical: 7,
     },
-    liveDot: { width: 6, height: 6, borderRadius: 3, backgroundColor: colors.lime },
-    secureText: { color: 'rgba(255,255,255,0.65)', fontFamily: FONT.bold, fontSize: 9, letterSpacing: 1 },
+    liveDot: { width: 6, height: 6, borderRadius: 3, backgroundColor: '#10B981' },
+    secureText: { color: 'rgba(255,255,255,0.72)', fontFamily: FONT.bold, fontSize: 9, letterSpacing: 1 },
     heroCopy: { marginTop: 62, maxWidth: 340 },
-    eyebrow: { color: colors.lime, fontFamily: FONT.bold, fontSize: 10, letterSpacing: 1.7 },
+    eyebrow: { color: '#10B981', fontFamily: FONT.bold, fontSize: 10, letterSpacing: 1.7 },
     heroTitle: { marginTop: 13, color: colors.white, fontFamily: FONT.bold, fontSize: 38, lineHeight: 43, letterSpacing: -1.6 },
-    heroDescription: { marginTop: 15, maxWidth: 315, color: 'rgba(255,255,255,0.58)', fontFamily: FONT.regular, fontSize: 15, lineHeight: 23 },
+    heroDescription: { marginTop: 15, maxWidth: 315, color: 'rgba(255,255,255,0.65)', fontFamily: FONT.regular, fontSize: 15, lineHeight: 23 },
     joinCard: {
         marginTop: -58,
         marginHorizontal: 18,
@@ -239,7 +239,7 @@ const createStyles = (colors, isDark) => StyleSheet.create({
         ...SHADOWS.card,
     },
     cardHeadingRow: { flexDirection: 'row', alignItems: 'center', marginBottom: 23 },
-    cardIcon: { width: 42, height: 42, borderRadius: 14, alignItems: 'center', justifyContent: 'center', backgroundColor: isDark ? colors.surfaceMuted : '#E8F1FE' },
+    cardIcon: { width: 42, height: 42, borderRadius: 14, alignItems: 'center', justifyContent: 'center', backgroundColor: isDark ? colors.surfaceMuted : '#ECFDF5' },
     cardHeadingCopy: { flex: 1, marginLeft: 12 },
     cardTitle: { color: colors.text, fontFamily: FONT.bold, fontSize: 18, letterSpacing: -0.35 },
     cardSubtitle: { marginTop: 3, color: colors.muted, fontFamily: FONT.regular, fontSize: 12.5, lineHeight: 18 },
@@ -252,10 +252,10 @@ const createStyles = (colors, isDark) => StyleSheet.create({
         borderRadius: 15,
         borderWidth: 1,
         borderColor: colors.line,
-        backgroundColor: isDark ? colors.surfaceMuted : '#F5F8FE',
+        backgroundColor: colors.surfaceMuted,
         paddingHorizontal: 15,
     },
-    inputShellError: { borderColor: colors.danger, backgroundColor: isDark ? '#321D1B' : '#FFF8F7' },
+    inputShellError: { borderColor: colors.danger, backgroundColor: isDark ? 'rgba(244,63,94,0.12)' : '#FFF1F2' },
     input: { flex: 1, color: colors.text, fontFamily: FONT.medium, fontSize: 15, paddingVertical: 14 },
     errorText: { marginTop: 8, color: colors.danger, fontFamily: FONT.medium, fontSize: 12, lineHeight: 17 },
     primaryButton: {
@@ -265,7 +265,7 @@ const createStyles = (colors, isDark) => StyleSheet.create({
         alignItems: 'center',
         justifyContent: 'center',
         borderRadius: 16,
-        backgroundColor: isDark ? colors.tealDark : colors.ink,
+        backgroundColor: colors.teal,
         paddingHorizontal: 8,
         ...SHADOWS.button,
     },
@@ -278,7 +278,7 @@ const createStyles = (colors, isDark) => StyleSheet.create({
         alignItems: 'center',
         justifyContent: 'center',
         borderRadius: 12,
-        backgroundColor: colors.lime,
+        backgroundColor: '#FFFFFF',
     },
     assuranceRow: { marginTop: 18, flexDirection: 'row', alignItems: 'center', justifyContent: 'center' },
     assuranceItem: { flexDirection: 'row', alignItems: 'center', gap: 5 },

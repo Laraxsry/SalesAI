@@ -611,7 +611,7 @@ const styles = StyleSheet.create({
         flexDirection: 'row',
         alignItems: 'center',
         justifyContent: 'space-between',
-        backgroundColor: 'rgba(7,23,19,0.98)',
+        backgroundColor: 'rgba(8,12,20,0.98)',
         borderBottomWidth: 1,
         borderBottomColor: 'rgba(255,255,255,0.08)',
         zIndex: 5,
@@ -821,6 +821,6 @@ const styles = StyleSheet.create({
         paddingHorizontal: 20,
         borderTopWidth: 1,
         borderTopColor: 'rgba(255,255,255,0.08)',
-        backgroundColor: 'rgba(7,23,19,0.98)',
+        backgroundColor: 'rgba(8,12,20,0.98)',
     },
 });

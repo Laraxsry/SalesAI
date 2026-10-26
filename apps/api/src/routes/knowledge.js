@@ -529,6 +529,45 @@ knowledgeRouter.get('/:id/chunks', requireAuth, async (req, res, next) => {
     }
 });
 
+/** Retry a failed website/API crawl using its saved crawl checkpoints. */
+knowledgeRouter.post('/:id/retry', requireAuth, async (req, res, next) => {
+    try {
+        const { source, membership } = await loadOwnedSource(req.params.id, req.user.sub);
+        if (!source) return res.status(404).json({ error: 'Knowledge source not found' });
+        if (!membership) return res.status(403).json({ error: 'Not a member of this workspace' });
+        if (!['url', 'api'].includes(source.type)) {
+            return res.status(400).json({ error: 'Yalnızca web sitesi ve API kaynakları yeniden denenebilir.' });
+        }
+
+        // Claim the failed source atomically so repeated clicks cannot enqueue duplicate jobs.
+        const claimed = await KnowledgeSource.findOneAndUpdate(
+            { _id: source._id, status: 'failed' },
+            {
+                $set: {
+                    status: 'pending',
+                    'meta.ingestionProgress': { stage: 'Kuyruğa alındı', pct: 0, updatedAt: new Date() }
+                },
+                $unset: { error: '' }
+            },
+            { new: true }
+        );
+        if (!claimed) return res.status(409).json({ error: 'Kaynak başarısız durumda değil. Listeyi yenileyin.' });
+
+        try {
+            await enqueueIngestion(source._id, source.productId, { type: source.type });
+        } catch (err) {
+            await KnowledgeSource.updateOne(
+                { _id: source._id, status: 'pending' },
+                { $set: { status: 'failed', error: err.message } }
+            );
+            throw err;
+        }
+        res.json({ ok: true, status: 'pending' });
+    } catch (err) {
+        next(err);
+    }
+});
+
 /**
  * PATCH /knowledge/:id
  *

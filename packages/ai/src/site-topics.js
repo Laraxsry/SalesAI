@@ -141,15 +141,21 @@ Every input index must appear in EXACTLY one group. Titles in ${language}, short
                 resolved.push({ index: i, slug, title: g.title });
             }
         }
-        // Any proposal the LLM dropped (malformed response, index omitted)
-        // still becomes its own topic instead of silently losing that page's
-        // findings — mirrors the map phase's fallback posture.
+        // Keep omitted proposals searchable without turning every malformed
+        // or omitted item into a separate topic. A large crawl can contain
+        // hundreds of proposals; the old one-topic-per-item fallback caused
+        // a topic explosion when this single clustering call timed out.
+        const fallbackTitle = /^en/i.test(language) ? 'Other Site Information' : 'Diğer Site Bilgileri';
+        const fallbackSlug = toSlug(fallbackTitle);
         proposals.forEach((p, i) => {
-            if (!seenIndexes.has(i)) resolved.push({ index: i, slug: toSlug(p.proposedTopic), title: p.proposedTopic });
+            if (!seenIndexes.has(i)) resolved.push({ index: i, slug: fallbackSlug, title: fallbackTitle });
         });
         return resolved;
-    } catch {
-        return proposals.map((p, i) => ({ index: i, slug: toSlug(p.proposedTopic), title: p.proposedTopic }));
+    } catch (err) {
+        console.warn('[site-topics] konu birleştirme başarısız; öneriler tek güvenli konuda toplanıyor:', err?.message);
+        const fallbackTitle = /^en/i.test(language) ? 'Other Site Information' : 'Diğer Site Bilgileri';
+        const fallbackSlug = toSlug(fallbackTitle);
+        return proposals.map((_, i) => ({ index: i, slug: fallbackSlug, title: fallbackTitle }));
     }
 }
 

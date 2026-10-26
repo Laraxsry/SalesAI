@@ -303,7 +303,9 @@ export class ChromeMcpTour {
             const verified = await this.evaluateLogin(
                 verificationScript(username, this.auth.password), [userUid, passwordUid, submitUid]
             );
-            if (!verified.sameForm) throw new Error('[ChromeMcpTour] Login controls changed form before submit.');
+            if (!(verified.sameLoginGroup ?? verified.sameForm)) {
+                throw new Error('[ChromeMcpTour] Login controls changed form or shared container before submit.');
+            }
             if (verified.usernameMatches && verified.passwordMatches) {
                 if (!verified.valid) throw new Error('[ChromeMcpTour] Login form validation failed before submit.');
                 break;

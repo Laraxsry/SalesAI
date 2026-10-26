@@ -37,7 +37,7 @@ function makeZip(files) {
 }
 
 vi.mock('@repo/database', () => ({
-    KnowledgeSource: { create: vi.fn(), findById: vi.fn(), findByIdAndUpdate: vi.fn() },
+    KnowledgeSource: { create: vi.fn(), findById: vi.fn(), findByIdAndUpdate: vi.fn(), updateOne: vi.fn() },
     Product: { findById: vi.fn() },
     Agent: { findOne: vi.fn() },
     KnowledgeChunk: { find: vi.fn() },
@@ -62,7 +62,8 @@ vi.mock('@repo/ai', () => ({
     ],
     classifyPageTopics: vi.fn().mockResolvedValue({ findings: [] }),
     dedupeProposedTopics: vi.fn().mockResolvedValue([]),
-    composeTopicDocument: vi.fn().mockResolvedValue('')
+    composeTopicDocument: vi.fn().mockResolvedValue(''),
+    describeUiElements: vi.fn().mockResolvedValue({})
 }));
 vi.mock('@repo/storage', () => ({ presignDownload: vi.fn() }));
 vi.mock('@repo/realtime', () => ({
@@ -91,9 +92,10 @@ vi.mock('mammoth', () => ({ default: { extractRawText: vi.fn() } }));
 
 const { KnowledgeSource, Product, Agent, KnowledgeChunk, KnowledgeTopic } = await import('@repo/database');
 const { ingestSource, ingestTopicDocument } = await import('@repo/rag');
-const { synthesizePage, synthesizeOverview, classifyPageTopics, dedupeProposedTopics, composeTopicDocument } =
+const { synthesizePage, synthesizeOverview, classifyPageTopics, dedupeProposedTopics, composeTopicDocument, describeUiElements } =
     await import('@repo/ai');
 const { extractFromUrl } = await import('../extractors/url.js');
+const { decryptField } = await import('@repo/utils');
 const mammoth = (await import('mammoth')).default;
 const { extractDocumentText, ingestZipEntries, handleIngestSource } = await import('./ingest-source.js');
 
@@ -106,6 +108,7 @@ beforeEach(() => {
     // meta.extractedText before embedding), so the mock needs to resolve
     // too, or that chain throws synchronously on the plain vi.fn() default.
     KnowledgeSource.findByIdAndUpdate.mockResolvedValue({});
+    KnowledgeSource.updateOne.mockResolvedValue({ matchedCount: 1, modifiedCount: 1 });
     ingestSource.mockResolvedValue({ chunks: 1 });
     Product.findById.mockReturnValue({ select: () => Promise.resolve(null) });
     Agent.findOne.mockReturnValue({ sort: () => ({ select: () => Promise.resolve(null) }) });
@@ -303,6 +306,155 @@ describe('handleIngestSource — url/api synthesis segments', () => {
                 { url: 'https://example.com/a', text: 'page a' },
                 { url: 'https://example.com/b', text: 'page b' }
             ]
+        });
+    });
+
+    it('crawls a public URL anonymously even when the product has login settings', async () => {
+        await handleIngestSource({ sourceId: 'src-1', productId: 'prod-1' });
+
+        expect(extractFromUrl.mock.calls[0][1]).toBeNull();
+        expect(Product.findById).not.toHaveBeenCalled();
+    });
+
+    it('decrypts and applies the product login only for an authenticated URL source', async () => {
+        KnowledgeSource.findById.mockResolvedValue({
+            _id: 'src-1',
+            type: 'url',
+            url: 'https://app.example/dashboard',
+            accessMode: 'authenticated'
+        });
+        Product.findById.mockReturnValue({ select: () => Promise.resolve({ demoSession: 'encrypted' }) });
+        decryptField.mockReturnValue(JSON.stringify({
+            loginUrl: 'https://app.example/login',
+            username: 'demo@example.com',
+            password: 'secret'
+        }));
+
+        await handleIngestSource({ sourceId: 'src-1', productId: 'prod-1' });
+
+        expect(extractFromUrl.mock.calls[0][0]).toBe('https://app.example/dashboard');
+        expect(extractFromUrl.mock.calls[0][1]).toEqual({
+            loginUrl: 'https://app.example/login',
+            username: 'demo@example.com',
+            password: 'secret'
+        });
+    });
+
+    it('fails a protected source clearly when no demo session is configured', async () => {
+        KnowledgeSource.findById.mockResolvedValue({
+            _id: 'src-1',
+            type: 'url',
+            url: 'https://app.example/dashboard',
+            accessMode: 'authenticated'
+        });
+        Product.findById.mockReturnValue({ select: () => Promise.resolve(null) });
+
+        await expect(handleIngestSource({ sourceId: 'src-1', productId: 'prod-1' }))
+            .rejects.toThrow('demo oturumu bilgileri ayarlanmamış');
+        expect(extractFromUrl).not.toHaveBeenCalled();
+    });
+
+    describe('dashboard (panel) sources versus the public site', () => {
+        const authenticatedSource = {
+            _id: 'src-1',
+            type: 'url',
+            url: 'https://app.example/dashboard',
+            accessMode: 'authenticated'
+        };
+
+        beforeEach(() => {
+            classifyPageTopics.mockClear();
+            describeUiElements.mockClear();
+            describeUiElements.mockResolvedValue({});
+            Product.findById.mockReturnValue({ select: () => Promise.resolve({ demoSession: 'encrypted' }) });
+            decryptField.mockReturnValue(JSON.stringify({
+                loginUrl: 'https://app.example/login',
+                username: 'demo@example.com',
+                password: 'secret'
+            }));
+        });
+
+        it('keeps a panel out of the marketing topic pass and files its chunks on the dashboard shelf', async () => {
+            KnowledgeSource.findById.mockResolvedValue(authenticatedSource);
+
+            await handleIngestSource({ sourceId: 'src-1', productId: 'prod-1' });
+
+            // The topic taxonomy would turn "Credits used $0.11" into a pricing fact.
+            expect(classifyPageTopics).not.toHaveBeenCalled();
+            expect(ingestSource).toHaveBeenCalledWith(expect.objectContaining({ kind: 'ui' }));
+        });
+
+        // What the crawl saw when it pressed the panel's buttons, as the crawl index records it.
+        const panelCrawl = () => ({
+            text: '[Page: https://app.example/vars]\nVariables',
+            pages: [{ url: 'https://app.example/vars', text: 'Variables' }],
+            pagesIndex: {
+                'https://app.example/vars': {
+                    rawText: 'Variables',
+                    links: [],
+                    components: {
+                        interactiveElements: [
+                            { label: 'New variable', kind: 'button', selector: '#new', elementKey: 'el_new', expected: 'Opens a panel with a form asking for: Name (text).' },
+                            { label: 'Search', kind: 'button', selector: '#search', elementKey: 'el_search' }
+                        ],
+                        states: [
+                            { trigger: 'New variable', kind: 'content', form: { fields: [{ label: 'Name', type: 'text', required: false }], actions: [{ label: 'Create variable' }] } }
+                        ]
+                    }
+                }
+            }
+        });
+
+        it('has each pressed button of a panel described, and files what the crawl saw as a page guide', async () => {
+            KnowledgeSource.findById.mockResolvedValue(authenticatedSource);
+            extractFromUrl.mockResolvedValue(panelCrawl());
+            describeUiElements.mockResolvedValue({ 'New variable': 'Adds a variable the agent can remember.' });
+
+            await handleIngestSource({ sourceId: 'src-1', productId: 'prod-1' });
+
+            expect(describeUiElements).toHaveBeenCalledTimes(1);
+            expect(describeUiElements.mock.calls[0][0].items).toEqual([
+                { label: 'New variable', observed: 'Opens a panel with a form asking for: Name (text).' }
+            ]);
+            const { text: segments } = ingestSource.mock.calls[0][0];
+            const guide = segments.find((segment) => segment.metadata.guide);
+            expect(guide.metadata.pageUrl).toBe('https://app.example/vars');
+            expect(guide.text).toContain('Pressing "New variable" (Adds a variable the agent can remember)');
+            expect(guide.text).toContain('Opens a panel with a form asking for: Name (text)');
+            expect(ingestSource).toHaveBeenCalledWith(expect.objectContaining({ kind: 'ui' }));
+        });
+
+        it('still writes the page guide when the description step is switched off', async () => {
+            KnowledgeSource.findById.mockResolvedValue(authenticatedSource);
+            extractFromUrl.mockResolvedValue(panelCrawl());
+            const previous = process.env.PANEL_UI_PURPOSES;
+            process.env.PANEL_UI_PURPOSES = '0';
+            try {
+                await handleIngestSource({ sourceId: 'src-1', productId: 'prod-1' });
+            } finally {
+                if (previous === undefined) delete process.env.PANEL_UI_PURPOSES;
+                else process.env.PANEL_UI_PURPOSES = previous;
+            }
+
+            expect(describeUiElements).not.toHaveBeenCalled();
+            expect(ingestSource.mock.calls[0][0].text.some((segment) => segment.metadata.guide)).toBe(true);
+        });
+
+        it('writes no guide and makes no description calls for a public site', async () => {
+            const crawl = panelCrawl();
+            extractFromUrl.mockResolvedValue(crawl);
+
+            await handleIngestSource({ sourceId: 'src-1', productId: 'prod-1' });
+
+            expect(describeUiElements).not.toHaveBeenCalled();
+            expect(ingestSource.mock.calls[0][0].text.some((segment) => segment.metadata.guide)).toBe(false);
+        });
+
+        it('leaves a public site on the knowledge shelf and still runs the topic pass', async () => {
+            await handleIngestSource({ sourceId: 'src-1', productId: 'prod-1' });
+
+            expect(classifyPageTopics).toHaveBeenCalled();
+            expect(ingestSource.mock.calls[0][0]).not.toHaveProperty('kind');
         });
     });
 
@@ -554,7 +706,9 @@ describe('handleIngestSource — Site Bilgisi (konu ağacı)', () => {
             findings: [{ topicSlug: 'iletisim', text: 'Telefon: 0212 000 00 00' }]
         });
         composeTopicDocument.mockResolvedValue('# İletişim\nTelefon: 0212 000 00 00');
-        const fakeTopic = makeFakeTopic();
+        const fakeTopic = makeFakeTopic({
+            sourcePages: [{ sourceId: 'src-other', pageUrl: 'https://other.example/contact' }]
+        });
         KnowledgeTopic.findOne.mockResolvedValue(fakeTopic);
 
         await handleIngestSource({ sourceId: 'src-1', productId: 'prod-1' });
@@ -568,7 +722,10 @@ describe('handleIngestSource — Site Bilgisi (konu ağacı)', () => {
         expect(fakeTopic.body).toBe('# İletişim\nTelefon: 0212 000 00 00');
         expect(fakeTopic.status).toBe('ready');
         expect(fakeTopic.lastContributingPages).toEqual(['https://example.com/a']);
-        expect(fakeTopic.sourcePages).toEqual([{ sourceId: 'src-1', pageUrl: 'https://example.com/a' }]);
+        expect(fakeTopic.sourcePages).toEqual([
+            { sourceId: 'src-other', pageUrl: 'https://other.example/contact' },
+            { sourceId: 'src-1', pageUrl: 'https://example.com/a' }
+        ]);
         expect(fakeTopic.save).toHaveBeenCalled();
         expect(ingestTopicDocument).toHaveBeenCalledWith({
             topicId: 'topic-1',
@@ -581,7 +738,10 @@ describe('handleIngestSource — Site Bilgisi (konu ağacı)', () => {
         classifyPageTopics.mockResolvedValue({
             findings: [{ topicSlug: 'iletisim', text: 'Telefon: 0212 000 00 00' }]
         });
-        const fakeTopic = makeFakeTopic({ lastContributingPages: ['https://example.com/a'] });
+        const fakeTopic = makeFakeTopic({
+            lastContributingPages: ['https://example.com/a'],
+            sourcePages: [{ sourceId: 'src-1', pageUrl: 'https://example.com/a' }]
+        });
         KnowledgeTopic.findOne.mockResolvedValue(fakeTopic);
 
         await handleIngestSource({ sourceId: 'src-1', productId: 'prod-1' });

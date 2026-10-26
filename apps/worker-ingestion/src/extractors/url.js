@@ -3,6 +3,10 @@ import { loginWithCredentials } from '@repo/screen';
 import { extractDocumentText } from '@repo/rag';
 import { chromium } from 'playwright';
 import { createHash } from 'node:crypto';
+import { ACTION_WORDS as NAV_DISCOVERY_ACTION_WORDS, MAX_LABEL_CHARS as NAV_DISCOVERY_MAX_TEXT_CHARS } from './click-safety.js';
+import { discoverClientRoutedLinks } from './nav-discovery.js';
+import { peekAtButtons } from './state-discovery.js';
+import { annotateElements } from './ui-guide.js';
 
 // Same-origin pages only, capped by count (not depth) — simplest bound on
 // crawl cost/time regardless of how the site's link graph is shaped. Large
@@ -43,26 +47,19 @@ const CONTENT_STABLE_POLL_MS = 500;
 const CONTENT_STABLE_CHECKS = 2;
 const CONTENT_MAX_WAIT_MS = Number(process.env.URL_CRAWL_MAX_WAIT_MS || 8000);
 
+// A cold first load of a client-rendered app (big JS bundles, a logged-in
+// panel) can stay blank or on a skeleton longer than CONTENT_MAX_WAIT_MS; the
+// reload that tab discovery does later hits the warm cache and renders fast,
+// so the first read alone would come back empty. Only a first load that is
+// still below MIN_CONTENT_CHARS earns this extra patience, so ordinary pages
+// stay fast.
+const SLOW_PAGE_EXTRA_WAIT_MS = Number(process.env.URL_CRAWL_SLOW_PAGE_WAIT_MS || 20000);
+
 // Below this many extracted characters, a page is suspicious enough to log
 // — most likely still on a loading/splash screen rather than genuinely
 // content-free (see waitForStableContent's docstring for the motivating
 // case: a multi-second boot-animation intro screen).
 const MIN_CONTENT_CHARS = Number(process.env.URL_CRAWL_MIN_CONTENT_CHARS || 200);
-
-// discoverClientRoutedLinks(): bound on how many nav/header buttons get
-// click-tested per page — most sites have a handful of top-level nav items,
-// this just guards against a pathological page with dozens of matches.
-const MAX_NAV_DISCOVERY_CLICKS = Number(process.env.URL_CRAWL_MAX_NAV_CLICKS || 20);
-// A candidate's visible text has to be this short to be considered a nav
-// item (vs. a paragraph-length CTA button that happens to sit in a header).
-const NAV_DISCOVERY_MAX_TEXT_CHARS = 40;
-// Text matching this is skipped even if it's short and in a nav/header
-// region — these are actions (lead-gen forms, auth, external redirects),
-// not same-site navigation, and clicking them on an arbitrary customer's
-// site risks a real side effect (a submitted form, a triggered call/chat
-// widget, etc.) rather than just revealing a new page.
-const NAV_DISCOVERY_ACTION_WORDS =
-    /demo|talep|teklif|sipariş|satın|buy|purchase|order|sign\s*up|sign\s*in|kayıt\s*ol|giriş\s*yap|log\s*in|log\s*out|çıkış|gönder|submit|kaydet|\bsave\b|\bsil\b|delete|abone|subscribe|indir|download|iletişime\s*geç|contact\s*us|whatsapp|\bara\b|\bcall\b|paylaş|share/i;
 
 // discoverTabVariants(): bound on how many candidate tab/panel labels get
 // click-tested per page — a full page reload + click per candidate is
@@ -81,7 +78,7 @@ const TAB_GROUP_MIN_MEMBERS = 2;
 // action-word/side-effect concern here, only a size bound so a very dense
 // page doesn't bloat the persisted crawlIndex/site map unboundedly.
 const MAX_HEADINGS_PER_PAGE = 30;
-const MAX_INTERACTIVE_ELEMENTS_PER_PAGE = 60;
+const MAX_INTERACTIVE_ELEMENTS_PER_PAGE = Number(process.env.URL_CRAWL_MAX_INTERACTIVE || 250);
 const MAX_SECTIONS_PER_PAGE = 20;
 const INTERACTIVE_ELEMENT_MAX_TEXT_CHARS = 80;
 const SECTION_SNIPPET_CHARS = 150;
@@ -98,7 +95,7 @@ const BOILERPLATE_THRESHOLD = Number(process.env.URL_CRAWL_BOILERPLATE_THRESHOLD
 // Bump when persisted page-index semantics change. Cache entries without
 // this version are deliberately fetched once more so newly introduced
 // element discovery is not permanently absent from older knowledge sources.
-const CRAWL_PAGE_INDEX_VERSION = 2;
+const CRAWL_PAGE_INDEX_VERSION = 3;
 
 /** Strips the hash fragment so '#/tab-a' and '#/tab-b' anchors on the same
  * route don't get treated as distinct pages; returns null for unparsable URLs. */
@@ -177,11 +174,35 @@ function slugPart(value, fallback) {
     return slug || fallback;
 }
 
-function buildElementIdentity(pageUrl, sectionLabel, label, duplicateIndex = 0) {
-    const basePath = `${slugPart(sectionLabel, 'page')}/${slugPart(label, 'toggle')}`;
+function buildElementIdentity(pageUrl, sectionLabel, label, duplicateIndex = 0, kind = 'toggle') {
+    const basePath = `${slugPart(sectionLabel, 'page')}/${slugPart(label, kind)}`;
     const elementPath = duplicateIndex > 0 ? `${basePath}--${duplicateIndex + 1}` : basePath;
-    const digest = createHash('sha256').update(`${normalizeUrl(pageUrl) || pageUrl}|${elementPath}|toggle`).digest('hex').slice(0, 16);
+    const digest = createHash('sha256')
+        .update(`${normalizeUrl(pageUrl) || pageUrl}|${kind}|${label}|${duplicateIndex}`)
+        .digest('hex')
+        .slice(0, 16);
     return { elementKey: `el_${digest}`, elementPath };
+}
+
+function ensureUniqueElementKeys(pageUrl, components) {
+    if (!components) return components;
+    const rekey = (elements = []) => {
+        const duplicateCounts = new Map();
+        return elements.map((element) => {
+            const identity = `${element.kind || 'button'}|${element.selector || ''}|${element.label || ''}`;
+            const duplicateIndex = duplicateCounts.get(identity) || 0;
+            duplicateCounts.set(identity, duplicateIndex + 1);
+            return {
+                ...element,
+                ...buildElementIdentity(pageUrl, element.kind, identity, duplicateIndex, element.kind)
+            };
+        });
+    };
+    return {
+        ...components,
+        interactiveElements: rekey(components.interactiveElements),
+        ...(components.toggles ? { toggles: rekey(components.toggles) } : {})
+    };
 }
 
 /**
@@ -290,102 +311,46 @@ export function waitForStableContent(page) {
 }
 
 /**
- * Some sites render primary navigation as `<button>`/`[role=button]`
- * elements that push a new URL via `history.pushState` (client-side
- * routing) instead of real `<a href>` tags — confirmed in testing on a
- * real customer site where the nav had ZERO anchor elements, so
- * `document.querySelectorAll('a[href]')` found nothing and the crawl never
- * left the homepage. This click-tests short-text buttons scoped to
- * `<nav>`/`<header>` (where primary navigation lives) and records any URL
- * that a click actually navigates to, then returns to `originalUrl` before
- * trying the next candidate.
- *
- * Deliberately conservative, since this means clicking on an ARBITRARY
- * customer's site: only `<nav>`/`<header>` elements (excludes body/footer
- * CTAs), only short menu-item-length text (`NAV_DISCOVERY_MAX_TEXT_CHARS`),
- * and anything matching `NAV_DISCOVERY_ACTION_WORDS` (demo requests, forms,
- * auth, calls, downloads, sharing — actions with a real side effect) is
- * skipped outright. A click that doesn't change the URL (a dropdown toggle,
- * a modal, a no-op) is simply not recorded — nothing to undo since nothing
- * navigated.
+ * Waits for a freshly navigated page to render. Same quick stability wait as
+ * every other step; when the page is still below `MIN_CONTENT_CHARS` after
+ * that (blank body or a loading skeleton), waits once more, up to
+ * `extraWaitMs`, for real content before the caller reads links/elements.
+ * Nothing is thrown for a page that stays sparse — the caller's existing
+ * "suspiciously little content" warning covers it.
  */
-async function discoverClientRoutedLinks(page, rootOrigin) {
-    const originalUrl = page.url();
-    // Keyed by targetUrl (not a Set of bare strings) so two differently-
-    // labelled buttons landing on the same URL don't produce duplicate
-    // structure-tree edges. Entries carry the button's own text as `label`
-    // (site-structure-tree's only signal for a client-routed nav item's
-    // name — there's no `<a href>`/title to fall back on).
-    const discovered = new Map();
-    const selector = 'nav button, header button, nav [role="button"], header [role="button"]';
-
-    let candidates;
-    try {
-        candidates = await page.evaluate(
-            (sel) => [...document.querySelectorAll(sel)].map((el) => (el.textContent || '').trim()),
-            selector
-        );
-    } catch {
-        return [];
-    }
-
-    let attempted = 0;
-    for (let i = 0; i < candidates.length && attempted < MAX_NAV_DISCOVERY_CLICKS; i++) {
-        const text = candidates[i];
-        if (!text || text.length > NAV_DISCOVERY_MAX_TEXT_CHARS || NAV_DISCOVERY_ACTION_WORDS.test(text)) continue;
-        attempted++;
-
-        try {
-            const handles = await page.$$(selector);
-            const el = handles[i];
-            if (!el) continue;
-            await el.click({ timeout: 2000 });
-            await page.waitForTimeout(300);
-            const newUrl = page.url();
-            if (newUrl !== originalUrl && newUrl.startsWith(rootOrigin) && !discovered.has(newUrl)) {
-                discovered.set(newUrl, { label: text, targetUrl: newUrl, kind: 'button' });
-            }
-        } catch {
-            // not clickable (covered/detached/no-op handler) — harmless, skip
-        }
-
-        if (page.url() !== originalUrl) {
-            try {
-                await page.goBack({ waitUntil: 'domcontentloaded', timeout: 5000 });
-            } catch {
-                await page.goto(originalUrl, { waitUntil: 'domcontentloaded', timeout: 30000 }).catch(() => {});
-            }
-            // Cheap when already-stable (goBack for a client-routed SPA
-            // doesn't replay a full boot animation) — only actually waits
-            // when the restore genuinely triggered a fresh page load.
-            await waitForStableContent(page);
-        }
-    }
-
-    return [...discovered.values()];
+export async function waitForInitialRender(page, { extraWaitMs = SLOW_PAGE_EXTRA_WAIT_MS } = {}) {
+    await waitForStableContent(page);
+    const length = await page
+        .evaluate(() => (document.body.innerText || '').length)
+        .catch(() => 0);
+    if (length >= MIN_CONTENT_CHARS) return;
+    await waitForStableContentShared(page, {
+        pollMs: CONTENT_STABLE_POLL_MS,
+        stableChecks: CONTENT_STABLE_CHECKS,
+        maxWaitMs: extraWaitMs,
+        minChars: MIN_CONTENT_CHARS
+    });
 }
 
 /**
  * Reads (never clicks) a structural inventory of the page: heading
  * hierarchy, every meaningfully-labeled interactive element site-wide (not
- * just nav/header — see discoverClientRoutedLinks for why that pass is
- * scoped tighter), and notable landmark sections (forms, `<section>`,
+ * just navigation regions — nav-discovery.js clicks only those, and only
+ * after click-safety.js approves the label), and notable landmark sections (forms, `<section>`,
  * `aria-label`'d blocks). This is what lets `find_element`
  * (packages/agent/src/tools.js) hand the model a real selector instead of it
  * guessing one for `click_element`/`highlight`.
  *
- * `selector` for interactive elements is a plain `text=<label>` locator —
- * not a generated CSS path — because that's exactly what `GuidedTour.click()`/
- * `.highlight()` (packages/screen/src/cobrowse.js) already expect and have
- * tests exercising (see cobrowse.test.js's `text=Ürünler` cases), so no new
- * selector scheme is introduced.
+ * Every interactive element receives a deterministic elementKey and a
+ * selector that matched exactly once during the crawl. Stable attributes
+ * (`id`, test id, aria-label, name) win; a structural CSS path is the fallback.
  *
  * @param {import('playwright').Page} page
- * @returns {Promise<{headings:{level:number,text:string}[], interactiveElements:{label:string,kind:'button'|'link'|'submit',selector:string}[], sections:{tag:string,ariaLabel:string|null,textSnippet:string}[]}>}
+ * @returns {Promise<{headings:{level:number,text:string}[], interactiveElements:{elementKey:string,elementPath:string,label:string,kind:string,selector:string}[], sections:{tag:string,ariaLabel:string|null,textSnippet:string}[]}>}
  */
-export async function extractPageComponents(page) {
+export async function extractPageComponents(page, pageUrl = page.url?.() || 'unknown') {
     try {
-        return await page.evaluate(
+        const components = await page.evaluate(
             ({ maxHeadings, maxInteractive, maxSections, maxTextChars, snippetChars }) => {
                 const headings = [...document.querySelectorAll('h1, h2, h3, h4, h5, h6')]
                     .map((el) => ({ level: Number(el.tagName[1]), text: (el.textContent || '').trim() }))
@@ -393,22 +358,91 @@ export async function extractPageComponents(page) {
                     .slice(0, maxHeadings);
 
                 const interactiveElements = [];
-                const seenLabels = new Set();
+                const escapeAttribute = (value) => String(value).replace(/\\/g, '\\\\').replace(/"/g, '\\"');
+                const uniqueSelector = (el, label) => {
+                    const id = el.id || el.getAttribute('id');
+                    if (id) {
+                        const selector = `#${globalThis.CSS?.escape ? CSS.escape(id) : id}`;
+                        if (document.querySelectorAll(selector).length === 1) return selector;
+                    }
+                    for (const attr of ['data-testid', 'data-test', 'data-cy', 'aria-label', 'name']) {
+                        const value = el.getAttribute(attr);
+                        if (!value) continue;
+                        const selector = `[${attr}="${escapeAttribute(value)}"]`;
+                        if (document.querySelectorAll(selector).length === 1) return selector;
+                    }
+                    if (!el.parentElement) return `text=${label}`;
+                    const path = [];
+                    let node = el;
+                    while (node?.tagName && node !== document.body) {
+                        const tag = node.tagName.toLowerCase();
+                        const siblings = node.parentElement
+                            ? [...node.parentElement.children].filter((sibling) => sibling.tagName === node.tagName)
+                            : [];
+                        path.unshift(siblings.length > 1 ? `${tag}:nth-of-type(${siblings.indexOf(node) + 1})` : tag);
+                        const selector = path.join(' > ');
+                        if (document.querySelectorAll(selector).length === 1) return selector;
+                        node = node.parentElement;
+                    }
+                    return path.length ? path.join(' > ') : `text=${label}`;
+                };
                 for (const el of document.querySelectorAll(
-                    'button, a[href], [role="button"], input[type="submit"], button[type="submit"]'
+                    'button, a[href], [role="button"], [role="link"], [role="menuitem"], [role="tab"], summary, input[type="submit"], input[type="button"], input[type="checkbox"], input[type="radio"]'
                 )) {
                     if (interactiveElements.length >= maxInteractive) break;
-                    const label = (el.textContent || el.value || '').trim();
-                    if (!label || label.length > maxTextChars || seenLabels.has(label)) continue;
-                    seenLabels.add(label);
+                    const label = (
+                        el.getAttribute('aria-label') ||
+                        el.getAttribute('title') ||
+                        el.textContent ||
+                        el.value ||
+                        el.getAttribute('alt') ||
+                        el.getAttribute('placeholder') ||
+                        ''
+                    ).trim();
+                    if (!label || label.length > maxTextChars) continue;
                     const tag = el.tagName.toLowerCase();
                     const kind =
                         el.matches('input[type="submit"], button[type="submit"]')
                             ? 'submit'
                             : tag === 'a'
                               ? 'link'
-                              : 'button';
-                    interactiveElements.push({ label, kind, selector: `text=${label}` });
+                              : (el.getAttribute('role') || (tag === 'summary' ? 'toggle' : 'button'));
+                    const selector = uniqueSelector(el, label);
+                    // Every way this element can be found again, most durable first. A label changes ("Save" →
+                    // "Kaydet") and a generated class or an nth-of-type path changes with the layout, so the
+                    // selector is the last resort, not the only one.
+                    const locators = [];
+                    const addLocator = (locator) => {
+                        if (!locators.some((known) => known.by === locator.by && known.value === locator.value && known.name === locator.name)) {
+                            locators.push(locator);
+                        }
+                    };
+                    for (const attr of ['data-testid', 'data-test', 'data-cy']) {
+                        if (el.getAttribute(attr)) addLocator({ by: 'attr', name: attr, value: el.getAttribute(attr) });
+                    }
+                    for (const attribute of el.attributes || []) {
+                        if (/^data-(?:[a-z0-9]+-)*(?:path|href|to|route|url)$/i.test(attribute.name) && attribute.value) {
+                            addLocator({ by: 'attr', name: attribute.name, value: attribute.value });
+                        }
+                    }
+                    if (el.getAttribute('aria-label')) addLocator({ by: 'label', value: el.getAttribute('aria-label') });
+                    addLocator({ by: 'role', role: el.getAttribute('role') || (tag === 'a' ? 'link' : tag === 'button' ? 'button' : tag), value: label });
+                    addLocator({ by: 'text', value: label });
+                    addLocator({ by: 'css', value: selector });
+                    interactiveElements.push({
+                        label,
+                        kind,
+                        selector,
+                        locators: locators.slice(0, 6),
+                        identity: [
+                            tag,
+                            el.getAttribute('data-testid') || el.getAttribute('data-test') || el.getAttribute('data-cy') || '',
+                            el.getAttribute('aria-label') || '',
+                            el.getAttribute('name') || '',
+                            el.getAttribute('href') || '',
+                            label
+                        ].join('|')
+                    });
                 }
 
                 const sections = [...document.querySelectorAll('form, section, [aria-label]')]
@@ -430,6 +464,9 @@ export async function extractPageComponents(page) {
                 snippetChars: SECTION_SNIPPET_CHARS
             }
         );
+
+        components.interactiveElements = components.interactiveElements.map(({ identity: _identity, ...element }) => element);
+        return ensureUniqueElementKeys(pageUrl, components);
     } catch {
         return { headings: [], interactiveElements: [], sections: [] };
     }
@@ -449,6 +486,29 @@ async function detectTabGroupLabels(page) {
     try {
         return await page.evaluate(
             ({ maxTextChars }) => {
+                const largest = (groups) => {
+                    let best = [];
+                    for (const labels of groups.values()) {
+                        if (labels.length > best.length) best = labels;
+                    }
+                    return best;
+                };
+
+                // Real tabs first: elements that declare themselves tabs. The
+                // sibling-button heuristic below would otherwise let any larger
+                // group of buttons (a section outline, a toolbar) outvote them.
+                const tabGroups = new Map();
+                for (const el of document.querySelectorAll('[role="tab"]')) {
+                    if (el.closest('nav, header')) continue;
+                    const text = (el.textContent || '').trim();
+                    const group = el.closest('[role="tablist"]') || el.parentElement;
+                    if (!text || text.length > maxTextChars || !group) continue;
+                    if (!tabGroups.has(group)) tabGroups.set(group, []);
+                    tabGroups.get(group).push(text);
+                }
+                const realTabs = largest(tabGroups);
+                if (realTabs.length >= 2) return realTabs;
+
                 const candidates = [...document.querySelectorAll('button, [role="button"]')].filter(
                     (el) => !el.closest('nav, header')
                 );
@@ -461,11 +521,7 @@ async function detectTabGroupLabels(page) {
                     if (!groups.has(parent)) groups.set(parent, []);
                     groups.get(parent).push(text);
                 }
-                let best = [];
-                for (const labels of groups.values()) {
-                    if (labels.length > best.length) best = labels;
-                }
-                return best;
+                return largest(groups);
             },
             { maxTextChars: NAV_DISCOVERY_MAX_TEXT_CHARS }
         );
@@ -523,6 +579,12 @@ export async function discoverTabVariants(page, urlStr) {
     await page.goto(urlStr, { waitUntil: 'domcontentloaded', timeout: 30000 });
     await waitForStableContent(page);
 
+    // What the page shows as loaded. A "tab" whose panel reads the same as this
+    // (or as an earlier tab) is not a tab at all — a section link that only
+    // scrolls, say — so it is dropped instead of being stored as a duplicate.
+    const sameText = (text) => String(text || '').replace(/\s+/g, ' ').trim();
+    const seenText = new Set([sameText((await extractTabPanelSnapshot(page)).rawText)]);
+
     const rawLabels = [...new Set(await detectTabGroupLabels(page))];
     // The group-size check runs on the RAW group (a CTA sitting inside an
     // otherwise-real tab row still counts toward "this looks like a tab
@@ -539,6 +601,8 @@ export async function discoverTabVariants(page, urlStr) {
             await page.click(`text=${label}`, { timeout: 2000 });
             await waitForStableContent(page);
             const { headings, rawText } = await extractTabPanelSnapshot(page);
+            if (seenText.has(sameText(rawText))) continue;
+            seenText.add(sameText(rawText));
             variants.push({ label, headings, rawText });
         } catch {
             // candidate not clickable, or page didn't settle — skip it, harmless
@@ -598,16 +662,17 @@ async function extractPdfPage(urlStr) {
  * responses — a 404'd link shouldn't get its error-page boilerplate indexed
  * as product knowledge.
  */
-async function extractPage(page, urlStr, rootOrigin) {
+async function extractPage(page, urlStr, rootOrigin, { peekStates = false } = {}) {
     // 'networkidle' hangs/crashes on SPAs that keep a live connection open
     // (polling, websockets, dashboards) — they never go idle. Wait for the
     // DOM instead, then let client-side rendering settle adaptively.
     const response = await page.goto(urlStr, { waitUntil: 'domcontentloaded', timeout: 30000 });
-    await waitForStableContent(page);
 
+    // Checked before waiting: an error page is not worth any render patience.
     if (response && response.status() >= 400) {
         return { ok: false, status: response.status() };
     }
+    await waitForInitialRender(page);
 
     // Capture ordinary page accordions while they are still in their natural
     // initial state. The discovery pass restores every toggle it opens, so
@@ -615,13 +680,33 @@ async function extractPage(page, urlStr, rootOrigin) {
     // base page text with a synthetic "everything expanded" state.
     const toggles = await discoverToggleVariants(page, urlStr);
     await expandCollapsedNav(page);
-    const clientRoutedLinks = await discoverClientRoutedLinks(page, rootOrigin);
+    const clientRoutedLinks = await discoverClientRoutedLinks(page, rootOrigin, { settle: waitForStableContent });
     // discoverClientRoutedLinks() navigates away and back per candidate —
     // restore any nav expansion state lost in that round-trip before the
     // final scrape below.
     await expandCollapsedNav(page);
-    const components = await extractPageComponents(page);
+    const components = await extractPageComponents(page, urlStr);
     if (toggles.length) components.toggles = toggles;
+
+    // Logged-in panels only: press the page's own buttons and record what each
+    // opens. Runs BEFORE the scrape below, which strips <style> and <script> and
+    // so would leave nothing visible to press. The page is restored after each press.
+    let stateLinks = [];
+    if (peekStates) {
+        // Restoring after a press can reload the page; a heavy app then shows a
+        // skeleton first, which the quick wait would accept as "settled" and leave
+        // the scrape below reading a half-drawn page. Wait like a first load does.
+        const peeked = await peekAtButtons(page, urlStr, {
+            settle: waitForInitialRender,
+            allowCreate: process.env.URL_CRAWL_PEEK_CREATE === '1'
+        });
+        if (peeked.states.length) {
+            components.states = peeked.states;
+            // Say on each button what pressing it does.
+            annotateElements(components);
+        }
+        stateLinks = peeked.links;
+    }
 
     const { text, links } = await page.evaluate(() => {
         document.querySelectorAll('script, style, noscript, iframe, link, meta').forEach((el) => el.remove());
@@ -635,7 +720,7 @@ async function extractPage(page, urlStr, rootOrigin) {
         }));
         return { text: document.body.innerText || document.body.textContent || '', links };
     });
-    links.push(...clientRoutedLinks);
+    links.push(...clientRoutedLinks, ...stateLinks);
 
     // Line breaks are kept (not flattened to one line here) — they're what
     // stripRepeatedBoilerplate() below diffs across pages to find repeated
@@ -732,12 +817,12 @@ export function stripRepeatedBoilerplate(pages) {
  * on a `previousPages` cache hit, same rule as `components`.
  *
  * @param {string} urlStr
- * @param {{loginUrl?:string, email:string, password:string, selectors?:{email?:string,password?:string,submit?:string}}|null} [auth] -
+ * @param {{loginUrl?:string, username?:string, email?:string, password:string, selectors?:{username?:string,email?:string,password?:string,next?:string,submit?:string}}|null} [auth] -
  *   Same shape as the guided tour's demo-session auth (see `@repo/screen`'s
  *   `loginWithCredentials`) — logs in via the product's own login form before
  *   crawling. Without it, auth-gated pages are scraped anonymously and only
  *   the public/login view gets indexed.
- * @param {(current:number, max:number, pagesIndexSoFar:object) => void|Promise<void>} [onProgress]
+ * @param {(current:number, max:number, pagesIndexSoFar:object, stats:object) => void|Promise<void>} [onProgress]
  *   `pagesIndexSoFar` is the SAME in-progress index object being built by
  *   this call, passed so the caller can checkpoint it (e.g. to Mongo) after
  *   every page — otherwise a long crawl interrupted partway through (a
@@ -786,8 +871,22 @@ export async function extractFromUrl(urlStr, auth = null, onProgress = null, pre
         // was discovered from — see pagesIndex's `parentUrl` below.
         const queue = [{ url: rootUrl, parentUrl: null }];
         const pages = [];
-        const pagesIndex = {};
+        // A retry extends the durable checkpoint; it never replaces it with
+        // only the subset reached so far in this attempt.
+        const pagesIndex = Object.fromEntries(previousPages);
         let fetchedCount = 0;
+        let succeededCount = 0;
+        let failedCount = 0;
+        let cachedCount = 0;
+
+        const progressStats = () => ({
+            attempted: fetchedCount,
+            succeeded: succeededCount,
+            failed: failedCount,
+            cached: cachedCount,
+            saved: Object.keys(pagesIndex).length,
+            successRate: fetchedCount > 0 ? Math.round((succeededCount / fetchedCount) * 100) : 100
+        });
 
         while (queue.length && fetchedCount < MAX_CRAWL_PAGES && visited.size < MAX_TOTAL_VISITED) {
             const { url: next, parentUrl, isPdfCandidate } = queue.shift();
@@ -801,9 +900,14 @@ export async function extractFromUrl(urlStr, auth = null, onProgress = null, pre
                 // that field, it's simply absent — degrades to an unparented
                 // structure-tree node, not an error) without a real page
                 // load, and don't spend this run's MAX_CRAWL_PAGES budget on it.
-                pages.push({ url: next, text: cached.rawText });
-                pagesIndex[next] = cached;
-                enqueueLinks(cached.links, queue, visited, rootOrigin, next);
+                const normalizedCached = {
+                    ...cached,
+                    components: ensureUniqueElementKeys(next, cached.components)
+                };
+                pages.push({ url: next, text: normalizedCached.rawText });
+                pagesIndex[next] = normalizedCached;
+                cachedCount++;
+                enqueueLinks(normalizedCached.links, queue, visited, rootOrigin, next);
                 continue;
             }
 
@@ -817,8 +921,11 @@ export async function extractFromUrl(urlStr, auth = null, onProgress = null, pre
 
             let result;
             try {
-                result = isPdfCandidate ? await extractPdfPage(next) : await extractPage(page, next, rootOrigin);
+                result = isPdfCandidate ? await extractPdfPage(next) : await extractPage(page, next, rootOrigin, { peekStates: Boolean(auth) });
             } catch {
+                fetchedCount++;
+                failedCount++;
+                await onProgress?.(fetchedCount, MAX_CRAWL_PAGES, pagesIndex, progressStats());
                 continue; // one broken page (or unparseable/oversized PDF) shouldn't kill the whole crawl
             }
             fetchedCount++;
@@ -826,9 +933,12 @@ export async function extractFromUrl(urlStr, auth = null, onProgress = null, pre
             // 404/5xx — don't index the error page, and it has no real links
             // to follow (its "not found" boilerplate isn't a route map).
             if (!result.ok) {
-                await onProgress?.(fetchedCount, MAX_CRAWL_PAGES, pagesIndex);
+                failedCount++;
+                await onProgress?.(fetchedCount, MAX_CRAWL_PAGES, pagesIndex, progressStats());
                 continue;
             }
+
+            succeededCount++;
 
             pages.push({ url: next, text: result.text });
             pagesIndex[next] = {
@@ -841,14 +951,15 @@ export async function extractFromUrl(urlStr, auth = null, onProgress = null, pre
                 ...(isPdfCandidate ? { isPdf: true } : {})
             };
             if (result.links.length) enqueueLinks(result.links, queue, visited, rootOrigin, next);
-            await onProgress?.(fetchedCount, MAX_CRAWL_PAGES, pagesIndex);
+            await onProgress?.(fetchedCount, MAX_CRAWL_PAGES, pagesIndex, progressStats());
         }
 
         const cleanedPages = stripRepeatedBoilerplate(pages);
         return {
             text: cleanedPages.map((p) => `[Page: ${p.url}]\n${p.text}`).join('\n\n'),
             pages: cleanedPages,
-            pagesIndex
+            pagesIndex,
+            stats: progressStats()
         };
     } finally {
         if (browser) {

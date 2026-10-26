@@ -420,3 +420,16 @@ describe('buildSystemPrompt — tool-mechanism disclosure guardrail', () => {
         expect(prompt).toContain('Never narrate your own internal process');
     });
 });
+
+describe('buildSystemPrompt — post-playbook continuity', () => {
+    it('prevents an unplanned discovery interview after the assigned presentation', () => {
+        const prompt = buildSystemPrompt({ ...baseCfg, postPlaybook: true });
+        expect(prompt).toContain('assigned presentation is complete');
+        expect(prompt).toContain('Do not start a new discovery interview');
+        expect(prompt).toContain('genuinely missing fact required');
+    });
+
+    it('does not apply the completion boundary to ordinary non-playbook sessions', () => {
+        expect(buildSystemPrompt(baseCfg)).not.toContain('assigned presentation is complete');
+    });
+});

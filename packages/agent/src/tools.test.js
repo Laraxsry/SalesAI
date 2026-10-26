@@ -137,6 +137,57 @@ describe('buildTools', () => {
         expect(browser.focus).toHaveBeenCalledWith('1', 'text');
     });
 
+    describe('search_ui_guide', () => {
+        it('is not offered unless the product has a crawled dashboard', () => {
+            expect(toolNames(buildTools({ productId: 'p1' }))).not.toContain('search_ui_guide');
+            expect(toolNames(buildTools({ productId: 'p1', uiGuide: true }))).toContain('search_ui_guide');
+        });
+
+        it('adds nothing else to the tool set', () => {
+            const withGuide = toolNames(buildTools({ productId: 'p1', uiGuide: true }));
+            expect(withGuide.filter((name) => name !== 'search_ui_guide')).toEqual(BASE_TOOL_NAMES);
+        });
+
+        it('looks only at the dashboard shelf and returns text with its page', async () => {
+            retrieve.mockResolvedValue([
+                { text: 'Workflows page: create workflow button', score: 0.8, metadata: { pageUrl: 'https://app.example/flows' }, irrelevant: 'dropped' }
+            ]);
+            const tools = buildTools({ productId: 'prod-9', uiGuide: true });
+
+            const result = await findTool(tools, 'search_ui_guide').handler({ query: 'how to create a workflow' });
+
+            expect(retrieve).toHaveBeenCalledWith({ productId: 'prod-9', query: 'how to create a workflow', topK: 5, kind: 'ui' });
+            expect(result).toEqual([
+                { text: 'Workflows page: create workflow button', score: 0.8, pageUrl: 'https://app.example/flows' }
+            ]);
+        });
+
+        it('returns the id of the recipe behind a learned flow, so it can be carried out', async () => {
+            retrieve.mockResolvedValue([
+                { text: 'How to create a variable', score: 0.9, metadata: { procedureId: 'proc-1', pageUrl: 'https://app.example/vars' } }
+            ]);
+            const tools = buildTools({ productId: 'prod-9', uiGuide: true });
+
+            const result = await findTool(tools, 'search_ui_guide').handler({ query: 'create a variable' });
+
+            expect(result).toEqual([{ text: 'How to create a variable', score: 0.9, pageUrl: 'https://app.example/vars', procedureId: 'proc-1', offerLiveDemo: true }]);
+        });
+
+        it('does not offer a recipe as a live demo when the match is weak', async () => {
+            retrieve.mockResolvedValue([
+                { text: 'How to create a variable', score: 0.3, metadata: { procedureId: 'proc-1' } }
+            ]);
+            const result = await findTool(buildTools({ productId: 'p', uiGuide: true }), 'search_ui_guide').handler({ query: 'billing' });
+            expect(result).toEqual([{ text: 'How to create a variable', score: 0.3 }]);
+        });
+
+        it('warns the model that dashboard content is example data, not product facts', () => {
+            const tool = findTool(buildTools({ productId: 'p1', uiGuide: true }), 'search_ui_guide');
+            expect(tool.description).toMatch(/example data/i);
+            expect(tool.description).toMatch(/search_knowledge/);
+        });
+    });
+
     describe('search_knowledge', () => {
         it('retrieves for the bound productId and maps chunks to {text, score, sourceId}', async () => {
             retrieve.mockResolvedValue([
@@ -331,7 +382,14 @@ describe('buildTools', () => {
                 components: {
                     interactiveElements: [
                         { label: 'Planı Seç', kind: 'button', selector: 'text=Planı Seç' },
-                        { label: 'Gönder', kind: 'submit', selector: 'text=Gönder' }
+                        { label: 'Gönder', kind: 'submit', selector: 'text=Gönder' },
+                        {
+                            label: 'Yükselt',
+                            kind: 'button',
+                            selector: '[data-testid="upgrade"]',
+                            elementKey: 'el_fedcba9876543210',
+                            elementPath: 'button/upgrade'
+                        }
                     ],
                     sections: [{ tag: 'section', ariaLabel: 'Fiyatlandırma bölümü', textSnippet: '...' }],
                     toggles: [{
@@ -423,6 +481,21 @@ describe('buildTools', () => {
                     elementPath: 'sss/midas-ekstresi'
                 }]
             });
+        });
+
+        it('resolves an ordinary interactive element by its exact elementKey', async () => {
+            const tools = buildTools({ productId: 'p1', siteMap });
+
+            const result = await findTool(tools, 'find_element').handler({ elementKey: 'el_fedcba9876543210' });
+
+            expect(result.candidates).toEqual([{
+                pageUrl: 'https://example.test/pricing',
+                selector: '[data-testid="upgrade"]',
+                kind: 'button',
+                label: 'Yükselt',
+                elementKey: 'el_fedcba9876543210',
+                elementPath: 'button/upgrade'
+            }]);
         });
 
         it('includes element-aware toggles in fuzzy discovery', async () => {
@@ -655,5 +728,46 @@ describe('buildTools', () => {
             const result = await findTool(tools, 'advance_step').handler({});
             expect(result).toEqual({ ok: false });
         });
+    });
+});
+
+describe('start_procedure / finish_procedure', () => {
+    const loaded = { procedure: { id: 'proc-1', title: 'Add a variable' }, labels: ['New variable', 'Create', 'Delete'] };
+    const makeBrowser = () => ({ observe: async () => ({}), perform: async () => ({}), beginProcedure: vi.fn(), endProcedure: vi.fn(), locateStep: vi.fn(async (label) => ({ ok: true, uid: '1_1', name: label, tier: 'exact' })) });
+
+    it('is offered only with a browser, a dashboard guide and a loader', () => {
+        const base = { productId: 'p1', uiGuide: true, procedureLoader: async () => loaded };
+        expect(toolNames(buildTools({ ...base, browser: makeBrowser() }))).toContain('start_procedure');
+        expect(toolNames(buildTools({ ...base }))).not.toContain('start_procedure');
+        expect(toolNames(buildTools({ ...base, uiGuide: false, browser: makeBrowser() }))).not.toContain('start_procedure');
+        expect(toolNames(buildTools({ productId: 'p1', uiGuide: true, browser: makeBrowser() }))).not.toContain('start_procedure');
+    });
+
+    it('unlocks the recipe labels, refuses a second start, and locks again on finish', async () => {
+        const browser = makeBrowser();
+        const tools = buildTools({ productId: 'p1', uiGuide: true, procedureLoader: async () => loaded, browser });
+        const started = await findTool(tools, 'start_procedure').handler({ procedureId: 'proc-1' });
+        expect(started.ok).toBe(true);
+        expect(browser.beginProcedure).toHaveBeenCalledWith({ id: 'proc-1', labels: loaded.labels });
+        expect((await findTool(tools, 'start_procedure').handler({ procedureId: 'proc-1' })).ok).toBe(false);
+        expect(browser.beginProcedure).toHaveBeenCalledTimes(1);
+        await findTool(tools, 'finish_procedure').handler({});
+        expect(browser.endProcedure).toHaveBeenCalled();
+    });
+
+    it('reports an unknown procedure without unlocking anything', async () => {
+        const browser = makeBrowser();
+        const tools = buildTools({ productId: 'p1', uiGuide: true, procedureLoader: async () => null, browser });
+        expect((await findTool(tools, 'start_procedure').handler({ procedureId: 'nope' })).ok).toBe(false);
+        expect(browser.beginProcedure).not.toHaveBeenCalled();
+    });
+
+    it('locates a recipe button only while a procedure is running', async () => {
+        const browser = makeBrowser();
+        const tools = buildTools({ productId: 'p1', uiGuide: true, procedureLoader: async () => loaded, browser });
+        expect((await findTool(tools, 'find_procedure_target').handler({ label: 'Create' })).ok).toBe(false);
+        expect(browser.locateStep).not.toHaveBeenCalled();
+        await findTool(tools, 'start_procedure').handler({ procedureId: 'proc-1' });
+        expect(await findTool(tools, 'find_procedure_target').handler({ label: 'Create' })).toMatchObject({ ok: true, uid: '1_1' });
     });
 });

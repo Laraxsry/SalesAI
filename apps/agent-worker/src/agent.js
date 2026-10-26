@@ -41,10 +41,12 @@ import {
     ChromeMcpTour,
     GuidedTour,
     analyzeFrame,
+    findProcedureTarget,
     resolveSnapshotTarget
 } from '@repo/screen';
 import { compileLegacyPlaybook, normalizePlaybook } from '@repo/contracts';
 import { getLLM } from '@repo/ai';
+import { loadProcedure } from '@repo/rag';
 import { getLogger, runWithContext } from '@repo/logger';
 import { decryptField, languageName } from '@repo/utils';
 import { publishEvent, publishMetric, publishUsage, RT_EVENTS, SESSION_METRICS } from '@repo/realtime';
@@ -61,6 +63,7 @@ import { createPlaybookRuntime } from './playbook-runtime.js';
 import { buildSurveyAnswerRecord, normalizeSurveyAnswer } from './survey-answer.js';
 import { clickAndSyncTour } from './tour-click.js';
 import { createUtteranceMemory } from './utterance-memory.js';
+import { createResolvedTurnMemory } from './resolved-turn-memory.js';
 import { createQuestionQueue } from './question-queue.js';
 import { createHandQueue } from './hand-queue.js';
 import { matchReturningParticipant } from './returning-participant.js';
@@ -1193,6 +1196,9 @@ async function runSession(ctx) {
     }
 
     const browserControls = backend === 'chrome-mcp' ? {
+        beginProcedure: (scope) => tour.actionPolicy.beginProcedure(scope),
+        endProcedure: () => tour.actionPolicy.endProcedure(),
+        locateStep: async (label) => findProcedureTarget((await tour.observe()).snapshot, { label }),
         observe: () => monitorBrowserAction('observe', {}, () => tour.observe()),
         focus: (uid, intent) => monitorBrowserAction('focus', { uid }, async operationId => {
             try {
@@ -1514,6 +1520,7 @@ async function runSession(ctx) {
     // What the agent actually said out loud, so "do not repeat yourself" has a
     // referent instead of being a blind instruction — see utterance-memory.js.
     const utterances = createUtteranceMemory();
+    const resolvedTurns = createResolvedTurnMemory();
 
     // Site Bilgisi — Site Yapı Ağacı: flattened `meta.crawlIndex.pages` from
     // every url/api KnowledgeSource this product has, so the `find_page`
@@ -1531,13 +1538,17 @@ async function runSession(ctx) {
     // navigation — went completely empty for the whole duration of any
     // re-ingestion, which for an 8+ page site is minutes, not seconds.
     const siteMap = [];
+    // A product with a crawled logged-in panel also has a dashboard guide on
+    // its own shelf (`kind: 'ui'`) — see search_ui_guide in tools.js.
+    let hasUiGuide = false;
     try {
         const urlSources = await KnowledgeSource.find({
             productId: product._id,
             type: { $in: ['url', 'api'] },
             'meta.crawlIndex.pages': { $exists: true }
-        }).select('meta.crawlIndex');
+        }).select('accessMode meta.crawlIndex');
         for (const src of urlSources) {
+            if (src.accessMode === 'authenticated') hasUiGuide = true;
             const pages = src.meta?.crawlIndex?.pages || {};
             for (const [url, page] of Object.entries(pages)) {
                 siteMap.push({
@@ -1659,7 +1670,7 @@ async function runSession(ctx) {
     let customerSpeaking = false;
     const dynamicKnowledgeResolver = dynamicRouteExecutionEnabled && dynamicRoutePlanningService
         ? createProductKnowledgeResolver() : null;
-    const handleKnowledgeResolution = (resolution) => {
+    const recordKnowledgeResolution = (resolution, origin) => {
         dynamicKnowledgeStateAdapter?.onResolution(resolution);
         const timelineType = {
             grounded: TIMELINE_EVENTS.KNOWLEDGE_RESOLVED,
@@ -1672,8 +1683,12 @@ async function runSession(ctx) {
             status: resolution.status,
             evidenceCount: resolution.evidence.length,
             demoTargetCount: resolution.demoTargets.length,
-            knowledgeGapStatus: resolution.knowledgeGap.status
+            knowledgeGapStatus: resolution.knowledgeGap.status,
+            origin
         });
+    };
+    const handleCustomerKnowledgeResolution = (resolution) => {
+        recordKnowledgeResolution(resolution, 'customer_utterance');
         if (!dynamicRoutePlanningService) return Promise.resolve();
         return dynamicRoutePlanningService.replan({
             reason: `knowledge_${resolution.status}`,
@@ -1690,7 +1705,7 @@ async function runSession(ctx) {
     const customerReplanTrigger = dynamicKnowledgeResolver
         ? createCustomerReplanTrigger({
             resolve: (input) => dynamicKnowledgeResolver.resolve(input),
-            onResolution: handleKnowledgeResolution,
+            onResolution: handleCustomerKnowledgeResolution,
             onError: (error) => log.warn('customer route reconsideration failed', {
                 error: error.message
             })
@@ -1707,6 +1722,10 @@ async function runSession(ctx) {
                     && isEnabledFeatureFlag(process.env.MULTI_AGENT_LEAD_CAPTURE_ENABLED)
                     ? saveMeeting : null,
                 siteMap,
+                uiGuide: hasUiGuide,
+                procedureLoader: hasUiGuide
+                    ? (procedureId) => loadProcedure({ productId: String(product._id), procedureId })
+                    : null,
                 playbookActive: playbookMode,
                 multiParticipant: isMultiParty,
                 // Group session: hand the floor to the next raised hand.
@@ -1714,11 +1733,9 @@ async function runSession(ctx) {
                 flagFollowup,
                 knowledgeResolver: dynamicKnowledgeResolver,
                 onKnowledgeResolved: (resolution) => {
-                    if (customerReplanTrigger) {
-                        void customerReplanTrigger.onToolResolution(resolution);
-                    } else {
-                        void handleKnowledgeResolution(resolution);
-                    }
+                    // Tool lookups support the current turn. Only an explicit
+                    // visitor utterance is allowed to revise the active route.
+                    recordKnowledgeResolution(resolution, 'agent_tool');
                 },
                 browser: browserControls,
                 proposeSurvey: adaptiveSurveyConfig
@@ -1830,8 +1847,24 @@ async function runSession(ctx) {
 
     let speakingBaseInstructions = instructions;
     let acceptedMemoryNote = '';
+    let resolvedTurnNote = '';
     let pendingMemoryProjection = null;
     let multiAgentRuntime = null;
+    let requestedInstructions = instructions;
+    let instructionUpdate = Promise.resolve();
+
+    function refreshSpeakingInstructions() {
+        const next = [speakingBaseInstructions, acceptedMemoryNote, resolvedTurnNote]
+            .filter(Boolean).join('\n\n');
+        if (next === requestedInstructions) return instructionUpdate;
+        requestedInstructions = next;
+        instructionUpdate = instructionUpdate
+            .then(() => agentSession.currentAgent.updateInstructions(next))
+            .catch((error) => {
+                log.warn('speaking instructions could not be updated', { error: error.message });
+            });
+        return instructionUpdate;
+    }
 
     function applyAcceptedMemoryProjection({ atTurnBoundary = false } = {}) {
         const projection = pendingMemoryProjection;
@@ -1845,11 +1878,7 @@ async function runSession(ctx) {
             displayName: participant?.claimedDisplayName
         });
         try {
-            agentSession.updateAgent(new voice.Agent({
-                instructions: [speakingBaseInstructions, acceptedMemoryNote]
-                    .filter(Boolean).join('\n\n'),
-                tools
-            }));
+            void refreshSpeakingInstructions();
             timeline.emit(TIMELINE_EVENTS.MULTI_AGENT_MEMORY_APPLIED, {
                 memoryRevision: projection.revision,
                 participantAttributed: Boolean(projection.activeParticipant)
@@ -1893,15 +1922,21 @@ async function runSession(ctx) {
             onProjection: (projection) => {
                 pendingMemoryProjection = projection;
             },
-            onAnalystResult: (result) => timeline.emit(
-                TIMELINE_EVENTS.MULTI_AGENT_ANALYST_RESULT,
-                {
+            onAnalystResult: (result) => {
+                const memory = result.status === 'accepted'
+                    && result.proposal?.proposalType === 'participant_memory'
+                    ? result.proposal.payload : null;
+                timeline.emit(TIMELINE_EVENTS.MULTI_AGENT_ANALYST_RESULT, {
                     analystId: result.analystId,
                     status: result.status,
                     proposalType: result.proposal?.proposalType ?? null,
-                    reason: result.errors?.[0]?.code ?? null
-                }
-            ),
+                    reason: result.errors?.[0]?.code ?? null,
+                    confidence: result.proposal?.confidence ?? null,
+                    turnIndex: result.proposal?.turnIndex ?? null,
+                    participantAttributed: Boolean(result.proposal?.participantId),
+                    memory
+                });
+            },
             onTelemetry: (record) => timeline.emit(
                 TIMELINE_EVENTS.MULTI_AGENT_ANALYST_RUN,
                 record,
@@ -2291,12 +2326,12 @@ async function runSession(ctx) {
                 // item 13) — the model stayed forbidden from calling
                 // `start_guided_tour`/`navigate_to` on its own initiative for the
                 // rest of the call, even after the scripted route was long over.
-                // `updateAgent` (confirmed present on this SDK version — see
-                // node_modules/@livekit/agents/src/voice/agent_session.ts) swaps
-                // the live agent's instructions without tearing down the
-                // session; rebuilding with playbookActive:false lifts that
-                // restriction the moment there's no more script for the model
-                // to race against. The tool list must switch at the same time:
+                // Update the current agent in place. Replacing it with
+                // `updateAgent` inserts a same-agent handoff into the realtime
+                // context and can make the conversation feel restarted.
+                // Rebuilding with playbookActive:false lifts the script-only
+                // restriction once there is no route left to race against.
+                // The tool list switches at the same boundary:
                 // buildTools intentionally removes advance_step outside a
                 // playbook so ordinary answers cannot look like script nodes.
                 try {
@@ -2305,19 +2340,25 @@ async function runSession(ctx) {
                         product: { name: product.name, description: product.description },
                         persona: agentDoc.persona,
                         playbookActive: false,
+                        postPlaybook: true,
                         multiParticipant: isMultiParty,
                         preCallIntent,
                         browserAutomation: backend === 'chrome-mcp'
                     });
                     const postPlaybookTools = buildSessionTools(false);
                     speakingBaseInstructions = postPlaybookInstructions;
-                    agentSession.updateAgent(new voice.Agent({
-                        instructions: [postPlaybookInstructions, acceptedMemoryNote]
-                            .filter(Boolean).join('\n\n'),
-                        tools: postPlaybookTools
-                    }));
                     tools = postPlaybookTools;
-                    log.info('post-playbook instructions and tools applied; model may now drive the screen on its own initiative', { sessionId: session._id });
+                    void Promise.all([
+                        refreshSpeakingInstructions(),
+                        agentSession.currentAgent.updateTools(postPlaybookTools)
+                    ]).then(() => {
+                        log.info('post-playbook instructions and tools applied; model may now drive the screen on its own initiative', { sessionId: session._id });
+                    }).catch((error) => {
+                        log.error('failed to apply post-playbook instructions or tools', {
+                            error: error.message,
+                            sessionId: session._id
+                        });
+                    });
                 } catch (err) {
                     log.error('failed to apply post-playbook instructions (model stays playbook-restricted for the rest of the call)', { error: err.message, sessionId: session._id });
                 }
@@ -2703,6 +2744,22 @@ async function runSession(ctx) {
         // next-turn boundary (or after the prior speech completed), never in
         // the middle of an answer being generated.
         applyAcceptedMemoryProjection();
+        const previousUtterance = utterances.last();
+        if (conversationIdlePolicy.awaitingAnswer && ev.transcript
+            && resolvedTurns.record({
+                question: previousUtterance?.text,
+                answer: ev.transcript,
+                interrupted: previousUtterance?.interrupted
+            })) {
+                resolvedTurnNote = resolvedTurns.instruction();
+                const resolved = resolvedTurns.snapshot().at(-1);
+                timeline.emit(TIMELINE_EVENTS.CONVERSATION_TURN_RESOLVED, {
+                    question: resolved.question,
+                    answer: resolved.answer,
+                    resolvedTurnCount: resolvedTurns.snapshot().length
+                });
+                void refreshSpeakingInstructions();
+            }
         if (ev.transcript) {
             const routeRevision = dynamicPlaybookStore?.snapshot().routeRevision ?? 0;
             const published = multiAgentRuntime?.publishTranscript({

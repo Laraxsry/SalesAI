@@ -48,17 +48,17 @@ function CenteredMessage({ embed, icon: Icon, loading = false, onClose, children
                     <X size={17} aria-hidden="true" />
                 </button>
             )}
-            <div className="relative z-10 w-full max-w-sm rounded-[28px] border border-white/10 bg-white/[0.055] p-8 shadow-2xl shadow-black/20 backdrop-blur-xl">
+            <div className="status-card relative z-10 w-full max-w-sm rounded-[28px] border border-white/10 bg-white/[0.055] p-8 shadow-2xl shadow-black/20 backdrop-blur-xl">
                 {!embed && (
                     <div className="mb-9 flex items-center justify-center gap-3">
-                        <Logo className="[&_span]:text-white [&_span_span]:text-[#d7f95b]" />
+                        <Logo className="[&_span]:text-white [&_span_span]:text-[#67e8f9]" />
                     </div>
                 )}
-                <span className="mx-auto flex h-14 w-14 items-center justify-center rounded-2xl border border-white/10 bg-white/[0.06] text-[#d7f95b]">
+                <span className="mx-auto flex h-14 w-14 items-center justify-center rounded-2xl border border-white/10 bg-white/[0.06] text-[#67e8f9]">
                     <Icon size={23} className={loading ? 'animate-spin' : ''} />
                 </span>
                 <p className="mt-5 text-sm font-medium leading-6 text-white/60">{children}</p>
-                {loading && <div className="mx-auto mt-6 h-1 w-24 overflow-hidden rounded-full bg-white/8"><div className="h-full w-1/2 animate-pulse rounded-full bg-[#d7f95b]" /></div>}
+                {loading && <div className="mx-auto mt-6 h-1.5 w-28 overflow-hidden rounded-full bg-white/8"><div className="load-bar-fill h-full w-2/5 rounded-full bg-gradient-to-r from-transparent via-[#67e8f9] to-transparent" /></div>}
             </div>
         </div>
     );
@@ -214,7 +214,7 @@ export function Visit() {
                 />
                 <button 
                     onClick={() => setStarted(true)}
-                    className="rounded-xl bg-[#d7f95b] px-4 py-2.5 text-sm font-bold text-[#071713] hover:bg-[#c9ed45]"
+                    className="rounded-xl bg-[#67e8f9] px-4 py-2.5 text-sm font-bold text-[#071426] hover:bg-[#8ceefa]"
                 >
                     Çerezlerle Oturum Başlat
                 </button>
@@ -238,7 +238,7 @@ export function Visit() {
                     className="relative z-10 w-full max-w-sm rounded-[28px] border border-white/10 bg-white/[0.055] p-8 shadow-2xl shadow-black/20 backdrop-blur-xl"
                 >
                     <div className="mb-7 flex items-center justify-center">
-                        <Logo className="[&_span]:text-white [&_span_span]:text-[#d7f95b]" />
+                        <Logo className="[&_span]:text-white [&_span_span]:text-[#67e8f9]" />
                     </div>
                     <p className="mb-4 text-sm font-medium leading-6 text-white/70">
                         Görüşmeye başlamadan önce, size nasıl hitap edelim?
@@ -249,11 +249,11 @@ export function Visit() {
                         onChange={(e) => setNameInput(e.target.value)}
                         maxLength={60}
                         placeholder="Adınız"
-                        className="mb-4 h-11 w-full rounded-xl border border-white/10 bg-white/[0.06] px-4 text-sm text-white outline-none focus:border-[#d7f95b]"
+                        className="mb-4 h-11 w-full rounded-xl border border-white/10 bg-white/[0.06] px-4 text-sm text-white outline-none focus:border-[#67e8f9]"
                     />
                     <button
                         type="submit"
-                        className="w-full rounded-xl bg-[#d7f95b] px-4 py-2.5 text-sm font-bold text-[#071713] hover:bg-[#c9ed45]"
+                        className="w-full rounded-xl bg-[#67e8f9] px-4 py-2.5 text-sm font-bold text-[#071426] hover:bg-[#8ceefa]"
                     >
                         {surveyEnabled ? 'Devam' : 'Katıl'}
                     </button>

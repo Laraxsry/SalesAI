@@ -6,20 +6,52 @@ function fold(value = '') {
         .replace(/ı/g, 'i');
 }
 
-/** Parse the stable subset of Chrome DevTools MCP's accessibility snapshot. */
+const ROW_ROLES = new Set(['row', 'listitem', 'treeitem', 'article']);
+// A container with no row role still counts as "the row" if it is small: a few elements, not a whole page.
+const MAX_ROW_LINES = 30;
+
+/**
+ * Parse the stable subset of Chrome DevTools MCP's accessibility snapshot.
+ *
+ * Each element also carries `rowText`: the folded text of the row it sits in (the nearest ancestor with a row
+ * role, or failing that the nearest small container that holds more than the element itself). It lets a caller
+ * ask "is this button on a row that mentions X?" — for instance, that it belongs to a record a demo created.
+ */
 export function parseSnapshotElements(snapshotText = '') {
+    const lines = snapshotText.split('\n');
+    const indentOf = (line) => line.match(/^\s*/)?.[0].length ?? 0;
+    const subtreeLines = (start, indent) => {
+        const found = [lines[start]];
+        for (let next = start + 1; next < lines.length; next++) {
+            if (!lines[next].trim()) continue;
+            if (indentOf(lines[next]) <= indent) break;
+            found.push(lines[next]);
+        }
+        return found;
+    };
+
     const ancestors = [];
-    return snapshotText.split('\n').flatMap((line, index) => {
+    return lines.flatMap((line, index) => {
         const uid = line.match(/\buid=([^\s]+)/)?.[1];
         if (!uid) return [];
-        const indent = line.match(/^\s*/)?.[0].length ?? 0;
+        const indent = indentOf(line);
         while (ancestors.length && ancestors.at(-1).indent >= indent) ancestors.pop();
         const afterUid = line.slice(line.indexOf(`uid=${uid}`) + uid.length + 4).trim();
         const role = afterUid.match(/^([\w-]+)/)?.[1]?.toLowerCase() ?? '';
         const name = afterUid.match(/^[\w-]+\s+"([^"]*)"/)?.[1] ?? '';
         const insideForm = ancestors.some((ancestor) => ancestor.role === 'form');
-        ancestors.push({ indent, role });
-        return [{ uid, role, name, line, index, insideForm,
+
+        let row = [...ancestors].reverse().find((ancestor) => ROW_ROLES.has(ancestor.role));
+        if (!row) {
+            row = [...ancestors].reverse().find((ancestor) => {
+                const own = subtreeLines(ancestor.index, ancestor.indent);
+                return own.length > 1 && own.length <= MAX_ROW_LINES && own.filter((text) => /\buid=/.test(text)).length > 1;
+            });
+        }
+        const rowText = row ? fold(subtreeLines(row.index, row.indent).join(' ')) : '';
+
+        ancestors.push({ indent, role, index });
+        return [{ uid, role, name, line, index, insideForm, rowText,
             folded: fold(`${role} ${name} ${line}`) }];
     });
 }
@@ -30,6 +62,19 @@ export function snapshotElementByUid(snapshotText, uid) {
 
 function score(element, terms) {
     return terms.reduce((total, term) => total + (element.folded.includes(term) ? 1 : 0), 0);
+}
+
+function loginSubmitScore(element) {
+    const name = fold(element.name).trim();
+    const loginActions = ['log in', 'login', 'sign in', 'giris', 'giris yap', 'oturum ac'];
+    const roleScore = element.role === 'button' ? 10 : 0;
+    const formScore = element.insideForm ? 20 : 0;
+    if (loginActions.includes(name)) return 100 + roleScore + formScore;
+    if (loginActions.some((term) => name.includes(term))) return 80 + roleScore + formScore;
+    if (['continue', 'devam et', 'next', 'ileri'].some((term) => name.includes(term))) {
+        return 20 + roleScore + formScore;
+    }
+    return 0;
 }
 
 function compileOverride(override, label) {
@@ -84,7 +129,7 @@ export function resolveLoginControls(snapshotText, overrides = {}) {
     const submit = explicitSubmit ?? buttons
         .map((element) => ({
             element,
-            score: score(element, ['sign in', 'log in', 'login', 'giris', 'oturum ac', 'devam et', 'continue'])
+            score: loginSubmitScore(element)
         }))
         .sort((a, b) => b.score - a.score || a.element.index - b.element.index)
         .find((candidate) => candidate.score > 0)?.element

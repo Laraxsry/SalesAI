@@ -1,5 +1,6 @@
 import { QdrantClient } from '@qdrant/js-client-rest';
 import { randomUUID } from 'node:crypto';
+import { UI_KIND } from '../chunk-kind.js';
 
 const COLLECTION = 'knowledge_chunks';
 
@@ -45,6 +46,8 @@ export class QdrantVectorStore {
                     modality: it.modality || 'text',
                     audience: it.audience || 'general',
                     status: it.status || 'active',
+                    // Unset for product knowledge; see chunk-kind.js.
+                    ...(it.kind && { kind: it.kind }),
                     metadata: it.metadata || {}
                 }
             }))
@@ -52,9 +55,14 @@ export class QdrantVectorStore {
         return ids;
     }
 
-    async query({ productId, embedding, topK = 8, modality }) {
+    async query({ productId, embedding, topK = 8, modality, kind = 'knowledge' }) {
         const must = [{ key: 'productId', match: { value: productId } }];
         if (modality) must.push({ key: 'modality', match: { value: modality } });
+        // A payload filter is exact here: points written before `kind`
+        // existed have no such key, so `must_not kind=ui` keeps them.
+        const mustNot = [];
+        if (kind === UI_KIND) must.push({ key: 'kind', match: { value: UI_KIND } });
+        else if (kind === 'knowledge') mustNot.push({ key: 'kind', match: { value: UI_KIND } });
 
         const res = await this.client.search(COLLECTION, {
             // Over-fetch, then drop chunks a knowledge audit retired. A
@@ -63,7 +71,7 @@ export class QdrantVectorStore {
             // would still match them — so the drop happens here either way.
             limit: topK * OVERFETCH,
             vector: embedding,
-            filter: { must }
+            filter: { must, ...(mustNot.length && { must_not: mustNot }) }
         });
 
         return res
@@ -76,6 +84,7 @@ export class QdrantVectorStore {
                 text: r.payload?.text,
                 score: r.score,
                 audience: r.payload?.audience,
+                kind: r.payload?.kind,
                 metadata: r.payload?.metadata
             }));
     }
@@ -147,6 +156,8 @@ export class QdrantVectorStore {
             });
             for (const p of page.points) {
                 if (RETIRED.has(p.payload?.status)) continue;
+                // The knowledge audit curates product facts, not dashboard chunks.
+                if (p.payload?.kind === UI_KIND) continue;
                 points.push({
                     id: String(p.id),
                     sourceId: p.payload?.sourceId,

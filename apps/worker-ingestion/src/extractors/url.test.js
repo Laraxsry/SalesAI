@@ -9,11 +9,17 @@ vi.mock('@repo/screen', () => ({ loginWithCredentials: vi.fn() }));
 vi.mock('@repo/rag', () => ({ extractDocumentText: vi.fn() }));
 vi.mock('playwright', () => ({ chromium: { launch: vi.fn() } }));
 
+// Fixture pages are tiny (< MIN_CONTENT_CHARS) and their fake waitForTimeout is
+// instant, so the slow-page patience would spin on the wall clock. Read at
+// import time, hence set before url.js is imported below.
+process.env.URL_CRAWL_SLOW_PAGE_WAIT_MS = '0';
+
 const { chromium } = await import('playwright');
 const { checkSSRFUrl, safeFetch } = await import('@repo/utils');
 const { extractDocumentText } = await import('@repo/rag');
-const { extractFromUrl, waitForStableContent, extractPageComponents, discoverTabVariants, discoverToggleVariants } =
+const { extractFromUrl, waitForStableContent, waitForInitialRender, extractPageComponents, discoverTabVariants, discoverToggleVariants } =
     await import('./url.js');
+const { NAV_DISCOVERY_CONFIG } = await import('./nav-discovery.js');
 
 const EMPTY_COMPONENTS = { headings: [], interactiveElements: [], sections: [] };
 
@@ -47,6 +53,47 @@ describe('waitForStableContent', () => {
     );
 });
 
+describe('waitForInitialRender', () => {
+    it('does not spend the extra wait on a page that already rendered enough content', async () => {
+        const page = {
+            evaluate: vi.fn(async () => 5000),
+            waitForTimeout: vi.fn(async () => {})
+        };
+
+        await waitForInitialRender(page, { extraWaitMs: 60_000 });
+
+        // Quick wait: three reads of 5000 (the first only resets the counter), plus
+        // the length probe. No second wait.
+        expect(page.evaluate).toHaveBeenCalledTimes(4);
+    });
+
+    it('keeps waiting through a skeleton until the real content arrives', async () => {
+        // blank, then a 94-char skeleton that is "stable", then the real page.
+        const lens = [0, 0, 0, 94, 94, 94, 94, 94, 94, 0, 400, 400, 400, 400];
+        let i = 0;
+        const page = {
+            evaluate: vi.fn(async () => lens[Math.min(i++, lens.length - 1)]),
+            waitForTimeout: vi.fn(async () => {})
+        };
+
+        await waitForInitialRender(page, { extraWaitMs: 60_000 });
+
+        // Quick wait ends on the stable 94-char skeleton (6 reads), the probe sees 94 < 200,
+        // then the extra wait ignores the skeleton and the dip to 0 and ends on the
+        // second matching read of 400 (6 reads): 6 + 1 + 6, never the full lens array.
+        expect(page.evaluate).toHaveBeenCalledTimes(13);
+    });
+
+    it('gives up quietly when the page stays sparse', async () => {
+        const page = {
+            evaluate: vi.fn(async () => 40),
+            waitForTimeout: vi.fn(async () => {})
+        };
+
+        await expect(waitForInitialRender(page, { extraWaitMs: 30 })).resolves.toBeUndefined();
+    });
+});
+
 describe('extractFromUrl — previousPages cache', () => {
     /**
      * Builds a fake Playwright `page` whose `.evaluate()` branches on the
@@ -67,13 +114,13 @@ describe('extractFromUrl — previousPages cache', () => {
             $$: vi.fn(async () => []),
             waitForTimeout: vi.fn(async () => {}),
             locator: vi.fn(() => ({ first: () => ({ count: vi.fn().mockResolvedValue(0) }) })),
-            evaluate: vi.fn(async (fn) => {
+            evaluate: vi.fn(async (fn, arg) => {
                 const content = contentByUrl.get(page.currentUrl) || { text: '', links: [] };
                 const src = fn.toString();
                 // discoverClientRoutedLinks()'s nav-button candidate probe — no
                 // client-routed nav buttons in these fixtures, so an empty
                 // candidate list makes it a no-op without needing $$/goBack.
-                if (src.includes('querySelectorAll(sel)')) return [];
+                if (arg === NAV_DISCOVERY_CONFIG) return [];
                 // discoverTabVariants' read-only group probe — no tab/panel
                 // button groups in these fixtures, so it's a no-op.
                 if (src.includes("closest('nav, header')")) return [];
@@ -99,7 +146,7 @@ describe('extractFromUrl — previousPages cache', () => {
 
     it('does not navigate to a URL already present in previousPages, and reuses its cached text/links', async () => {
         const previousPages = new Map([
-            ['https://example.com/a', { indexVersion: 2, rawText: 'raw A text', links: ['https://example.com/b'] }]
+            ['https://example.com/a', { indexVersion: 3, rawText: 'raw A text', links: ['https://example.com/b'] }]
         ]);
         const onProgress = vi.fn();
 
@@ -125,7 +172,7 @@ describe('extractFromUrl — previousPages cache', () => {
         // parentUrl added (that field didn't exist when this cache entry —
         // the legacy plain-string-links shape — was written).
         expect(result.pagesIndex['https://example.com/a']).toEqual({
-            indexVersion: 2,
+            indexVersion: 3,
             rawText: 'raw A text',
             links: ['https://example.com/b']
         });
@@ -133,7 +180,7 @@ describe('extractFromUrl — previousPages cache', () => {
         // the page it was discovered from (the root, here) — and a
         // (here empty, per the fixture's fake DOM) components inventory.
         expect(result.pagesIndex['https://example.com/b']).toEqual({
-            indexVersion: 2,
+            indexVersion: 3,
             rawText: 'raw B text',
             links: [],
             parentUrl: 'https://example.com/a',
@@ -157,7 +204,19 @@ describe('extractFromUrl — previousPages cache', () => {
 
         expect(fakePage.goto).toHaveBeenCalledTimes(2);
         expect(result.pages[0].text).toBe('fresh A text');
-        expect(result.pagesIndex['https://example.com/a'].indexVersion).toBe(2);
+        expect(result.pagesIndex['https://example.com/a'].indexVersion).toBe(3);
+    });
+
+    it('keeps checkpoint pages that are not rediscovered during the current attempt', async () => {
+        const previousPages = new Map([
+            ['https://example.com/a', { indexVersion: 3, rawText: 'root', links: [] }],
+            ['https://example.com/orphan', { indexVersion: 3, rawText: 'saved earlier', links: [] }]
+        ]);
+
+        const result = await extractFromUrl('https://example.com/a', null, null, previousPages);
+
+        expect(result.pagesIndex['https://example.com/orphan'].rawText).toBe('saved earlier');
+        expect(Object.keys(result.pagesIndex)).toHaveLength(2);
     });
 
     it('fetches everything normally when previousPages is empty (first-ever crawl)', async () => {
@@ -206,17 +265,20 @@ describe('extractFromUrl — client-routed nav discovery (no <a href>)', () => {
             goBack: vi.fn(async () => {
                 fakePage.currentUrl = 'https://example.com/a';
             }),
-            $$: vi.fn(async () => [{ click: handle0Click }, { click: handle1Click }]),
+            $: vi.fn(async (selector) => {
+                const handles = [{ click: handle0Click }, { click: handle1Click }];
+                return handles[Number(selector.match(/"(\d+)"/)?.[1])] || null;
+            }),
             waitForTimeout: vi.fn(async () => {}),
             locator: vi.fn(() => ({ first: () => ({ count: vi.fn().mockResolvedValue(0) }) })),
-            evaluate: vi.fn(async (fn) => {
+            evaluate: vi.fn(async (fn, arg) => {
                 const content = contentByUrl.get(fakePage.currentUrl) || { text: '', links: [] };
                 const src = fn.toString();
                 // Only the root page exposes these nav candidates in this
                 // fixture — the discovered page is visited too (its own
                 // discoverClientRoutedLinks pass runs), but with nothing to
                 // find there, keeping the click-count assertion below exact.
-                if (src.includes('querySelectorAll(sel)')) {
+                if (arg === NAV_DISCOVERY_CONFIG) {
                     return fakePage.currentUrl === 'https://example.com/a' ? candidateTexts : [];
                 }
                 if (src.includes("closest('nav, header')")) return [];
@@ -297,21 +359,22 @@ describe('extractPageComponents', () => {
             { level: 1, text: 'Ana Başlık' },
             { level: 2, text: 'Alt Başlık' }
         ]);
-        expect(result.interactiveElements).toContainEqual({
+        expect(result.interactiveElements).toContainEqual(expect.objectContaining({
             label: 'İletişime Geç',
             kind: 'button',
             selector: 'text=İletişime Geç'
-        });
-        expect(result.interactiveElements).toContainEqual({
+        }));
+        expect(result.interactiveElements).toContainEqual(expect.objectContaining({
             label: 'Fiyatlandırma',
             kind: 'link',
             selector: 'text=Fiyatlandırma'
-        });
-        expect(result.interactiveElements).toContainEqual({
+        }));
+        expect(result.interactiveElements).toContainEqual(expect.objectContaining({
             label: 'Gönder',
             kind: 'submit',
             selector: 'text=Gönder'
-        });
+        }));
+        expect(result.interactiveElements.every((element) => /^el_[a-f0-9]{16}$/.test(element.elementKey))).toBe(true);
         expect(result.sections.find((s) => s.tag === 'section').ariaLabel).toBe('Fiyatlandırma bölümü');
     });
 
@@ -329,7 +392,7 @@ describe('extractPageComponents', () => {
 
         const result = await extractPageComponents(page);
 
-        expect(result.interactiveElements.length).toBe(60);
+        expect(result.interactiveElements.length).toBe(70);
         expect(result.interactiveElements.some((el) => el.label.length > 80)).toBe(false);
     });
 
@@ -355,11 +418,22 @@ describe('discoverTabVariants', () => {
      * the extractPageComponents tests above), and whose `.goto`/`.click`
      * just track calls without touching `buttons` — the DOM fixture is
      * static across the whole test, only the call sequence is asserted.
+     *
+     * Like a real tab bar, clicking a label swaps the panel text and a fresh
+     * load shows the default panel again. A label whose click changes nothing
+     * is not a tab (see the "section links" test below).
+     *
+     * @param {object[]} buttons
+     * @param {{ tabsChangeContent?: boolean, roleTabs?: object[] }} [options]
      */
-    function makeFakePage(buttons) {
+    function makeFakePage(buttons, { tabsChangeContent = true, roleTabs = [] } = {}) {
         global.document = {
             body: { innerText: 'panel content' },
-            querySelectorAll: (sel) => (sel === 'button, [role="button"]' ? buttons : [])
+            querySelectorAll: (sel) => {
+                if (sel === 'button, [role="button"]') return buttons;
+                if (sel === '[role="tab"]') return roleTabs;
+                return [];
+            }
         };
         const calls = [];
         return {
@@ -367,9 +441,11 @@ describe('discoverTabVariants', () => {
             evaluate: async (fn, args) => fn(args),
             waitForTimeout: vi.fn(async () => {}),
             goto: vi.fn(async (url) => {
+                global.document.body.innerText = 'panel content';
                 calls.push({ type: 'goto', url });
             }),
             click: vi.fn(async (selector) => {
+                if (tabsChangeContent) global.document.body.innerText = `panel for ${selector}`;
                 calls.push({ type: 'click', selector });
             })
         };
@@ -392,7 +468,48 @@ describe('discoverTabVariants', () => {
         const variants = await discoverTabVariants(page, 'https://example.test/solutions');
 
         expect(variants.map((v) => v.label).sort()).toEqual(['ISO 27001', 'KVKK Uyum', 'sGRC Platform'].sort());
-        expect(variants.every((v) => v.rawText === 'panel content')).toBe(true);
+        expect(variants.find((v) => v.label === 'ISO 27001').rawText).toBe('panel for text=ISO 27001');
+    });
+
+    // Real finding: a panel's "Role / Goal / Tone / Guardrails" outline looked like a tab
+    // group, so the same 2029 characters were stored four times. A section link only
+    // scrolls; its panel reads the same as the page, so it is not a tab.
+    it('drops "tabs" whose panel reads the same as the page (section links that only scroll)', async () => {
+        const outline = {};
+        const buttons = ['Role', 'Goal', 'Tone', 'Guardrails'].map((text) => fakeButton({ text, parent: outline }));
+        const page = makeFakePage(buttons, { tabsChangeContent: false });
+
+        const variants = await discoverTabVariants(page, 'https://example.test/agent');
+
+        expect(variants).toEqual([]);
+    });
+
+    it('stores two tabs that lead to the same text only once', async () => {
+        const row = {};
+        const buttons = ['A', 'B'].map((text) => fakeButton({ text, parent: row }));
+        const page = makeFakePage(buttons);
+        // Both clicks produce the same text.
+        page.click = vi.fn(async () => {
+            global.document.body.innerText = 'shared panel';
+        });
+
+        const variants = await discoverTabVariants(page, 'https://example.test/x');
+
+        expect(variants.map((v) => v.label)).toEqual(['A']);
+    });
+
+    // Real finding: the actual tabs ("Global prompt / Instructions / Behaviour") lost to a
+    // larger group of buttons elsewhere on the page. Elements that declare role=tab win.
+    it('prefers elements that declare role="tab" over a larger group of plain buttons', async () => {
+        const tablist = {};
+        const roleTab = (text) => ({ textContent: text, parentElement: tablist, closest: (sel) => (sel === '[role="tablist"]' ? tablist : null) });
+        const outline = {};
+        const buttons = ['Role', 'Goal', 'Tone', 'Guardrails'].map((text) => fakeButton({ text, parent: outline }));
+        const page = makeFakePage(buttons, { roleTabs: ['Global prompt', 'Instructions', 'Behaviour'].map(roleTab) });
+
+        const variants = await discoverTabVariants(page, 'https://example.test/agent');
+
+        expect(variants.map((v) => v.label).sort()).toEqual(['Behaviour', 'Global prompt', 'Instructions']);
     });
 
     it('never clicks a candidate matching NAV_DISCOVERY_ACTION_WORDS', async () => {
@@ -542,9 +659,9 @@ describe('extractFromUrl — PDF link handling', () => {
             $$: vi.fn(async () => []),
             waitForTimeout: vi.fn(async () => {}),
             locator: vi.fn(() => ({ first: () => ({ count: vi.fn().mockResolvedValue(0) }) })),
-            evaluate: vi.fn(async (fn) => {
+            evaluate: vi.fn(async (fn, arg) => {
                 const src = fn.toString();
-                if (src.includes('querySelectorAll(sel)')) return [];
+                if (arg === NAV_DISCOVERY_CONFIG) return [];
                 if (src.includes("closest('nav, header')")) return [];
                 if (src.includes('h1, h2, h3, h4, h5, h6')) return EMPTY_COMPONENTS;
                 if (src.includes('.remove()')) return { text: content.text, links: content.links };

@@ -3,6 +3,7 @@ import { getDomain } from 'tldts';
 import { getLogger } from '@repo/logger';
 import { waitForStableContent } from '@repo/utils';
 import { tourBrowserCapacity } from './browser-capacity.js';
+import { loginWithCredentials } from './credential-login.js';
 
 const log = getLogger({ mod: 'guided-tour' });
 
@@ -24,28 +25,7 @@ const PAGE_READY_TIMEOUT_MS = Number(process.env.TOUR_PAGE_READY_TIMEOUT_MS || 3
  * order until one matches a visible element. Overridable per-product via
  * `auth.selectors` (see GuidedTour#login) for sites these don't match.
  */
-const USERNAME_FIELD_SELECTORS = [
-    'input[type="email"]',
-    'input[autocomplete="username"]',
-    'input[name="email" i]',
-    'input[id="email" i]',
-    'input[name="username" i]',
-    'input[id="username" i]',
-    'input[name="login" i]',
-    'input[id="login" i]',
-    'input[name="user" i]',
-    'input[id="user" i]'
-];
-const PASSWORD_FIELD_SELECTORS = ['input[type="password"]'];
-const SUBMIT_SELECTORS = [
-    'button[type="submit"]',
-    'input[type="submit"]',
-    'button:has-text("Giriş")',
-    'button:has-text("Giriş Yap")',
-    'button:has-text("Log in")',
-    'button:has-text("Login")',
-    'button:has-text("Sign in")'
-];
+export { loginWithCredentials } from './credential-login.js';
 
 /**
  * Resolves a URL to a "trust key" for the SSRF guard below.
@@ -220,7 +200,7 @@ export class GuidedTour {
      * @param {(page: import('playwright').Page) => Promise<{ready:boolean, waitMs:number}>} waitForReady -
      *   navigation-readiness policy; injectable so lifecycle orchestration is
      *   independent from any one readiness strategy.
-     * @param {({loginUrl?:string, username?:string, email?:string, password:string, selectors?:{username?:string,email?:string,password?:string,submit?:string}}|{cookies?:object[], localStorage?:Record<string,string>})|null} auth -
+     * @param {({loginUrl?:string, username?:string, email?:string, password:string, selectors?:{username?:string,email?:string,password?:string,next?:string,submit?:string}}|{cookies?:object[], localStorage?:Record<string,string>})|null} auth -
      *   Either `Product.demoSession` (seller-configured demo account — logs
      *   into the real form fresh every tour via login(), since a captured
      *   snapshot would go stale the moment the underlying access token
@@ -867,137 +847,3 @@ export class GuidedTour {
  * nothing (a misconfigured override should surface immediately, not
  * silently fall through to guessing).
  */
-async function locateLoginField(page, override, candidates, label) {
-    if (override) {
-        const el = page.locator(override).first();
-        if ((await el.count()) === 0) {
-            throw new Error(`[GuidedTour] Configured ${label} selector matched nothing: ${override}`);
-        }
-        return el;
-    }
-    for (const selector of candidates) {
-        try {
-            const el = page.locator(selector).first();
-            if ((await el.count()) > 0 && (await el.isVisible())) return el;
-        } catch {
-            // Selector unsupported on this page (e.g. :has-text on a weird
-            // DOM) — try the next candidate instead of failing the tour.
-        }
-    }
-    return null;
-}
-
-/**
- * Logs `page` into a product using seller-provided demo credentials via the
- * site's own login form — auto-detecting the username-or-email/password/submit fields
- * unless overridden. Runs fresh every call, so (unlike a captured cookie/
- * localStorage snapshot) there's no access-token expiry window for it to go
- * stale against. Shared by `GuidedTour#login` (screen-share demo) and the
- * URL knowledge crawler (`@app/worker-ingestion`'s `extractors/url.js`),
- * which both need to view a product's auth-gated pages.
- *
- * @param {import('playwright').Page} page
- * @param {{loginUrl?:string, username?:string, email?:string, password:string, selectors?:{username?:string,email?:string,password?:string,submit?:string}}} auth
- * @param {string} [fallbackUrl] - used as the login page URL when `auth.loginUrl` isn't set.
- */
-export async function loginWithCredentials(page, auth, fallbackUrl) {
-    const { loginUrl, password, selectors = {} } = auth;
-    const username = auth.username || auth.email;
-    const usernameSelector = selectors.username || selectors.email;
-    if (!username || !password) {
-        throw new Error('[GuidedTour] demoSession is missing username/email or password.');
-    }
-    const target = loginUrl || fallbackUrl;
-    if (!target) {
-        throw new Error('[GuidedTour] demoSession has no loginUrl and no fallback URL to log in at.');
-    }
-
-    await page.goto(target, { waitUntil: 'domcontentloaded' });
-    await page.waitForTimeout(1500);
-
-    // Some sites show a cookie banner that can interfere with clicks or
-    // subsequent JS-driven login flows. If an explicit accept button is
-    // visible, dismiss it before interacting with the form.
-    const acceptCookiesButton = page.locator('button:has-text("Kabul Et")').first();
-    if ((await acceptCookiesButton.count().catch(() => 0)) > 0) {
-        try {
-            if (await acceptCookiesButton.isVisible()) {
-                await acceptCookiesButton.evaluate((button) => {
-                    // Do not click cookie controls inside login forms: malformed
-                    // banners can submit the form with empty credentials.
-                    const banner = button.closest('#cookieConsent, [class*="cookie" i], [id*="cookie" i]');
-                    if (banner) banner.style.display = 'none';
-                    else button.style.display = 'none';
-                });
-                await page.waitForTimeout(250);
-            }
-        } catch {
-            // Non-fatal — continue with the login attempt.
-        }
-    }
-
-    const usernameField = await locateLoginField(page, usernameSelector, USERNAME_FIELD_SELECTORS, 'username');
-    if (!usernameField) {
-        throw new Error(
-            '[GuidedTour] Could not locate a username/email field on the login page. Configure demoSession.selectors.username.'
-        );
-    }
-    await usernameField.fill(username);
-
-    const passwordField = await locateLoginField(page, selectors.password, PASSWORD_FIELD_SELECTORS, 'password');
-    if (!passwordField) {
-        throw new Error(
-            '[GuidedTour] Could not locate a password field on the login page. Configure demoSession.selectors.password.'
-        );
-    }
-    await passwordField.fill(password);
-
-    // Do not submit unless Playwright can read both values back. Some legacy
-    // login pages occasionally reload while delayed key events are in flight.
-    if (await usernameField.inputValue() !== username) await usernameField.fill(username);
-    if (await passwordField.inputValue() !== password) await passwordField.fill(password);
-
-    const submitButton = await locateLoginField(page, selectors.submit, SUBMIT_SELECTORS, 'submit');
-    // Use the URL after the initial page load: many sites canonicalize
-    // `/login` to `/login/`, which must not count as a successful login.
-    const loginPageOriginAndPath = authRouteKey(page.url());
-    const waitForRedirect = page.waitForURL(
-        (url) => authRouteKey(url) !== loginPageOriginAndPath,
-        { timeout: 12_000 }
-    ).then(() => 'redirect').catch(() => null);
-
-    const waitForInlineError = page
-        .locator('#Label_HATA, .text-danger, .validation-summary-errors')
-        .first()
-        .waitFor({ state: 'visible', timeout: 12_000 })
-        .then(() => 'error')
-        .catch(() => null);
-
-    if (submitButton) {
-        await submitButton.click();
-    } else {
-        await passwordField.press('Enter');
-    }
-
-    const loginOutcome = await Promise.race([waitForRedirect, waitForInlineError]);
-    // A broad error selector can also match harmless styling on the landing
-    // dashboard. Navigation away from the login route is authoritative.
-    if (loginOutcome === 'redirect' || authRouteKey(page.url()) !== loginPageOriginAndPath) {
-        await page.waitForLoadState('domcontentloaded').catch(() => {});
-        await page.waitForTimeout(1000);
-        return;
-    }
-
-    const loginErrorText = await page.locator('#Label_HATA, .text-danger, .validation-summary-errors')
-        .first()
-        .textContent()
-        .catch(() => '');
-    const normalizedError = loginErrorText?.trim();
-    if (normalizedError) {
-        throw new Error(`[GuidedTour] Login failed: ${normalizedError}`);
-    }
-
-    // If no inline error appeared and no redirect happened, fail loudly with
-    // the current URL so site-specific flows can be debugged quickly.
-    throw new Error(`[GuidedTour] Login did not complete. Still on ${page.url()}`);
-}

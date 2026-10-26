@@ -135,6 +135,17 @@ function searchSiteElements(siteMap, query, elementKey) {
                     ...(toggle.elementPath && { elementPath: toggle.elementPath })
                 }];
             }
+            const interactive = (page.components?.interactiveElements || []).find((item) => item.elementKey === elementKey);
+            if (interactive) {
+                return [{
+                    pageUrl: page.url,
+                    selector: interactive.selector,
+                    kind: interactive.kind,
+                    label: interactive.label,
+                    elementKey: interactive.elementKey,
+                    ...(interactive.elementPath && { elementPath: interactive.elementPath })
+                }];
+            }
         }
         return [];
     }
@@ -163,9 +174,17 @@ function searchSiteElements(siteMap, query, elementKey) {
             }
         }
         for (const el of page.components?.interactiveElements || []) {
-            if (textMentions(el.label, queryWords) && !seenSelectors.has(el.selector)) {
-                seenSelectors.add(el.selector);
-                results.push({ pageUrl: page.url, selector: el.selector, kind: el.kind, label: el.label });
+            const dedupeKey = el.elementKey || el.selector;
+            if (textMentions(`${el.label} ${el.elementPath || ''}`, queryWords) && !seenSelectors.has(dedupeKey)) {
+                seenSelectors.add(dedupeKey);
+                results.push({
+                    pageUrl: page.url,
+                    selector: el.selector,
+                    kind: el.kind,
+                    label: el.label,
+                    ...(el.elementKey && { elementKey: el.elementKey }),
+                    ...(el.elementPath && { elementPath: el.elementPath })
+                });
             }
         }
         for (const section of page.components?.sections || []) {
@@ -206,8 +225,17 @@ function searchSiteElements(siteMap, query, elementKey) {
  * moves the floor to the next visitor with a raised hand, which is meaningless
  * (and a passivity trap, like `advance_step`) in a 1-on-1 call.
  *
- * @param {{ productId:string, tour?:object, screen?:object, stopScreenShare?:Function, saveContactInfo?:Function, saveMeeting?:Function, advanceStep?:Function, siteMap?:object[], playbookActive?:boolean, multiParticipant?:boolean, expectResponse?:Function, nextParticipant?:Function, flagFollowup?:Function, knowledgeResolver?:object, onKnowledgeResolved?:Function }} ctx
+ * `uiGuide` adds `search_ui_guide` — the product's dashboard (menus, pages, buttons)
+ * crawled from a logged-in demo workspace. Offered only to products that have one.
+ *
+ * @param {{ productId:string, uiGuide?:boolean, tour?:object, screen?:object, stopScreenShare?:Function, saveContactInfo?:Function, saveMeeting?:Function, advanceStep?:Function, siteMap?:object[], playbookActive?:boolean, multiParticipant?:boolean, expectResponse?:Function, nextParticipant?:Function, flagFollowup?:Function, knowledgeResolver?:object, onKnowledgeResolved?:Function }} ctx
  */
+// A learned recipe is offered as a live demo only when it matches the visitor's topic well; below this it is just reading material.
+function procedureMinScore() {
+    const value = Number(process.env.PROCEDURE_MIN_SCORE);
+    return Number.isFinite(value) && value > 0 ? value : 0.45;
+}
+
 export function buildTools({
     productId,
     tour,
@@ -226,7 +254,9 @@ export function buildTools({
     knowledgeResolver,
     onKnowledgeResolved,
     proposeSurvey,
-    surveyFieldKeys = []
+    surveyFieldKeys = [],
+    uiGuide = false,
+    procedureLoader = null
 }) {
     const resolver = knowledgeResolver ?? createProductKnowledgeResolver();
 
@@ -268,6 +298,36 @@ export function buildTools({
                 return knowledgeResolutionToToolResult(resolution);
             }
         },
+        ...(uiGuide
+            ? [{
+                name: 'search_ui_guide',
+                description:
+                    "How the product's own dashboard works: its menus, pages, buttons and what each screen offers. Use it to PLAN or perform a live demo (where to go, what to click, what a screen shows) — silent, the visitor never hears about this. NEVER use it to answer a factual question about the product and NEVER quote it as fact: it comes from a demo workspace, so any numbers, names or sample text in it are example data, not product information. For facts use search_knowledge. When a result has `offerLiveDemo: true` and its topic fits what the visitor is discussing, OFFER once to show it live (\"Shall I show you live? I'll add a sample record and then remove it\"); only if they agree, call start_procedure with its procedureId. Never start without a yes, and do not offer again after a no.",
+                parameters: {
+                    type: 'object',
+                    properties: {
+                        query: { type: 'string' },
+                        topK: { type: 'number' }
+                    },
+                    required: ['query']
+                },
+                handler: async ({ query, topK = 5 }) => {
+                    const chunks = await retrieve({ productId, query, topK, kind: 'ui' });
+                    const minScore = procedureMinScore();
+                    return chunks.map((chunk) => ({
+                        text: chunk.text,
+                        score: chunk.score,
+                        ...(chunk.metadata?.pageUrl && { pageUrl: chunk.metadata.pageUrl }),
+                        // A learned recipe: the structured record behind this text, for carrying the flow out step by step.
+                        // A weak match keeps its text but is not offered as something to run.
+                        ...(chunk.metadata?.procedureId && chunk.score >= minScore && {
+                            procedureId: chunk.metadata.procedureId,
+                            offerLiveDemo: true
+                        })
+                    }));
+                }
+            }]
+            : []),
         {
             name: 'start_guided_tour',
             description: 'Open the live product dashboard to visually demonstrate it.',
@@ -465,6 +525,61 @@ export function buildTools({
     if (!saveMeeting) {
         const index = tools.findIndex((entry) => entry.name === 'save_meeting');
         if (index >= 0) tools.splice(index, 1);
+    }
+
+    if (browser?.beginProcedure && browser?.locateStep && uiGuide && procedureLoader) {
+        let active = null;
+        tools.push(
+            {
+                name: 'start_procedure',
+                description:
+                    "Begin carrying out a learned dashboard recipe (a `procedureId` from search_ui_guide) LIVE in the browser, e.g. add a sample record, show it, then remove it. It unlocks only the recipe's own buttons (including save and delete) and only for records this demo created. ASK THE VISITOR FIRST and say what you are about to do. Returns the steps to follow.",
+                parameters: {
+                    type: 'object',
+                    properties: { procedureId: { type: 'string' } },
+                    required: ['procedureId']
+                },
+                handler: async ({ procedureId }) => {
+                    if (active) return { ok: false, error: `Procedure ${active} is still running; call finish_procedure first.` };
+                    const loaded = await procedureLoader(procedureId);
+                    if (!loaded) return { ok: false, error: 'No such active procedure for this product.' };
+                    browser.beginProcedure({ id: loaded.procedure.id, labels: loaded.labels });
+                    active = loaded.procedure.id;
+                    return {
+                        ok: true,
+                        procedure: loaded.procedure,
+                        rules: [
+                            'Take a fresh browser_snapshot before every click; use only UIDs from it.',
+                            'Name everything you create `salesai-demo-` followed by a readable word (for example salesai-demo-welcome), so it can be told apart from real data.',
+                            'Narrate each step to the visitor as you do it.',
+                            'Finish by undoing what you made, following the recipe\'s undo steps, then call finish_procedure.',
+                            'If a screen does not match the recipe, stop, undo anything you created, call finish_procedure and tell the visitor honestly.',
+                            'Never change or delete anything that was already there; the delete button is only unlocked for rows whose name starts with salesai-demo-.'
+                        ]
+                    };
+                }
+            },
+            {
+                name: 'find_procedure_target',
+                description: 'While a procedure runs: find the element for one recipe button label in the live page and get its UID. `tier` "exact" means the label matched; "similar" means the wording shifted (say what you pressed). If it reports not found or ambiguous, do NOT guess: stop, undo anything you created and finish_procedure.',
+                parameters: { type: 'object', properties: { label: { type: 'string' } }, required: ['label'] },
+                handler: async ({ label }) => {
+                    if (!active) return { ok: false, error: 'No procedure is running; call start_procedure first.' };
+                    return browser.locateStep(label);
+                }
+            },
+            {
+                name: 'finish_procedure',
+                description: 'End the live recipe started with start_procedure. Locks save/delete buttons again. Call it when the demo is done or abandoned.',
+                parameters: { type: 'object', properties: {} },
+                handler: async () => {
+                    browser.endProcedure();
+                    const finished = active;
+                    active = null;
+                    return { ok: true, finished };
+                }
+            }
+        );
     }
 
     if (browser) {

@@ -25,6 +25,9 @@ vi.mock('./stores/index.js', () => ({ getVectorStore: () => store }));
 const autoDedupeSourceChunks = vi.fn();
 vi.mock('./audit/auto-dedupe.js', () => ({ autoDedupeSourceChunks: (...a) => autoDedupeSourceChunks(...a) }));
 
+const invalidateProductCache = vi.fn();
+vi.mock('./retrieve.js', () => ({ invalidateProductCache: (...a) => invalidateProductCache(...a) }));
+
 const { KnowledgeSource } = await import('@repo/database');
 const { embedBatch } = await import('@repo/ai');
 const { reingestSourceIncremental, ingestSource } = await import('./ingest.js');
@@ -162,6 +165,7 @@ describe('ingestSource — Katman 1 (exact-duplicate collapse)', () => {
         await ingestSource({ sourceId: 'src1', productId: 'prod1', text: pad('Some real content here') });
 
         expect(autoDedupeSourceChunks).toHaveBeenCalledWith({ productId: 'prod1', sourceId: 'src1' });
+        expect(invalidateProductCache).toHaveBeenCalledWith('prod1');
         const statusCalls = KnowledgeSource.findByIdAndUpdate.mock.calls.map((c) => c[1]?.status).filter(Boolean);
         expect(statusCalls.at(-1)).toBe('ready');
     });

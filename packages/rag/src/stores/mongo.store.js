@@ -1,5 +1,7 @@
 import { KnowledgeChunk } from '@repo/database';
 import { Types } from 'mongoose';
+import { UI_KIND, inKindScope } from '../chunk-kind.js';
+import { cosineSimilarity } from '../similarity.js';
 
 /**
  * How many extra results to ask the index for, so that dropping chunks a
@@ -11,10 +13,18 @@ const OVERFETCH = 3;
 /** Statuses that must never reach the agent. */
 const RETIRED = new Set(['superseded', 'excluded']);
 
-/** Drops retired chunks and trims back to the caller's topK. */
-function toRetrievable(docs, topK) {
+/**
+ * A `ui`-kind lookup scans this many of a product's dashboard chunks and ranks
+ * them exactly. A crawled panel is tens to a few hundred chunks, so this is
+ * cheap — and it avoids declaring `kind` as an Atlas filter field, which would
+ * need an index migration (see the `status` note in query()).
+ */
+const UI_SCAN_LIMIT = 3000;
+
+/** Drops retired chunks and chunks outside the requested shelf, trims back to topK. */
+function toRetrievable(docs, topK, scope = 'knowledge') {
     return docs
-        .filter((r) => !RETIRED.has(r.status))
+        .filter((r) => !RETIRED.has(r.status) && inKindScope(r.kind, scope))
         .slice(0, topK)
         .map((r) => ({
             id: String(r._id),
@@ -25,8 +35,36 @@ function toRetrievable(docs, topK) {
             text: r.text,
             score: r.score,
             audience: r.audience,
+            kind: r.kind,
             metadata: r.metadata
         }));
+}
+
+/**
+ * Dashboard ("ui") chunks, ranked exactly by cosine similarity. Few enough per
+ * product to score in memory, which keeps this independent of the ANN index.
+ * A module-level helper on purpose: it is an implementation detail of
+ * `MongoVectorStore#query`, not part of the store contract that the
+ * `getVectorStore()` facade has to mirror.
+ *
+ * @param {{ productId:string, embedding:number[], topK?:number, modality?:string }} q
+ */
+async function queryUiChunks({ productId, embedding, topK = 8, modality }) {
+    const docs = await KnowledgeChunk.find({
+        productId: new Types.ObjectId(productId),
+        kind: UI_KIND,
+        status: { $nin: [...RETIRED] },
+        ...(modality && { modality })
+    })
+        .select('sourceId topicId text embedding audience metadata status kind')
+        .limit(UI_SCAN_LIMIT)
+        .lean();
+
+    const scored = docs
+        .filter((d) => Array.isArray(d.embedding) && d.embedding.length)
+        .map((d) => ({ ...d, score: cosineSimilarity(embedding, d.embedding) }))
+        .sort((a, b) => b.score - a.score);
+    return toRetrievable(scored, topK, UI_KIND);
 }
 
 /**
@@ -51,7 +89,9 @@ export class MongoVectorStore {
      * @param {{ productId:string, embedding:number[], topK?:number, modality?:string }} q
      * @returns {Promise<Array<{id:string, sourceId:string, text:string, score:number, metadata?:object}>>}
      */
-    async query({ productId, embedding, topK = 8, modality }) {
+    async query({ productId, embedding, topK = 8, modality, kind = 'knowledge' }) {
+        if (kind === UI_KIND) return queryUiChunks({ productId, embedding, topK, modality });
+
         // $vectorSearch filter requires exact type matching — cast to ObjectId
         const filter = { productId: new Types.ObjectId(productId) };
         if (modality) filter.modality = modality;
@@ -82,12 +122,13 @@ export class MongoVectorStore {
                     metadata: 1,
                     audience: 1,
                     status: 1,
+                    kind: 1,
                     score: { $meta: 'vectorSearchScore' }
                 }
             }
         ]);
 
-        return toRetrievable(results, topK);
+        return toRetrievable(results, topK, kind);
     }
 
     async deleteBySource(sourceId) {
@@ -121,7 +162,9 @@ export class MongoVectorStore {
      * @param {{ productId:string, query:string, topK?:number, modality?:string }} q
      * @returns {Promise<Array<{id:string, sourceId:string, text:string, score:number, metadata?:object}>>}
      */
-    async keywordQuery({ productId, query, topK = 8, modality }) {
+    async keywordQuery({ productId, query, topK = 8, modality, kind = 'knowledge' }) {
+        // Dashboard chunks are looked up by vector only (see queryUi).
+        if (kind === UI_KIND) return [];
         const filterOptions = [];
         filterOptions.push({
             equals: {
@@ -165,12 +208,13 @@ export class MongoVectorStore {
                     metadata: 1,
                     audience: 1,
                     status: 1,
+                    kind: 1,
                     score: { $meta: 'searchScore' }
                 }
             }
         ]);
 
-        return toRetrievable(results, topK);
+        return toRetrievable(results, topK, kind);
     }
 
     /**
@@ -185,7 +229,10 @@ export class MongoVectorStore {
         const docs = await KnowledgeChunk.find({
             productId: new Types.ObjectId(productId),
             ...(sourceId && { sourceId: new Types.ObjectId(sourceId) }),
-            status: { $nin: [...RETIRED] }
+            status: { $nin: [...RETIRED] },
+            // The knowledge audit curates product facts; dashboard chunks are
+            // a different shelf and must not be merged or retired by it.
+            kind: { $ne: UI_KIND }
         })
             .select('sourceId text embedding audience createdAt')
             .sort({ createdAt: 1 })

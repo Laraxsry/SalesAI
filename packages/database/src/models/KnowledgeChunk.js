@@ -29,6 +29,11 @@ const KnowledgeChunkSchema = new Schema(
         text: { type: String, required: true },
         // dense embedding (e.g. 3072 dims for text-embedding-3-large)
         embedding: { type: [Number], default: undefined },
+        // Which shelf the chunk lives on. Unset = product knowledge (answers
+        // visitors); 'ui' = how the product's own dashboard works, crawled
+        // from a logged-in demo workspace (navigation/demo only, never quoted
+        // as product facts). See @repo/rag chunk-kind.js.
+        kind: { type: String, enum: ['knowledge', 'ui'], default: undefined },
         // modality + provenance for filtering and citation
         modality: { type: String, enum: ['text', 'image', 'video', 'web'], default: 'text' },
         // auto-classified during ingestion; used to bias retrieval toward the visitor's depth preference

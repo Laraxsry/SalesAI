@@ -1,5 +1,6 @@
 import { embed } from '@repo/ai';
 import { getVectorStore } from './stores/index.js';
+import { inKindScope } from './chunk-kind.js';
 import IORedis from 'ioredis';
 
 // Reuse a single Redis connection
@@ -62,14 +63,17 @@ const AUDIENCE_PENALTY = 0.9;
 /**
  * Retrieves the most relevant knowledge chunks for a query.
  * Caches results per (productId, normalized query, preferredAudience) in Redis.
- * @param {{ productId:string, query:string, topK?:number, modality?:string, preferredAudience?:'general'|'technical' }} input
+ * `kind` picks the shelf: 'knowledge' (default — product facts, safe to quote to a
+ * visitor), 'ui' (how the product's dashboard works — for navigating/demoing only)
+ * or 'all'.
+ * @param {{ productId:string, query:string, topK?:number, modality?:string, preferredAudience?:'general'|'technical', kind?:'knowledge'|'ui'|'all' }} input
  * @returns {Promise<Array<{id:string, sourceId:string, text:string, score:number, audience?:string}>>}
  */
-export async function retrieve({ productId, query, topK = 8, modality, preferredAudience = 'general' }) {
+export async function retrieve({ productId, query, topK = 8, modality, preferredAudience = 'general', kind = 'knowledge' }) {
     const redis = getRedis();
     const normalized = normalizeQuery(query);
     const modalityKey = modality ? `:${modality}` : '';
-    const cacheKey = `rag:cache:${productId}:${normalized}:${topK}${modalityKey}:${preferredAudience}`;
+    const cacheKey = `rag:cache:${productId}:${normalized}:${topK}${modalityKey}:${preferredAudience}:${kind}`;
 
     try {
         const cached = await redis.get(cacheKey);
@@ -85,16 +89,19 @@ export async function retrieve({ productId, query, topK = 8, modality, preferred
     
     // Run Vector Search and BM25 Search concurrently
     const [vectorResults, keywordResults] = await Promise.all([
-        store.query({ productId, embedding, topK, modality }),
+        store.query({ productId, embedding, topK, modality, kind }),
         // Check if keywordQuery exists (e.g. Qdrant store might not have it yet)
         store.keywordQuery 
-            ? store.keywordQuery({ productId, query, topK, modality })
+            ? store.keywordQuery({ productId, query, topK, modality, kind })
             : Promise.resolve([])
     ]);
 
     // Merge and deduplicate by chunk ID
     const map = new Map();
     for (const r of [...vectorResults, ...keywordResults]) {
+        // Defence in depth: a store that cannot filter by shelf natively must
+        // still never hand dashboard chunks to a visitor-facing lookup.
+        if (!inKindScope(r.kind, kind)) continue;
         if (!map.has(r.id)) {
             map.set(r.id, r);
         }

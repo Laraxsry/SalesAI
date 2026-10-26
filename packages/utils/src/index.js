@@ -54,16 +54,27 @@ export async function mapWithConcurrency(items, limit, fn) {
  * polling/websockets/dashboards, which never go idle); polling text length
  * with a hard ceiling gets the same practical benefit without that hang risk.
  *
+ * Stability only counts once the page has at least `minChars` of text: a
+ * client-rendered app (SPA) shows an empty `<body>` while its bundle boots,
+ * and "empty, then empty again" is not a settled page — treating it as one
+ * made the crawler read blank authenticated dashboards (0 chars, 0 links, 0
+ * interactive elements). A page that stays empty simply waits out `maxWaitMs`
+ * and the caller decides what to do with it. Pass `minChars: 0` to keep the
+ * old "any equal length is stable" behaviour.
+ *
  * @param {import('playwright').Page} page
- * @param {{pollMs?:number, stableChecks?:number, maxWaitMs?:number}} [options]
+ * @param {{pollMs?:number, stableChecks?:number, maxWaitMs?:number, minChars?:number}} [options]
  */
-export async function waitForStableContent(page, { pollMs = 500, stableChecks = 2, maxWaitMs = 8000 } = {}) {
+export async function waitForStableContent(
+    page,
+    { pollMs = 500, stableChecks = 2, maxWaitMs = 8000, minChars = 1 } = {}
+) {
     const start = Date.now();
     let lastLen = -1;
     let stableCount = 0;
     while (Date.now() - start < maxWaitMs) {
         const len = await page.evaluate(() => (document.body.innerText || '').length).catch(() => lastLen);
-        if (len === lastLen) {
+        if (len === lastLen && len >= minChars) {
             stableCount++;
             if (stableCount >= stableChecks) break;
         } else {

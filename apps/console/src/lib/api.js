@@ -111,6 +111,7 @@ export const productsApi = {
 };
 
 export const knowledgeApi = {
+    retry: (id) => apiFetch(`/knowledge/${id}/retry`, { method: 'POST' }),
     list: (productId) => apiFetch(`/knowledge/${productId}`),
     create: (payload) => apiFetch('/knowledge', { method: 'POST', body: payload }),
     update: (id, payload) => apiFetch(`/knowledge/${id}`, { method: 'PATCH', body: payload }),

@@ -1,5 +1,5 @@
 import { KnowledgeSource, Product, Agent, KnowledgeChunk, KnowledgeTopic } from '@repo/database';
-import { ingestSource, extractDocumentText, ingestTopicDocument } from '@repo/rag';
+import { ingestSource, extractDocumentText, ingestTopicDocument, UI_KIND } from '@repo/rag';
 import {
     describeImage,
     transcribeAudio,
@@ -8,11 +8,14 @@ import {
     FIXED_TOPICS,
     classifyPageTopics,
     dedupeProposedTopics,
-    composeTopicDocument
+    composeTopicDocument,
+    describeUiElements
 } from '@repo/ai';
 import { presignDownload } from '@repo/storage';
 import { publishEvent, RT_EVENTS } from '@repo/realtime';
 import { extractFromUrl } from '../extractors/url.js';
+import { renderPageGuide } from '../extractors/ui-guide.js';
+import { addElementPurposes } from './panel-purposes.js';
 import { decryptField, languageName, mapWithConcurrency } from '@repo/utils';
 import { withTimeout } from '@repo/resilience';
 import AdmZip from 'adm-zip';
@@ -25,11 +28,12 @@ import { pipeline } from 'node:stream/promises';
 
 const VIDEO_MAX_KEYFRAMES = Number(process.env.VIDEO_MAX_KEYFRAMES || 6);
 
-// See handleIngestSource()'s own comment at its `withTimeout` call. 10 minutes
-// is a ceiling for the slowest realistic case (a large video's download +
-// transcription + keyframe vision analysis, or a many-page crawl with tab
-// discovery on each page), not a target for the common case.
-const HANDLE_INGEST_TIMEOUT_MS = 10 * 60_000;
+// Single-file sources retain a whole-pipeline ceiling. URL crawls rely on
+// their bounded page/provider operations instead: Promise-racing a complete
+// crawl cannot cancel the underlying work and previously caused the timed-out
+// attempt to keep writing while BullMQ had already started its retry.
+const HANDLE_INGEST_TIMEOUT_MS = Number(process.env.INGEST_TIMEOUT_MS || 10 * 60_000);
+const progressWrites = new Map();
 
 // fluent-ffmpeg resolves plain `ffmpeg`/`ffprobe` off PATH, which on a dev
 // machine with multiple installs (e.g. an old Anaconda ffmpeg shadowing a
@@ -57,8 +61,28 @@ const ZIP_MAX_TOTAL_BYTES = Number(process.env.ZIP_MAX_TOTAL_BYTES || 500 * 1024
  * @param {string} stage      - Human-readable stage label
  * @param {number} [pct=0]    - 0-100 percentage
  */
-async function emitProgress(sourceId, stage, pct = 0) {
-    await publishEvent(RT_EVENTS.INGESTION_PROGRESS, { sourceId, stage, pct }).catch(() => {});
+async function emitProgress(sourceId, stage, pct = 0, run = {}) {
+    const progress = { stage, pct, runId: run.runId, ...run.details, updatedAt: new Date() };
+    const previous = progressWrites.get(String(sourceId)) || Promise.resolve();
+    const current = previous.then(async () => {
+        const filter = { _id: sourceId };
+        if (run.generation !== undefined) filter['meta.ingestGeneration'] = run.generation;
+        if (run.runId) filter['meta.activeRunId'] = run.runId;
+        const result = await KnowledgeSource.updateOne(filter, {
+            $set: { 'meta.ingestionProgress': progress }
+        }).catch(() => null);
+        if (run.runId && !result?.matchedCount) return;
+        await publishEvent(RT_EVENTS.INGESTION_PROGRESS, {
+            sourceId,
+            stage,
+            pct,
+            runId: run.runId,
+            ...run.details
+        }).catch(() => {});
+    });
+    progressWrites.set(String(sourceId), current);
+    await current;
+    if (progressWrites.get(String(sourceId)) === current) progressWrites.delete(String(sourceId));
 }
 
 /**
@@ -92,6 +116,14 @@ const URL_SYNTHESIS_CONCURRENCY = Number(process.env.URL_SYNTHESIS_CONCURRENCY |
 // the same call — see site-topics.js's module docstring for why), so its own
 // concurrency knob mirrors URL_SYNTHESIS_CONCURRENCY.
 const SITE_TOPICS_MAP_CONCURRENCY = Number(process.env.SITE_TOPICS_MAP_CONCURRENCY || 5);
+
+function replaceSourcePages(existing = [], sourceId, pageUrls) {
+    const sourceKey = String(sourceId);
+    return [
+        ...existing.filter((page) => String(page.sourceId) !== sourceKey),
+        ...pageUrls.map((pageUrl) => ({ sourceId, pageUrl }))
+    ];
+}
 
 // extractDocumentText() now lives in @repo/rag (packages/rag/src/document-text.js)
 // — apps/api's Knowledge detail-content backfill needs the exact same
@@ -221,9 +253,9 @@ export async function ingestZipEntries({ buffer, parentSourceId, productId }) {
  * is left completely untouched (not cleared) — see KnowledgeTopic.js's
  * `lastContributingPages`.
  *
- * @param {{ sourceId:string, productId:string, pages:{url:string, text:string}[], language:string }} input
+ * @param {{ sourceId:string, productId:string, pages:{url:string, text:string}[], language:string, pagesIndex?:object, onCheckpoint?:()=>Promise<void>, onPageDone?:(done:number,total:number)=>void|Promise<void>, onTopicDone?:(done:number,total:number)=>void|Promise<void> }} input
  */
-async function runSiteTopicsPass({ sourceId, productId, pages, language }) {
+async function runSiteTopicsPass({ sourceId, productId, pages, language, pagesIndex, onCheckpoint, onPageDone, onTopicDone }) {
     if (!pages.length) return;
 
     try {
@@ -241,9 +273,23 @@ async function runSiteTopicsPass({ sourceId, productId, pages, language }) {
             )
         );
 
-        const mapResults = await mapWithConcurrency(pages, SITE_TOPICS_MAP_CONCURRENCY, (p) =>
-            classifyPageTopics({ pageUrl: p.url, pageText: p.text, fixedTopics: FIXED_TOPICS, language })
-        );
+        let completedPages = 0;
+        const mapResults = await mapWithConcurrency(pages, SITE_TOPICS_MAP_CONCURRENCY, async (p) => {
+            const cached = pagesIndex?.[p.url]?.topicClassification;
+            let result;
+            if (cached?.language === language && cached?.result) {
+                result = cached.result;
+            } else {
+                result = await classifyPageTopics({ pageUrl: p.url, pageText: p.text, fixedTopics: FIXED_TOPICS, language });
+                if (pagesIndex?.[p.url]) {
+                    pagesIndex[p.url].topicClassification = { language, result };
+                    await onCheckpoint?.();
+                }
+            }
+            completedPages++;
+            await onPageDone?.(completedPages, pages.length);
+            return result;
+        });
 
         const fixedFindings = []; // {slug, text, pageUrl}
         const proposedFindings = []; // {proposedTopic, text, pageUrl}
@@ -288,34 +334,52 @@ async function runSiteTopicsPass({ sourceId, productId, pages, language }) {
 
         let reducedCount = 0;
         let skippedCount = 0;
+        let completedTopics = 0;
+        await onTopicDone?.(0, findingsBySlug.size);
         for (const [slug, findings] of findingsBySlug) {
-            const topic = await KnowledgeTopic.findOne({ productId, slug });
-            if (!topic) continue; // shouldn't happen (seeded/created above), but never let a lookup miss throw
+            try {
+                const topic = await KnowledgeTopic.findOne({ productId, slug });
+                if (!topic) continue; // shouldn't happen (seeded/created above), but never let a lookup miss throw
 
-            const contributingPages = [...new Set(findings.map((f) => f.pageUrl))].sort();
-            const unchanged =
-                contributingPages.length === (topic.lastContributingPages || []).length &&
-                contributingPages.every((u, i) => u === (topic.lastContributingPages || [])[i]);
+                const contributingPages = [...new Set(findings.map((f) => f.pageUrl))].sort();
+                const linkedSourcePages = (topic.sourcePages || [])
+                    .filter((page) => String(page.sourceId) === String(sourceId))
+                    .map((page) => page.pageUrl)
+                    .sort();
+                const previousSourcePages = linkedSourcePages.length || topic.sourcePages?.length
+                    ? linkedSourcePages
+                    : [...(topic.lastContributingPages || [])].sort();
+                const unchanged =
+                    contributingPages.length === previousSourcePages.length &&
+                    contributingPages.every((u, i) => u === previousSourcePages[i]);
 
-            if (unchanged) {
-                skippedCount++;
-                continue;
+                if (unchanged) {
+                    if (!linkedSourcePages.length && contributingPages.length) {
+                        topic.sourcePages = replaceSourcePages(topic.sourcePages, sourceId, contributingPages);
+                        await topic.save();
+                    }
+                    skippedCount++;
+                    continue;
+                }
+
+                const body = await composeTopicDocument({ topicTitle: topic.title, findings, language });
+                if (!body) continue; // composeTopicDocument() failed (non-fatal) — keep the topic's previous body as-is
+
+                topic.body = body;
+                topic.status = 'ready';
+                topic.error = undefined;
+                topic.lastContributingPages = contributingPages;
+                topic.sourcePages = replaceSourcePages(topic.sourcePages, sourceId, contributingPages);
+                await topic.save();
+
+                await ingestTopicDocument({ topicId: String(topic._id), productId, text: body }).catch((err) => {
+                    console.warn('[ingest-source] konu dokümanı embed edilemedi (non-fatal):', { slug, error: err.message });
+                });
+                reducedCount++;
+            } finally {
+                completedTopics++;
+                await onTopicDone?.(completedTopics, findingsBySlug.size);
             }
-
-            const body = await composeTopicDocument({ topicTitle: topic.title, findings, language });
-            if (!body) continue; // composeTopicDocument() failed (non-fatal) — keep the topic's previous body as-is
-
-            topic.body = body;
-            topic.status = 'ready';
-            topic.error = undefined;
-            topic.lastContributingPages = contributingPages;
-            topic.sourcePages = contributingPages.map((pageUrl) => ({ sourceId, pageUrl }));
-            await topic.save();
-
-            await ingestTopicDocument({ topicId: String(topic._id), productId, text: body }).catch((err) => {
-                console.warn('[ingest-source] konu dokümanı embed edilemedi (non-fatal):', { slug, error: err.message });
-            });
-            reducedCount++;
         }
 
         console.log('[ingest-source] Site Bilgisi (konu ağacı) özeti:', {
@@ -338,7 +402,7 @@ async function runSiteTopicsPass({ sourceId, productId, pages, language }) {
  *
  * @param {{ sourceId:string, productId:string, type:string }} data
  */
-export async function handleIngestSource({ sourceId, productId, generation }) {
+export async function handleIngestSource({ sourceId, productId, generation, runId }) {
     const source = await KnowledgeSource.findById(sourceId);
     if (!source) return;
 
@@ -368,6 +432,15 @@ export async function handleIngestSource({ sourceId, productId, generation }) {
     // re-crawling pages it already knows (see extractFromUrl's
     // `previousPages` param).
     let crawlPagesIndex = null;
+    const effectiveRunId = runId || `${sourceId}:${generation ?? 0}`;
+    const runFilter = {
+        _id: sourceId,
+        ...(generation !== undefined && { 'meta.ingestGeneration': generation }),
+        'meta.activeRunId': effectiveRunId
+    };
+    const updateActiveSource = (update) => KnowledgeSource.updateOne(runFilter, update);
+    const reportProgress = (stage, pct, details) =>
+        emitProgress(sourceId, stage, pct, { generation, runId: effectiveRunId, details });
 
     // Used to clean up temporary files
     const tempFiles = [];
@@ -378,41 +451,45 @@ export async function handleIngestSource({ sourceId, productId, generation }) {
     };
 
     try {
-        // Outer ceiling on the WHOLE extraction+ingest pipeline for one
-        // source — same defense-in-depth reasoning as @repo/rag's
-        // `ingestSource()` (see that file's own `INGEST_TIMEOUT_MS` comment,
-        // which fixed the same class of bug for the final embed/upsert
-        // phase only). This covers everything BEFORE that: the url/api
-        // crawl (BFS across pages, tab discovery, per-page LLM topic
-        // classification), video download/transcription/frame analysis, etc.
-        // Observed live: a url source stuck 'processing' with zero crawled
-        // pages recorded for 15+ minutes and no error — nothing in this
-        // range had its own timeout, so nothing could ever fail it out.
-        // Generous on purpose (a real multi-page crawl with tab discovery,
-        // or a large video transcription, can legitimately take several
-        // minutes) — the point is a ceiling, not a target.
-        return await withTimeout(async () => {
-        await emitProgress(sourceId, 'Başlatılıyor…', 5);
+        // File/media sources use the whole-pipeline ceiling below. URL/API
+        // work checkpoints each bounded page and AI step instead, allowing a
+        // worker restart or explicit retry to resume without concurrent work
+        // continuing behind a non-cancelling Promise.race timeout.
+        const runPipeline = async () => {
+        const claimed = await KnowledgeSource.updateOne(
+            {
+                _id: sourceId,
+                ...(generation !== undefined && { 'meta.ingestGeneration': generation })
+            },
+            {
+                $set: { status: 'processing', 'meta.activeRunId': effectiveRunId },
+                $unset: { error: '' }
+            }
+        );
+        if (!claimed.matchedCount) return { chunks: 0, superseded: true };
+        await reportProgress('Başlatılıyor…', 5);
 
         switch (source.type) {
             case 'text':
                 text = source.content || '';
-                await emitProgress(sourceId, 'Metin hazırlandı', 40);
+                await reportProgress('Metin hazırlandı', 40);
                 break;
 
             case 'url':
             case 'api': {
-                await emitProgress(sourceId, 'URL getiriliyor…', 15);
-                // Reuse the product's demo-session (same material the guided
-                // tour injects) so auth-gated pages get indexed with their
-                // real content instead of the anonymous/login view.
+                await reportProgress('Tarama hazırlanıyor…', 15, { indeterminate: true });
+                // Public and protected sources are intentionally independent:
+                // a broken login must never prevent the public site crawl.
                 let urlAuth = null;
-                const product = await Product.findById(productId).select('demoSession');
-                if (product?.demoSession) {
+                if (source.accessMode === 'authenticated') {
+                    const product = await Product.findById(productId).select('demoSession');
+                    if (!product?.demoSession) {
+                        throw new Error('Bu panel kaynağı için ürünün demo oturumu bilgileri ayarlanmamış.');
+                    }
                     try {
                         urlAuth = JSON.parse(decryptField(product.demoSession));
                     } catch (err) {
-                        console.warn('[ingest-source] demoSession decrypt failed, crawling anonymously:', err.message);
+                        throw new Error(`Demo oturumu bilgileri okunamadı: ${err.message}`);
                     }
                 }
 
@@ -427,9 +504,12 @@ export async function handleIngestSource({ sourceId, productId, generation }) {
                 const crawl = await extractFromUrl(
                     source.url,
                     urlAuth,
-                    async (current, max, pagesIndexSoFar) => {
-                        const pct = 15 + Math.round((current / max) * 35); // 15%..50%
-                        emitProgress(sourceId, `Sayfa ${current}/${max} taranıyor…`, pct).catch(() => {});
+                    async (current, max, pagesIndexSoFar, stats) => {
+                        await reportProgress('Tarama sürüyor…', 15, {
+                            indeterminate: true,
+                            attemptCurrent: current,
+                            attemptMax: max
+                        });
                         // Checkpoint after every page — see extractFromUrl's
                         // own doc comment on `onProgress`. This is what makes
                         // a retry (this handler's own timeout, or a crashed
@@ -437,15 +517,29 @@ export async function handleIngestSource({ sourceId, productId, generation }) {
                         // instead of re-crawling the whole site from scratch.
                         // Awaited (not fire-and-forget) so writes can't land
                         // out of order and regress the checkpoint.
-                        await KnowledgeSource.findByIdAndUpdate(sourceId, {
-                            'meta.crawlIndex.pages': pagesIndexSoFar
+                        await updateActiveSource({
+                            $set: {
+                                'meta.crawlIndex.pages': pagesIndexSoFar,
+                                ...(stats && { 'meta.crawlStats': stats })
+                            }
                         }).catch(() => {});
                     },
                     previousPages
                 );
                 text = crawl.text;
                 crawlPagesIndex = crawl.pagesIndex;
+                await updateActiveSource({ $set: { 'meta.crawlStats': crawl.stats } }).catch(() => {});
                 const crawlLanguage = languageName(await resolveKnowledgeLanguage(productId));
+                let checkpointWrite = Promise.resolve();
+                const checkpointCrawlIndex = () => {
+                    const pagesSnapshot = structuredClone(crawlPagesIndex);
+                    checkpointWrite = checkpointWrite.then(() =>
+                        updateActiveSource({
+                            $set: { 'meta.crawlIndex.pages': pagesSnapshot }
+                        }).catch(() => {})
+                    );
+                    return checkpointWrite;
+                };
 
                 // Raw per-page segments (unchanged): needed for on-site
                 // navigation/citation and as the ground truth for the
@@ -454,6 +548,20 @@ export async function handleIngestSource({ sourceId, productId, generation }) {
                 // assistant still needs the literal data, e.g. exact figures
                 // or the page to link a visitor to.
                 ingestSegments = crawl.pages.map((p) => ({ text: p.text, metadata: { pageUrl: p.url } }));
+
+                // A logged-in panel: say, in plain words, what each button that was pressed during the crawl is for.
+                // Calls are bounded (one per page) and skipped for buttons already described in an earlier crawl;
+                // PANEL_UI_PURPOSES=0 turns the step off.
+                if (source.accessMode === 'authenticated' && process.env.PANEL_UI_PURPOSES !== '0') {
+                    await reportProgress('Buton açıklamaları yazılıyor…', 52);
+                    const purposes = await addElementPurposes({
+                        pagesIndex: crawlPagesIndex,
+                        describe: describeUiElements,
+                        language: crawlLanguage
+                    }).catch(() => ({ pages: 0, described: 0 }));
+                    console.log('[ingest-source] panel buton açıklamaları:', purposes);
+                    if (purposes.described) await checkpointCrawlIndex();
+                }
 
                 // Same-page tab/panel content (see discoverTabVariants) — a
                 // rotating "solutions" page only ever shows one panel to a
@@ -467,6 +575,11 @@ export async function handleIngestSource({ sourceId, productId, generation }) {
                 // retrieval) or through synthesizePage (that's keyed one-per-
                 // pageUrl and only ever sees the page's default-loaded panel).
                 for (const p of crawl.pages) {
+                    // What pressing the page's buttons opens, as text a retrieval can find (see extractors/ui-guide.js).
+                    if (source.accessMode === 'authenticated') {
+                        const guide = renderPageGuide({ url: p.url, components: crawlPagesIndex?.[p.url]?.components });
+                        if (guide) ingestSegments.push({ text: guide, metadata: { pageUrl: p.url, guide: true } });
+                    }
                     for (const variant of crawlPagesIndex?.[p.url]?.tabVariants || []) {
                         const variantText = [...variant.headings.map((h) => h.text), variant.rawText]
                             .filter(Boolean)
@@ -519,7 +632,11 @@ export async function handleIngestSource({ sourceId, productId, generation }) {
                     'metadata.synthesized': true
                 }).select('text metadata');
                 const oldPageSynth = new Map();
-                let oldOverview = null;
+                let oldOverview = source.meta?.crawlIndex?.overview || null;
+                for (const p of crawl.pages) {
+                    const cachedSynthesis = crawlPagesIndex?.[p.url]?.synthesis;
+                    if (cachedSynthesis?.text) oldPageSynth.set(p.url, cachedSynthesis);
+                }
                 for (const c of oldSynthChunks) {
                     if (c.metadata?.scope === 'overview') {
                         oldOverview = { text: c.text, language: c.metadata?.language };
@@ -535,17 +652,29 @@ export async function handleIngestSource({ sourceId, productId, generation }) {
                 // are non-fatal (synthesizePage/synthesizeOverview return ''
                 // on error) — a synthesis outage shouldn't block ingestion,
                 // it just means that page falls back to raw-only.
-                await emitProgress(sourceId, 'İçerik yorumlanıyor…', 55);
+                await reportProgress('İçerik yorumlanıyor…', 55);
+                let synthesizedPageCount = 0;
                 const synthesized = await mapWithConcurrency(crawl.pages, URL_SYNTHESIS_CONCURRENCY, async (p) => {
                     const old = oldPageSynth.get(p.url);
-                    if (previousPages.has(p.url) && old && old.language === crawlLanguage) {
-                        return { url: p.url, summary: old.text, reused: true };
+                    let summary;
+                    let reused = false;
+                    if (old && old.language === crawlLanguage) {
+                        summary = old.text;
+                        reused = true;
+                    } else {
+                        summary = await synthesizePage({ pageUrl: p.url, pageText: p.text, language: crawlLanguage });
+                        if (summary && crawlPagesIndex?.[p.url]) {
+                            crawlPagesIndex[p.url].synthesis = { text: summary, language: crawlLanguage };
+                            await checkpointCrawlIndex();
+                        }
                     }
-                    return {
-                        url: p.url,
-                        summary: await synthesizePage({ pageUrl: p.url, pageText: p.text, language: crawlLanguage }),
-                        reused: false
-                    };
+                    synthesizedPageCount++;
+                    const pct = 50 + Math.round((synthesizedPageCount / Math.max(crawl.pages.length, 1)) * 10);
+                    await reportProgress('İçerik yorumlanıyor…', pct, {
+                        completed: synthesizedPageCount,
+                        total: crawl.pages.length
+                    });
+                    return { url: p.url, summary, reused };
                 });
                 for (const { url, summary } of synthesized) {
                     if (summary) {
@@ -565,6 +694,12 @@ export async function handleIngestSource({ sourceId, productId, generation }) {
                     ? oldOverview.text
                     : await synthesizeOverview({ pages: crawl.pages, language: crawlLanguage });
                 if (overview) {
+                    if (!overviewReusable) {
+                        oldOverview = { text: overview, language: crawlLanguage };
+                        await updateActiveSource({
+                            $set: { 'meta.crawlIndex.overview': oldOverview }
+                        }).catch(() => {});
+                    }
                     ingestSegments.push({
                         text: overview,
                         metadata: { synthesized: true, scope: 'overview', language: crawlLanguage }
@@ -582,16 +717,38 @@ export async function handleIngestSource({ sourceId, productId, generation }) {
                     overviewReuseEdildi: overviewReusable
                 });
 
-                await emitProgress(sourceId, 'Konu ağacı güncelleniyor…', 65);
-                await runSiteTopicsPass({ sourceId, productId, pages: crawl.pages, language: crawlLanguage });
+                // A logged-in panel is the product's dashboard, not its
+                // marketing site: the topic taxonomy (pricing, contact, …)
+                // would fold the demo workspace's own data ("Credits used
+                // $0.11") into product facts. Panel pages are indexed on
+                // their own shelf (kind 'ui') instead — see ingestSource below.
+                if (source.accessMode !== 'authenticated') {
+                    await reportProgress('Konu ağacı güncelleniyor…', 65);
+                    await runSiteTopicsPass({
+                        sourceId,
+                        productId,
+                        pages: crawl.pages,
+                        language: crawlLanguage,
+                        pagesIndex: crawlPagesIndex,
+                        onCheckpoint: checkpointCrawlIndex,
+                        onPageDone: async (done, total) => {
+                            const pct = 60 + Math.round((done / Math.max(total, 1)) * 8);
+                            await reportProgress('Konu ağacı güncelleniyor…', pct, { completed: done, total });
+                        },
+                        onTopicDone: async (done, total) => {
+                            const pct = 68 + Math.round((done / Math.max(total, 1)) * 6);
+                            await reportProgress('Konu belgeleri hazırlanıyor…', pct, { completed: done, total });
+                        }
+                    });
+                }
 
                 modality = 'web';
-                await emitProgress(sourceId, 'URL içeriği alındı', 70);
+                await reportProgress('URL içeriği alındı', 70);
                 break;
             }
 
             case 'image': {
-                await emitProgress(sourceId, 'Görsel indiriliyor…', 15);
+                await reportProgress('Görsel indiriliyor…', 15);
                 const url = source.fileKey ? await presignDownload(source.fileKey) : source.url;
                 const response = await fetch(url);
                 if (!response.ok) throw new Error(`Failed to download image: ${response.statusText}`);
@@ -600,17 +757,17 @@ export async function handleIngestSource({ sourceId, productId, generation }) {
                 const contentType = source.mimeType || response.headers.get('content-type') || 'image/png';
                 const dataUrl = `data:${contentType};base64,${buffer.toString('base64')}`;
 
-                await emitProgress(sourceId, 'Görsel analiz ediliyor (Vision AI)…', 30);
+                await reportProgress('Görsel analiz ediliyor (Vision AI)…', 30);
                 const imageLanguage = languageName(await resolveKnowledgeLanguage(productId));
                 text = await describeImage(dataUrl, `Describe this image in detail for search, in ${imageLanguage}.`);
                 modality = 'image';
-                await emitProgress(sourceId, 'Görsel analizi tamamlandı', 60);
+                await reportProgress('Görsel analizi tamamlandı', 60);
                 break;
             }
 
             case 'document': {
                 if (!source.fileKey) throw new Error('Document source requires a fileKey');
-                await emitProgress(sourceId, 'Doküman indiriliyor…', 15);
+                await reportProgress('Doküman indiriliyor…', 15);
                 const url = await presignDownload(source.fileKey);
                 const response = await fetch(url);
                 if (!response.ok) throw new Error(`Failed to download document: ${response.statusText}`);
@@ -628,7 +785,7 @@ export async function handleIngestSource({ sourceId, productId, generation }) {
                     // under one sourceId because of deleteBySource). So we bypass the
                     // switch's usual flow (one `text` -> one ingestSource call) and
                     // return early here.
-                    await emitProgress(sourceId, 'Zip arşivi taranıyor…', 20);
+                    await reportProgress('Zip arşivi taranıyor…', 20);
                     const summary = await ingestZipEntries({ buffer, parentSourceId: sourceId, productId });
                     await KnowledgeSource.findByIdAndUpdate(sourceId, {
                         status: 'ready',
@@ -645,15 +802,15 @@ export async function handleIngestSource({ sourceId, productId, generation }) {
                     return summary;
                 }
 
-                await emitProgress(sourceId, 'Doküman ayrıştırılıyor…', 35);
+                await reportProgress('Doküman ayrıştırılıyor…', 35);
                 text = await extractDocumentText(buffer, { mime, ext });
-                await emitProgress(sourceId, 'Doküman metni çıkarıldı', 55);
+                await reportProgress('Doküman metni çıkarıldı', 55);
                 break;
             }
 
             case 'video': {
                 if (!source.fileKey) throw new Error('Video source requires a fileKey');
-                await emitProgress(sourceId, 'Video indiriliyor…', 10);
+                await reportProgress('Video indiriliyor…', 10);
                 const url = await presignDownload(source.fileKey);
                 const response = await fetch(url);
                 if (!response.ok) throw new Error(`Failed to download video: ${response.statusText}`);
@@ -662,7 +819,7 @@ export async function handleIngestSource({ sourceId, productId, generation }) {
                 const videoPath = path.join(os.tmpdir(), `vid_${Date.now()}.mp4`);
                 tempFiles.push(videoPath);
                 await pipeline(response.body, createWriteStream(videoPath));
-                await emitProgress(sourceId, 'Video indirildi, ses çıkarılıyor…', 25);
+                await reportProgress('Video indirildi, ses çıkarılıyor…', 25);
 
                 // 2. Extract the audio from the video with ffmpeg (as mp3)
                 const audioPath = path.join(os.tmpdir(), `aud_${Date.now()}.mp3`);
@@ -676,12 +833,12 @@ export async function handleIngestSource({ sourceId, productId, generation }) {
                         .on('error', reject)
                         .save(audioPath);
                 });
-                await emitProgress(sourceId, 'Ses Whisper\'a gönderiliyor…', 45);
+                await reportProgress('Ses Whisper\'a gönderiliyor…', 45);
 
                 // 3. Transcribe the audio to text with OpenAI Whisper
                 const transcriptResult = await transcribeAudio(audioPath);
                 await KnowledgeSource.findByIdAndUpdate(sourceId, { 'meta.transcript': transcriptResult.text });
-                await emitProgress(sourceId, 'Transkripsiyon tamamlandı', 55);
+                await reportProgress('Transkripsiyon tamamlandı', 55);
 
                 // 4. Sample video keyframes and describe them with Vision AI (a
                 // transcript alone isn't enough signal for silent/narration-free videos).
@@ -696,7 +853,7 @@ export async function handleIngestSource({ sourceId, productId, generation }) {
                             .on('error', reject)
                             .screenshots({ count: VIDEO_MAX_KEYFRAMES, folder: frameDir, filename: 'frame-%i.png', size: '1024x?' });
                     });
-                    await emitProgress(sourceId, 'Video kareleri analiz ediliyor…', 60);
+                    await reportProgress('Video kareleri analiz ediliyor…', 60);
 
                     const frameLanguage = languageName(await resolveKnowledgeLanguage(productId));
                     const results = await Promise.allSettled(
@@ -740,7 +897,7 @@ export async function handleIngestSource({ sourceId, productId, generation }) {
 
                 text = [transcriptResult.text, ...frameCaptions.map((c, i) => `[Frame ${i + 1}]: ${c}`)].join('\n\n');
                 modality = 'video';
-                await emitProgress(sourceId, 'Video analizi tamamlandı', 65);
+                await reportProgress('Video analizi tamamlandı', 65);
                 break;
             }
 
@@ -774,13 +931,22 @@ export async function handleIngestSource({ sourceId, productId, generation }) {
         // also persist this crawl's per-page {rawText, links} index so the
         // next ingestion can skip pages it already knows (see
         // extractFromUrl's `previousPages` param).
-        await KnowledgeSource.findByIdAndUpdate(sourceId, {
-            'meta.extractedText': text,
-            ...(crawlPagesIndex && { 'meta.crawlIndex': { pages: crawlPagesIndex } })
-        }).catch(() => {});
+        const persisted = await updateActiveSource({
+            $set: {
+                'meta.extractedText': text,
+                ...(crawlPagesIndex && { 'meta.crawlIndex.pages': crawlPagesIndex })
+            }
+        }).catch(() => null);
+        if (!persisted?.matchedCount) return { chunks: 0, superseded: true };
 
-        await emitProgress(sourceId, 'Vektörleştiriliyor ve kaydediliyor…', 75);
-        const result = await ingestSource({ sourceId, productId, text: ingestSegments || text, modality });
+        await reportProgress('Vektörleştiriliyor ve kaydediliyor…', 75);
+        const result = await ingestSource({
+            sourceId,
+            productId,
+            text: ingestSegments || text,
+            modality,
+            ...(source.accessMode === 'authenticated' && { kind: UI_KIND })
+        });
 
         // Publish completion
         await publishEvent(RT_EVENTS.INGESTION_READY, {
@@ -789,10 +955,14 @@ export async function handleIngestSource({ sourceId, productId, generation }) {
             chunks: result.chunks,
             modality
         }).catch(() => {});
+        await reportProgress('Hazır', 100);
 
         await cleanup();
         return result;
-        }, HANDLE_INGEST_TIMEOUT_MS);
+        };
+        return await (['url', 'api'].includes(source.type)
+            ? runPipeline()
+            : withTimeout(runPipeline, HANDLE_INGEST_TIMEOUT_MS));
 
     } catch (err) {
         await cleanup();

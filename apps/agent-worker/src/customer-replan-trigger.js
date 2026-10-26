@@ -9,7 +9,7 @@ export function shouldReplanForUtterance(value) {
     return text.includes('?') || QUESTION_WORD.test(text) || REQUEST.test(text);
 }
 
-/** Keeps late retrievals and duplicate tool lookups from replacing a newer route. */
+/** Keeps late customer retrievals from replacing a newer customer route. */
 export function createCustomerReplanTrigger({ resolve, onResolution, onError = () => {} }) {
     let generation = 0;
     let plannedIntentIds = new Set();
@@ -30,12 +30,6 @@ export function createCustomerReplanTrigger({ resolve, onResolution, onError = (
             return Promise.resolve().then(() => resolve({ productId, query: text }))
                 .then((resolution) => accept(resolution, currentGeneration))
                 .catch((error) => { onError(error); return false; });
-        },
-        onToolResolution(resolution) {
-            return accept(resolution, generation).catch((error) => {
-                onError(error);
-                return false;
-            });
         }
     };
 }

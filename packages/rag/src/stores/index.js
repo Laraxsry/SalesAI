@@ -18,7 +18,7 @@ function getStoreInstance(name) {
  * VECTOR_STORE = mongodb (Atlas Vector Search) | qdrant
  *
  * Phase 7: `query()` — the read path — tries `VECTOR_STORE_FALLBACK_CHAIN`
- * in order (default: the configured store, then the other one), with
+ * in order (default: only the configured store), with
  * timeout + jittered retry + circuit breaker via `@repo/resilience`.
  *
  * `upsert`/`deleteBySource`/`keywordQuery`/`listByProduct`/`setStatus`
@@ -33,9 +33,13 @@ function getStoreInstance(name) {
  */
 export function getVectorStore() {
     const primaryName = process.env.VECTOR_STORE || 'mongodb';
-    const chain = (
-        process.env.VECTOR_STORE_FALLBACK_CHAIN || `${primaryName},${primaryName === 'mongodb' ? 'qdrant' : 'mongodb'}`
-    ).split(',');
+    // A fallback is useful only when the same knowledge is replicated there.
+    // Writes target the primary store, so silently querying the other default
+    // store can turn a real primary failure into a misleading empty result.
+    const chain = (process.env.VECTOR_STORE_FALLBACK_CHAIN || primaryName)
+        .split(',')
+        .map((name) => name.trim())
+        .filter(Boolean);
     const primary = getStoreInstance(primaryName);
 
     return {

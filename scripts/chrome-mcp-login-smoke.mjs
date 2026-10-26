@@ -50,19 +50,19 @@ try {
             auth: { loginUrl: `${base}/login?mode=${mode}`, email: mode === 'invalid' ? 'invalid-email' : 'demo@example.test', password: 'test-only-password' }
         });
         try {
-            if (mode === 'success') {
+            if (mode === 'success' || mode === 'ambiguous') {
                 await tour.prepare({ loginTargetUrl: base });
                 assert.equal(tour.loggedIn, true);
                 assert.equal(tour.currentUrl, `${base}/dashboard`);
             } else {
-                const error = mode === 'ambiguous' ? /unique username field and submit/ : mode === 'invalid' ? /validation failed/ : /reported an error/;
+                const error = mode === 'invalid' ? /validation failed/ : /reported an error/;
                 await assert.rejects(tour.prepare({ loginTargetUrl: base }), error);
                 assert.equal(tour.loggedIn, false);
             }
             console.log(`PASS ${mode}`);
         } finally { await tour.close(); }
     }
-    assert.equal(submissions, 1);
+    assert.equal(submissions, 2);
     assert.equal(wrongClicks, 0);
     // Read-only regression on the original page; no real credentials or submit.
     if (process.argv.includes('--live')) {

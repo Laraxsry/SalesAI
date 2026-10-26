@@ -30,6 +30,7 @@
     "@repo/database": "*",
     "@repo/livekit": "*",
     "@repo/logger": "*",
+    "@repo/rag": "*",
     "@repo/realtime": "*",
     "@repo/screen": "*",
     "@repo/utils": "*",

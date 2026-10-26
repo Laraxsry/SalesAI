@@ -1,6 +1,7 @@
 import { describe, it, expect } from 'vitest';
 import {
     ProductInput,
+    KnowledgeSourceInput,
     EmbedConfigInput,
     EmbedSessionInput,
     isValidEmbedDomainPattern,
@@ -12,6 +13,37 @@ import {
     normalizePlaybookSurveyFieldKey,
     isTourNavigableUrl
 } from './index.js';
+
+describe('KnowledgeSourceInput.accessMode', () => {
+    it('defaults URL sources to public crawling', () => {
+        const result = KnowledgeSourceInput.parse({
+            productId: 'product-1',
+            type: 'url',
+            url: 'https://www.example.com'
+        });
+        expect(result.accessMode).toBe('public');
+    });
+
+    it('accepts a protected panel URL', () => {
+        const result = KnowledgeSourceInput.safeParse({
+            productId: 'product-1',
+            type: 'url',
+            url: 'https://app.example.com/dashboard',
+            accessMode: 'authenticated'
+        });
+        expect(result.success).toBe(true);
+    });
+
+    it('rejects authenticated mode for non-URL sources', () => {
+        const result = KnowledgeSourceInput.safeParse({
+            productId: 'product-1',
+            type: 'api',
+            url: 'https://api.example.com/openapi.json',
+            accessMode: 'authenticated'
+        });
+        expect(result.success).toBe(false);
+    });
+});
 
 /**
  * ProductInput is the API boundary for POST /products. Its URL fields feed the

@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from 'vitest';
-import { ChromeMcpAdapter } from './chrome-mcp-adapter.js';
+import { ChromeMcpAdapter, forwardFilteredStderr } from './chrome-mcp-adapter.js';
 
 function setup({ tools, callResult } = {}) {
     const client = {
@@ -94,5 +94,19 @@ describe('ChromeMcpAdapter', () => {
             function: '(el) => el.getBoundingClientRect()', args: ['1_2']
         })).resolves.toMatchObject({ ok: true });
         expect(client.callTool).toHaveBeenCalled();
+    });
+});
+
+describe('forwardFilteredStderr', () => {
+    it('drops the DevTools "no handler" noise and keeps everything else, even across chunk boundaries', async () => {
+        const { PassThrough } = await import('node:stream');
+        const stream = new PassThrough();
+        const written = [];
+        forwardFilteredStderr(stream, (text) => written.push(text));
+        stream.write('No handler registered for issue code PerformanceIssue\nreal err');
+        stream.write('or happened\nNo handler registered for issue code PerformanceIssue\n');
+        stream.end('last line without newline');
+        await new Promise((resolve) => stream.on('end', resolve));
+        expect(written.join('')).toBe('real error happened\nlast line without newline\n');
     });
 });

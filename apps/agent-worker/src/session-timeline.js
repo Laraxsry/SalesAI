@@ -51,6 +51,7 @@ export const TIMELINE_EVENTS = {
     USER_STATE: 'speech.user.state',
     TRANSCRIPT_AGENT: 'speech.transcript.agent',
     TRANSCRIPT_USER: 'speech.transcript.user',
+    CONVERSATION_TURN_RESOLVED: 'speech.turn.resolved',
     NUDGE_SENT: 'speech.nudge.sent',
 
     // ── Playbook ─────────────────────────────────────────────────────────

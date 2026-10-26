@@ -66,6 +66,7 @@ async function syncWebsiteUrlSource(productId, websiteUrl, prevUrl) {
             type: 'url',
             url: normalizedNew,
             title: `Website: ${normalizedNew}`,
+            accessMode: 'public',
             status: 'pending',
             meta: { autoCreated: true }
         });
@@ -76,6 +77,7 @@ async function syncWebsiteUrlSource(productId, websiteUrl, prevUrl) {
             $set: {
                 url: normalizedNew,
                 title: `Website: ${normalizedNew}`,
+                accessMode: 'public',
                 status: 'pending',
                 error: null
             }
@@ -113,6 +115,23 @@ export async function reingestAutoUrlSource(productId) {
         $set: { status: 'pending', error: null }
     });
     await enqueueIngestion(existing._id, productId);
+}
+
+/** Re-crawl only protected sources when the product login profile changes. */
+async function reingestAuthenticatedUrlSources(productId) {
+    const sources = await KnowledgeSource.find({
+        productId,
+        type: 'url',
+        accessMode: 'authenticated',
+        status: { $ne: 'disabled' }
+    }).select('_id');
+
+    await Promise.all(sources.map(async (source) => {
+        await KnowledgeSource.findByIdAndUpdate(source._id, {
+            $set: { status: 'pending', error: null }
+        });
+        await enqueueIngestion(source._id, productId);
+    }));
 }
 
 /**
@@ -323,14 +342,12 @@ productsRouter.patch('/:id', requireAuth, validate({ body: ProductUpdateInput })
             { new: true, runValidators: true }
         );
 
-        // websiteUrl değiştiyse KnowledgeSource'u senkronize et; değişmediyse ama
-        // demoSession değiştiyse (websiteUrl aynı kaldı) mevcut auto-source'u
-        // yeni kimlik bilgileriyle re-ingest et.
+        // Public website and authenticated panel sources have independent
+        // lifecycles. Credential changes only re-run protected sources.
         if (req.body.websiteUrl !== undefined) {
             await syncWebsiteUrlSource(updated._id, req.body.websiteUrl, product.websiteUrl);
-        } else if (req.body.demoSession !== undefined && updated.websiteUrl) {
-            await reingestAutoUrlSource(updated._id);
         }
+        if (req.body.demoSession !== undefined) await reingestAuthenticatedUrlSources(updated._id);
 
         res.json({
             id: String(updated._id),

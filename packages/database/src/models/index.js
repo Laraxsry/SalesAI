@@ -4,6 +4,7 @@ export { Membership } from './Membership.js';
 export { Product } from './Product.js';
 export { KnowledgeSource } from './KnowledgeSource.js';
 export { KnowledgeChunk } from './KnowledgeChunk.js';
+export { Procedure } from './Procedure.js';
 export { KnowledgeAudit } from './KnowledgeAudit.js';
 export { Agent } from './Agent.js';
 export { Playbook } from './Playbook.js';

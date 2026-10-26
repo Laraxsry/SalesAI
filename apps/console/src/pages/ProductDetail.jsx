@@ -13,10 +13,11 @@ function DemoSessionForm({ product }) {
     const [username, setUsername] = useState(existing.username || existing.email || '');
     const [password, setPassword] = useState(existing.password || '');
     const [showAdvanced, setShowAdvanced] = useState(
-        Boolean(existing.selectors?.username || existing.selectors?.email || existing.selectors?.password || existing.selectors?.submit)
+        Boolean(existing.selectors?.username || existing.selectors?.email || existing.selectors?.password || existing.selectors?.next || existing.selectors?.submit)
     );
     const [usernameSelector, setUsernameSelector] = useState(existing.selectors?.username || existing.selectors?.email || '');
     const [passwordSelector, setPasswordSelector] = useState(existing.selectors?.password || '');
+    const [nextSelector, setNextSelector] = useState(existing.selectors?.next || '');
     const [submitSelector, setSubmitSelector] = useState(existing.selectors?.submit || '');
     const [error, setError] = useState(null);
 
@@ -38,6 +39,7 @@ function DemoSessionForm({ product }) {
         const selectors = {};
         if (usernameSelector.trim()) selectors.username = usernameSelector.trim();
         if (passwordSelector.trim()) selectors.password = passwordSelector.trim();
+        if (nextSelector.trim()) selectors.next = nextSelector.trim();
         if (submitSelector.trim()) selectors.submit = submitSelector.trim();
 
         setError(null);
@@ -57,6 +59,7 @@ function DemoSessionForm({ product }) {
         setPassword('');
         setUsernameSelector('');
         setPasswordSelector('');
+        setNextSelector('');
         setSubmitSelector('');
     };
 
@@ -128,8 +131,8 @@ function DemoSessionForm({ product }) {
             </button>
 
             {showAdvanced && (
-                <div className="mb-4 grid gap-4 rounded border border-border/50 bg-bg-muted p-3 sm:grid-cols-3">
-                    <p className="sm:col-span-3 text-xs text-text-muted">
+                <div className="mb-4 grid gap-4 rounded border border-border/50 bg-bg-muted p-3 sm:grid-cols-2">
+                    <p className="sm:col-span-2 text-xs text-text-muted">
                         Giris formu otomatik algilanir; algilama basarisiz olursa DevTools'tan buldugunuz CSS
                         selector'ları buraya girin.
                     </p>
@@ -141,6 +144,16 @@ function DemoSessionForm({ product }) {
                             placeholder="otomatik algilanir"
                             value={usernameSelector}
                             onChange={(e) => setUsernameSelector(e.target.value)}
+                        />
+                    </div>
+                    <div>
+                        <label className="block text-xs font-medium text-text-muted mb-2">Devam / ileri butonu selector</label>
+                        <input
+                            type="text"
+                            className="w-full rounded-[var(--radius-input)] border border-input-border bg-input-bg px-3 py-2 text-xs font-mono text-text focus:border-brand focus:outline-none focus:ring-1 focus:ring-brand"
+                            placeholder="iki aşamalı girişte otomatik algılanır"
+                            value={nextSelector}
+                            onChange={(e) => setNextSelector(e.target.value)}
                         />
                     </div>
                     <div>

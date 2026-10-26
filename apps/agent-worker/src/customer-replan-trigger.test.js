@@ -24,7 +24,7 @@ describe('customer reconsideration', () => {
         expect(onResolution).not.toHaveBeenCalled();
     });
 
-    it('handles the same intent only once across transcript and tool resolution', async () => {
+    it('handles a resolved customer intent only once', async () => {
         const resolution = { intentId: 'same' };
         const onResolution = vi.fn();
         const trigger = createCustomerReplanTrigger({
@@ -32,7 +32,14 @@ describe('customer reconsideration', () => {
             onResolution
         });
         expect(await trigger.onUtterance('Nasıl yüklerim?', 'product')).toBe(true);
-        expect(await trigger.onToolResolution(resolution)).toBe(false);
         expect(onResolution).toHaveBeenCalledTimes(1);
+    });
+
+    it('does not expose a tool-resolution path that could revise the route', () => {
+        const trigger = createCustomerReplanTrigger({
+            resolve: async () => ({ intentId: 'same' }),
+            onResolution: () => {}
+        });
+        expect(trigger.onToolResolution).toBeUndefined();
     });
 });

@@ -73,7 +73,7 @@ export function TourOverlay({ cue }) {
                 }}
             >
                 <svg width="28" height="34" viewBox="0 0 28 34" fill="none">
-                    <path d="M3 2.5L24.2 19.2L14.8 20.8L9.7 30.5L3 2.5Z" fill="#F8FBF8" stroke="#071713" strokeWidth="2.2" strokeLinejoin="round" />
+                    <path d="M3 2.5L24.2 19.2L14.8 20.8L9.7 30.5L3 2.5Z" fill="#F3F6FF" stroke="#071426" strokeWidth="2.2" strokeLinejoin="round" />
                 </svg>
             </div>
             {cue?.action === 'click' && cue.target && (

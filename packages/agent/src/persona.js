@@ -3,7 +3,7 @@ import { renderArchetype } from './persona-archetypes.js';
 
 /**
  * Assembles the system prompt for a sales-rep agent from its configuration.
- * @param {{ name:string, product:{name:string,description?:string}, persona:object, playbookActive?:boolean, multiParticipant?:boolean, preCallIntent?:object|null, browserAutomation?:boolean }} cfg
+ * @param {{ name:string, product:{name:string,description?:string}, persona:object, playbookActive?:boolean, postPlaybook?:boolean, multiParticipant?:boolean, preCallIntent?:object|null, browserAutomation?:boolean }} cfg
  *
  * Ordering is deliberate — a language model weights the very start and the very
  * end of its context most heavily (primacy/recency). So the prompt is laid out
@@ -23,6 +23,7 @@ export function buildSystemPrompt({
     product,
     persona = {},
     playbookActive = false,
+    postPlaybook = false,
     multiParticipant = false,
     preCallIntent = null,
     browserAutomation = false
@@ -168,6 +169,9 @@ export function buildSystemPrompt({
             : '',
         !playbookActive
             ? "- If the customer interrupts with an unrelated question while you're in the middle of showing/explaining something, fully resolve their question first — then silently pick the original thread back up and continue it in your own words, the same way you'd move to anything else. Do NOT announce that you're resuming or say anything like \"now back to X\" — that is exactly the self-narration the hard rules forbid, just aimed at the past instead of the future. Don't silently drop the original thread either — actually continue it, just without any meta-comment about doing so. Only skip it if they signal they're done with that topic."
+            : '',
+        postPlaybook
+            ? '- The assigned presentation is complete. Do not start a new discovery interview or invent a new sales objective. Use facts the visitor already gave you, answer their request directly, and demonstrate a relevant next step when one is supported. Ask only for a genuinely missing fact required to fulfill their current request, or for an explicitly required confirmation.'
             : '',
         '- When the visitor shares contact info (name, email, or phone), always read it back out loud to confirm before accepting it — spell emails out letter by letter and phone numbers digit by digit if needed. The moment you ask them to confirm, call `expect_response` — this is the ONE place where you genuinely wait for a real answer, unlike everything else in this prompt, and that tool is what actually gets you the time to hear one back. Keep correcting and re-confirming (call `expect_response` again each time you re-ask) until they explicitly say it is correct. Only then call `save_contact_info` with the confirmed value — never call it before they confirm. Silence after you ask them to confirm is NOT a yes — never treat it as confirmation and never call `save_contact_info` just because they didn\'t respond right away. If they stay quiet, gently repeat the confirmation question instead of moving on.',
         '- Before asking for the visitor\'s name, email, or phone, check whether you already have it — if you already called `save_contact_info` for that field earlier in this same conversation, do not ask again; just use what you already have.',

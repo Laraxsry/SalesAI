@@ -56,18 +56,18 @@ export function InCallSurvey({ survey, onAnswer }) {
         <div className="pointer-events-none absolute inset-x-0 bottom-5 z-30 flex justify-center px-4 sm:bottom-6">
             <section
                 aria-labelledby={`survey-${survey.nodeId}`}
-                className="pointer-events-auto w-full max-w-lg rounded-2xl border border-white/15 bg-[#071713]/88 p-4 shadow-2xl shadow-black/35 backdrop-blur-xl sm:p-5"
+                className="pointer-events-auto w-full max-w-lg rounded-2xl border border-white/15 bg-[#071426]/88 p-4 shadow-2xl shadow-black/35 backdrop-blur-xl sm:p-5"
             >
                 <div className="mb-3 flex items-start justify-between gap-3">
                     <div>
-                        <p className="text-[11px] font-bold uppercase tracking-[0.16em] text-[#d7f95b]/80">
+                        <p className="text-[11px] font-bold uppercase tracking-[0.16em] text-[#67e8f9]/80">
                             {survey.position && survey.total ? `${survey.position} / ${survey.total} · ` : ''}Kısa soru
                         </p>
                         <h2 id={`survey-${survey.nodeId}`} className="mt-1 text-sm font-semibold leading-5 text-white sm:text-base">
                             {survey.question}
                         </h2>
                     </div>
-                    {submitting && <Loader2 size={17} className="mt-1 shrink-0 animate-spin text-[#d7f95b]" />}
+                    {submitting && <Loader2 size={17} className="mt-1 shrink-0 animate-spin text-[#67e8f9]" />}
                 </div>
 
                 {survey.options.length > 0 && (
@@ -93,8 +93,8 @@ export function InCallSurvey({ survey, onAnswer }) {
                                 }}
                                 className={`min-h-10 rounded-xl border px-3 py-2 text-sm font-medium text-white transition disabled:opacity-50 ${
                                     (multiSelect ? selectedValues.includes(option.value) : selectedValue === option.value)
-                                        ? 'border-[#d7f95b] bg-[#d7f95b]/15 shadow-[0_0_0_1px_rgba(215,249,91,0.2)]'
-                                        : 'border-white/10 bg-white/[0.07] hover:border-[#d7f95b]/60 hover:bg-white/[0.11]'
+                                        ? 'border-[#67e8f9] bg-[#67e8f9]/15 shadow-[0_0_0_1px_rgba(103,232,249,0.2)]'
+                                        : 'border-white/10 bg-white/[0.07] hover:border-[#67e8f9]/60 hover:bg-white/[0.11]'
                                 }`}
                             >
                                 {option.label}
@@ -122,13 +122,13 @@ export function InCallSurvey({ survey, onAnswer }) {
                             disabled={submitting}
                             maxLength={1000}
                             placeholder={survey.options.length ? 'Diğer cevabınız…' : 'Cevabınız…'}
-                            className="h-10 min-w-0 flex-1 rounded-xl border border-white/10 bg-black/20 px-3 text-sm text-white outline-none placeholder:text-white/35 focus:border-[#d7f95b]/70"
+                            className="h-10 min-w-0 flex-1 rounded-xl border border-white/10 bg-black/20 px-3 text-sm text-white outline-none placeholder:text-white/35 focus:border-[#67e8f9]/70"
                         />
                         <button
                             type="submit"
                             disabled={submitting || !answerValue}
                             aria-label="Cevabı gönder"
-                            className="flex h-10 w-11 items-center justify-center rounded-xl bg-[#d7f95b] text-[#071713] disabled:opacity-40"
+                            className="flex h-10 w-11 items-center justify-center rounded-xl bg-[#67e8f9] text-[#071426] disabled:opacity-40"
                         >
                             <Send size={16} />
                         </button>
@@ -140,7 +140,7 @@ export function InCallSurvey({ survey, onAnswer }) {
                         type="button"
                         disabled={submitting || (multiSelect ? selectedValues.length === 0 : !selectedValue)}
                         onClick={() => submit(multiSelect ? selectedValues : selectedValue)}
-                        className="mt-3 flex h-10 w-full items-center justify-center gap-2 rounded-xl bg-[#d7f95b] text-sm font-semibold text-[#071713] transition hover:bg-[#e1ff72] disabled:cursor-not-allowed disabled:opacity-40"
+                        className="mt-3 flex h-10 w-full items-center justify-center gap-2 rounded-xl bg-[#67e8f9] text-sm font-semibold text-[#071426] transition hover:bg-[#8ceefa] disabled:cursor-not-allowed disabled:opacity-40"
                     >
                         <Send size={16} /> Cevabı gönder
                     </button>

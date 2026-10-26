@@ -28,6 +28,34 @@ const DEFAULT_ALLOWED_TOOLS = new Set([
 
 const INTERNAL_ALLOWED_TOOLS = new Set(['evaluate_script']);
 
+// Chrome DevTools MCP's bundled DevTools frontend warns once per Chrome "issue" it has no handler for.
+// Heavy pages report performance issues continuously, which buries the worker's own logs. Nothing acts on them.
+const NOISY_STDERR_LINES = [/No handler registered for issue code /];
+
+/**
+ * Forward the MCP server's stderr line by line, dropping known noise. Partial lines are held until they
+ * complete, so a line split across two chunks is still recognised.
+ */
+export function forwardFilteredStderr(stream, write = (text) => process.stderr.write(text)) {
+    let pending = '';
+    const flush = (text) => {
+        const kept = text.split('\n').filter((line) => !NOISY_STDERR_LINES.some((noise) => noise.test(line)));
+        if (kept.length && kept.some(Boolean)) write(`${kept.join('\n')}\n`);
+    };
+    stream.setEncoding?.('utf8');
+    stream.on('data', (chunk) => {
+        pending += chunk;
+        const end = pending.lastIndexOf('\n');
+        if (end < 0) return;
+        flush(pending.slice(0, end));
+        pending = pending.slice(end + 1);
+    });
+    stream.on('end', () => {
+        if (pending) flush(pending);
+        pending = '';
+    });
+}
+
 /** Thin infrastructure adapter. It contains no sales or site-specific logic. */
 export class ChromeMcpAdapter {
     constructor({
@@ -83,8 +111,9 @@ export class ChromeMcpAdapter {
                     '--no-usage-statistics',
                     '--no-performance-crux'
                 ],
-                stderr: 'inherit'
+                stderr: 'pipe'
             });
+            if (transport.stderr) forwardFilteredStderr(transport.stderr);
 
             try {
                 await client.connect(transport, { timeout: this.timeoutMs });

@@ -3,15 +3,15 @@
 @import '@livekit/components-styles';
 
 :root {
-    --color-brand: #0f766e;
-    --color-brand-light: #14b8a6;
-    --color-brand-dark: #0b5f59;
-    --color-bg: #071713;
-    --color-surface: #0d2923;
-    --color-surface-raised: #15372f;
+    --color-brand: #2563eb;
+    --color-brand-light: #3b82f6;
+    --color-brand-dark: #1d4ed8;
+    --color-bg: #050c18;
+    --color-surface: #0b1830;
+    --color-surface-raised: #10284b;
     --color-border: rgb(255 255 255 / 10%);
-    --color-text: #f8fbf8;
-    --color-text-muted: #9baba4;
+    --color-text: #f3f6ff;
+    --color-text-muted: #94a8c5;
     --radius-card: 22px;
     --radius-input: 13px;
 }
@@ -43,12 +43,12 @@ h3 {
 
 .visitor-stage {
     background:
-        radial-gradient(circle at 50% 35%, rgb(20 184 166 / 13%), transparent 31rem),
-        linear-gradient(145deg, #06120f, #0a211c 58%, #061611);
+        radial-gradient(circle at 50% 35%, rgb(56 130 246 / 13%), transparent 31rem),
+        linear-gradient(145deg, #050c18, #0b1830 58%, #071426);
 }
 
 .visitor-grid {
-    background-image: radial-gradient(circle, rgb(215 249 91 / 14%) 1px, transparent 1.2px);
+    background-image: radial-gradient(circle, rgb(103 232 249 / 14%) 1px, transparent 1.2px);
     background-size: 20px 20px;
     mask-image: radial-gradient(circle at center, black, transparent 68%);
 }
@@ -58,7 +58,7 @@ h3 {
 }
 
 .tour-cursor {
-    filter: drop-shadow(0 5px 8px rgb(7 23 19 / 45%));
+    filter: drop-shadow(0 5px 8px rgb(7 20 38 / 45%));
     transform: translate(-3px, -3px);
     transition-property: left, top, opacity;
     transition-timing-function: cubic-bezier(0.22, 1, 0.36, 1);
@@ -66,22 +66,22 @@ h3 {
 }
 
 .tour-outline {
-    border: 3px solid #d7f95b;
+    border: 3px solid #67e8f9;
     border-radius: 12px;
-    box-shadow: 0 0 0 5px rgb(215 249 91 / 16%), 0 12px 34px rgb(7 23 19 / 24%);
+    box-shadow: 0 0 0 5px rgb(103 232 249 / 16%), 0 12px 34px rgb(7 20 38 / 24%);
     animation: tour-focus-in 220ms ease-out both;
 }
 
 .tour-spotlight {
     border-radius: 14px;
-    box-shadow: 0 0 0 200vmax rgb(7 23 19 / 28%), 0 0 0 3px #d7f95b, 0 12px 40px rgb(7 23 19 / 30%);
+    box-shadow: 0 0 0 200vmax rgb(7 20 38 / 28%), 0 0 0 3px #67e8f9, 0 12px 40px rgb(7 20 38 / 30%);
     animation: tour-focus-in 260ms ease-out both;
 }
 
 .tour-marker {
     border-radius: 4px;
-    background: rgb(215 249 91 / 42%);
-    box-shadow: 0 1px 0 rgb(215 249 91 / 55%);
+    background: rgb(103 232 249 / 42%);
+    box-shadow: 0 1px 0 rgb(103 232 249 / 55%);
     transform-origin: left center;
     animation: tour-marker-draw 360ms cubic-bezier(0.22, 1, 0.36, 1) both;
 }
@@ -90,7 +90,7 @@ h3 {
     height: 14px;
     width: 14px;
     transform: translate(-50%, -50%);
-    border: 3px solid #d7f95b;
+    border: 3px solid #67e8f9;
     border-radius: 999px;
     animation: tour-click-ripple 420ms ease-out both;
 }
@@ -104,8 +104,8 @@ h3 {
     min-width: 22px;
     border: 1px solid rgb(255 255 255 / 65%);
     border-radius: 999px;
-    background: rgb(7 23 19 / 58%);
-    box-shadow: 0 8px 24px rgb(7 23 19 / 30%);
+    background: rgb(7 20 38 / 58%);
+    box-shadow: 0 8px 24px rgb(7 20 38 / 30%);
 }
 
 .tour-scroll-cue span {
@@ -116,7 +116,7 @@ h3 {
     width: 4px;
     transform: translateX(-50%);
     border-radius: 999px;
-    background: #d7f95b;
+    background: #67e8f9;
     animation: tour-scroll-down 560ms ease-in-out infinite;
 }
 
@@ -136,8 +136,53 @@ h3 {
 
 button:focus-visible,
 a:focus-visible {
-    outline: 2px solid #d7f95b;
+    outline: 2px solid #67e8f9;
     outline-offset: 3px;
+}
+
+.load-bar-fill {
+    animation: load-bar 1.8s cubic-bezier(0.65, 0, 0.35, 1) infinite;
+}
+
+.status-card {
+    animation: card-in 380ms cubic-bezier(0.22, 1, 0.36, 1) both;
+}
+
+@keyframes card-in {
+    from { opacity: 0; transform: translateY(8px) scale(0.985); }
+    to { opacity: 1; transform: translateY(0) scale(1); }
+}
+
+@keyframes load-bar {
+    from { transform: translateX(-100%); }
+    to { transform: translateX(250%); }
+}
+
+.room-enter {
+    animation: room-enter 520ms cubic-bezier(0.22, 1, 0.36, 1) both;
+}
+
+.orb-glow {
+    animation: orb-glow 3.2s ease-in-out infinite;
+}
+
+.orb-ring {
+    animation: orb-ring 2.2s ease-out infinite;
+}
+
+@keyframes orb-ring {
+    from { opacity: 0.7; transform: scale(1); }
+    to { opacity: 0; transform: scale(1.65); }
+}
+
+@keyframes room-enter {
+    from { opacity: 0; transform: translateY(10px) scale(0.96); }
+    to { opacity: 1; transform: translateY(0) scale(1); }
+}
+
+@keyframes orb-glow {
+    0%, 100% { opacity: 0.75; }
+    50% { opacity: 1; }
 }
 
 @keyframes voice-float {

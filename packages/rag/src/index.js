@@ -4,6 +4,9 @@ export { extractDocumentText, extractZipMemberText } from './document-text.js';
 export { retrieve, invalidateProductCache } from './retrieve.js';
 export { runKnowledgeAudit, applyAuditFindings } from './audit/index.js';
 export { getVectorStore } from './stores/index.js';
+export { UI_KIND, inKindScope } from './chunk-kind.js';
+export { buildProcedure, renderProcedureText, procedureLabels } from './procedure.js';
+export { saveProcedure, loadProcedure } from './procedure-store.js';
 // Phase 7 — chaos testing (scripts/chaos-test.js) needs to seed/clean up a
 // throwaway chunk in one specific store directly, bypassing getVectorStore()'s
 // cached singleton (which would otherwise bake in a good connection before

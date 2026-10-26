@@ -3,6 +3,7 @@ export { embed, embedBatch } from './embeddings.js';
 export { describeImage, transcribeAudio } from './multimodal.js';
 export { rerank } from './rerank.js';
 export { synthesizePage, synthesizeOverview } from './synthesize.js';
+export { describeProcedure, describeUiElements } from './describe-ui.js';
 export { FIXED_TOPICS, classifyPageTopics, dedupeProposedTopics, composeTopicDocument } from './site-topics.js';
 export { nextSurveyQuestion, buildTourPlan } from './pre-call-survey.js';
 export { generatePlaybookDraft, compileGeneratedPlaybook } from './playbook-generator.js';

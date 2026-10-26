@@ -86,6 +86,41 @@ describe('waitForStableContent', () => {
         expect(page.evaluate).toHaveBeenCalledTimes(5);
     });
 
+    it('does not treat an empty page as settled while a client-rendered app is still booting', async () => {
+        const lens = [0, 0, 0, 0, 50, 50, 50, 999];
+        let i = 0;
+        const page = {
+            evaluate: vi.fn(async () => lens[Math.min(i++, lens.length - 1)]),
+            waitForTimeout: vi.fn(async () => {})
+        };
+
+        await waitForStableContent(page);
+
+        // 0,0,0,0 must not stop the wait; 50 (resets), 50 (1), 50 (2) ends it — the 999 read never happens.
+        expect(page.evaluate).toHaveBeenCalledTimes(7);
+    });
+
+    it('waits out the ceiling (without throwing) when the page stays empty', async () => {
+        const page = {
+            evaluate: vi.fn(async () => 0),
+            waitForTimeout: vi.fn(async () => {})
+        };
+
+        await expect(waitForStableContent(page, { maxWaitMs: 50, pollMs: 10 })).resolves.toBeUndefined();
+        expect(page.evaluate.mock.calls.length).toBeGreaterThan(2);
+    });
+
+    it('keeps the legacy behaviour when minChars is 0', async () => {
+        const page = {
+            evaluate: vi.fn(async () => 0),
+            waitForTimeout: vi.fn(async () => {})
+        };
+
+        await waitForStableContent(page, { minChars: 0 });
+
+        expect(page.evaluate).toHaveBeenCalledTimes(3);
+    });
+
     it('respects a custom maxWaitMs ceiling if content never stabilizes', async () => {
         const page = {
             evaluate: vi.fn(async () => Math.floor(Math.random() * 1000)), // never repeats

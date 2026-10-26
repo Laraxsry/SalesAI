@@ -9,6 +9,7 @@ import { KnowledgeSourceInput } from '@repo/contracts';
 import { Button, Input } from '@repo/ui';
 import {
     Plus,
+    RotateCw,
     FileText,
     Link as LinkIcon,
     Image as ImageIcon,
@@ -91,7 +92,7 @@ function Dropzone({ file, accept, onFile }) {
 }
 
 /** A single knowledge source row; renders as a collapsible group header when `isGroup` is set (zip uploads). */
-function SourceRow({ source: s, icon, isGroup, expanded, onToggle, childCount, childFailedCount, groupLabel, onDelete, onOpen }) {
+function SourceRow({ source: s, progress, icon, isGroup, expanded, onToggle, childCount, childFailedCount, groupLabel, onDelete, onOpen, onRetry, retrying, retryError }) {
     const typeInfo = TYPES.find((t) => t.value === s.type) ?? TYPES[0];
     // A zip container's OWN `status` only ever tracks the archive-level step
     // (extract -> done) — it goes 'ready' the moment ingestZipEntries()
@@ -109,7 +110,7 @@ function SourceRow({ source: s, icon, isGroup, expanded, onToggle, childCount, c
     // corrects the moment the child list changes (delete, retry, etc.) since
     // that already refetches the query this list comes from.
     const zipFailedCount = isGroup ? childFailedCount || 0 : 0;
-    const statusInfo =
+    const baseStatusInfo =
         zipFailedCount > 0
             ? {
                   label: `Hazır · ${zipFailedCount} dosya başarısız`,
@@ -117,11 +118,20 @@ function SourceRow({ source: s, icon, isGroup, expanded, onToggle, childCount, c
                   className: 'text-amber-400 bg-amber-500/10'
               }
             : (STATUS[s.status] ?? STATUS.pending);
+    const persistedProgress = progress || s.meta?.ingestionProgress;
+    const progressPct = Math.max(0, Math.min(100, Number(persistedProgress?.pct) || 0));
+    const isIndeterminate = Boolean(persistedProgress?.indeterminate);
+    const isInProgress = s.status === 'pending' || s.status === 'processing';
+    const statusInfo = isInProgress && persistedProgress
+        ? { ...baseStatusInfo, label: isIndeterminate ? baseStatusInfo.label : `${baseStatusInfo.label} · %${progressPct}` }
+        : baseStatusInfo;
+    const savedPageCount = Object.keys(s.meta?.crawlIndex?.pages || {}).length;
+    const crawlStats = s.meta?.crawlStats;
     const TypeIcon = icon || typeInfo.icon;
     const StatusIcon = statusInfo.icon;
 
     return (
-        <div className="flex items-center gap-3 rounded-[var(--radius-card)] border border-border bg-surface px-4 py-3">
+        <div className="relative flex items-center gap-3 overflow-hidden rounded-[var(--radius-card)] border border-border bg-surface px-4 py-3">
             {isGroup && (
                 <button
                     onClick={onToggle}
@@ -144,8 +154,30 @@ function SourceRow({ source: s, icon, isGroup, expanded, onToggle, childCount, c
                         {s.title || s.url || typeInfo.label}
                     </p>
                     <p className="text-xs text-text-muted">
-                        {isGroup ? groupLabel || `Zip · ${childCount} dosya` : typeInfo.label}
+                        {isGroup
+                            ? groupLabel || `Zip · ${childCount} dosya`
+                            : s.type === 'url'
+                              ? `${typeInfo.label} · ${s.accessMode === 'authenticated' ? 'Giriş gerektiren panel' : 'Public / anonim'}`
+                              : typeInfo.label}
                     </p>
+                    {(s.type === 'url' || s.type === 'api') && savedPageCount > 0 && (
+                        <p className="mt-0.5 text-[11px] text-text-muted">
+                            {savedPageCount} sayfa kaydedildi
+                            {crawlStats?.attempted > 0
+                                ? ` · Son tur başarı: %${crawlStats.successRate} (${crawlStats.succeeded}/${crawlStats.attempted})`
+                                : ''}
+                        </p>
+                    )}
+                    {isInProgress && persistedProgress?.stage && (
+                        <p className="mt-0.5 text-[11px] text-brand-light">
+                            {persistedProgress.stage}
+                            {persistedProgress.attemptCurrent != null
+                                ? ` · Bu deneme: ${persistedProgress.attemptCurrent}/${persistedProgress.attemptMax}`
+                                : persistedProgress.completed != null
+                                  ? ` ${persistedProgress.completed}/${persistedProgress.total}`
+                                  : ''}
+                        </p>
+                    )}
                 </div>
             </button>
             <span
@@ -154,13 +186,29 @@ function SourceRow({ source: s, icon, isGroup, expanded, onToggle, childCount, c
                 <StatusIcon size={12} className={statusInfo.spin ? 'animate-spin' : ''} />
                 {statusInfo.label}
             </span>
+            {s.status === 'failed' && (s.type === 'url' || s.type === 'api') && (
+                <Button type="button" variant="secondary" size="sm" disabled={retrying} onClick={() => onRetry(s._id)}>
+                    <RotateCw size={14} className={retrying ? 'animate-spin' : ''} />
+                    {retrying ? 'Başlatılıyor…' : 'Yeniden dene'}
+                </Button>
+            )}
+            {retryError && <p role="alert" className="text-xs text-red-400">{retryError}</p>}
             <button
+                disabled={retrying}
                 onClick={() => onDelete(s._id)}
                 className="text-text-muted transition-colors hover:text-red-400"
                 title="Sil"
             >
                 <Trash2 size={16} />
             </button>
+            {isInProgress && (
+                <span className="absolute inset-x-0 bottom-0 h-0.5 bg-surface-raised">
+                    <span
+                        className={`block h-full bg-brand ${isIndeterminate ? 'w-1/3 animate-pulse' : 'transition-[width] duration-300'}`}
+                        style={isIndeterminate ? undefined : { width: `${progressPct}%` }}
+                    />
+                </span>
+            )}
         </div>
     );
 }
@@ -256,7 +304,8 @@ function buildSourceSchema(type, productId) {
             type,
             title: data?.title || undefined,
             content: data?.content || undefined,
-            url: data?.url || undefined
+            url: data?.url || undefined,
+            accessMode: type === 'url' ? (data?.accessMode || 'public') : 'public'
         }),
         KnowledgeSourceInput.superRefine((val, ctx) => {
             if (val.type === 'text' && !val.content) {
@@ -279,7 +328,7 @@ function AddSourceModal({ productId, onClose, onCreated }) {
         formState: { errors, isSubmitting }
     } = useForm({
         resolver: zodResolver(buildSourceSchema(type, productId)),
-        defaultValues: { title: '', content: '', url: '' }
+        defaultValues: { title: '', content: '', url: '', accessMode: 'public' }
     });
 
     async function onSubmit(values) {
@@ -357,14 +406,34 @@ function AddSourceModal({ productId, onClose, onCreated }) {
                     )}
 
                     {(type === 'url' || type === 'api') && (
-                        <Input
-                            id="source-url"
-                            label={type === 'api' ? 'OpenAPI / API URL' : 'Web sitesi URL'}
-                            type="url"
-                            placeholder="https://..."
-                            error={errors.url?.message}
-                            {...register('url')}
-                        />
+                        <>
+                            <Input
+                                id="source-url"
+                                label={type === 'api' ? 'OpenAPI / API URL' : 'Web sitesi URL'}
+                                type="url"
+                                placeholder={type === 'url' ? 'https://app.example.com/dashboard' : 'https://...'}
+                                error={errors.url?.message}
+                                {...register('url')}
+                            />
+                            {type === 'url' && (
+                                <fieldset className="mb-4">
+                                    <legend className="mb-2 text-sm font-medium text-text-muted">Erişim türü</legend>
+                                    <div className="grid grid-cols-2 gap-2">
+                                        <label className="rounded-[var(--radius-input)] border border-border p-3 text-sm text-text">
+                                            <input className="mr-2" type="radio" value="public" {...register('accessMode')} />
+                                            Public / anonim
+                                        </label>
+                                        <label className="rounded-[var(--radius-input)] border border-border p-3 text-sm text-text">
+                                            <input className="mr-2" type="radio" value="authenticated" {...register('accessMode')} />
+                                            Giriş gerektiren panel
+                                        </label>
+                                    </div>
+                                    <p className="mt-2 text-xs text-text-muted">
+                                        Panel taraması ürünün Demo Oturumu ayarlarını kullanır; URL olarak girişten sonraki panel sayfasını girin.
+                                    </p>
+                                </fieldset>
+                            )}
+                        </>
                     )}
 
                     {(type === 'document' || type === 'image' || type === 'video') && (
@@ -667,7 +736,11 @@ function KnowledgeDetailModal({ source: s, onClose, onSaved }) {
                             </div>
                             {chunksLoading && <p className="text-sm text-text-muted">Yükleniyor…</p>}
                             {!chunksLoading && chunksByPage.length === 0 && !overviewChunk && (
-                                <p className="text-sm text-text-muted">Henüz chunk yok.</p>
+                                <p className="text-sm text-text-muted">
+                                    {s.status === 'processing'
+                                        ? 'Chunk’lar konu hazırlığı tamamlandıktan sonra oluşturulacak.'
+                                        : 'Henüz chunk yok.'}
+                                </p>
                             )}
                             {overviewChunk && (
                                 <div className="mb-3 rounded-[var(--radius-input)] border border-brand/30 bg-brand/5 p-3">
@@ -809,6 +882,8 @@ export function Knowledge() {
     const [showModal, setShowModal] = useState(false);
     const [expandedGroups, setExpandedGroups] = useState(() => new Set());
     const [detailId, setDetailId] = useState(null);
+    const [retryStates, setRetryStates] = useState({});
+    const [liveProgress, setLiveProgress] = useState({});
     const [previewTopicId, setPreviewTopicId] = useState(null);
     const productId = searchParams.get('product');
 
@@ -863,6 +938,12 @@ export function Knowledge() {
         const socket = getSocket();
         const onUpdate = (payload) => {
             if (payload.productId && payload.productId !== productId) return;
+            if (payload.sourceId && payload.stage !== undefined) {
+                setLiveProgress((prev) => ({
+                    ...prev,
+                    [payload.sourceId]: payload
+                }));
+            }
             queryClient.invalidateQueries({ queryKey: ['knowledge', productId] });
         };
         socket.on('ingestion:progress', onUpdate);
@@ -916,6 +997,21 @@ export function Knowledge() {
             else next.add(id);
             return next;
         });
+    }
+
+    async function onRetry(id) {
+        setRetryStates((prev) => ({ ...prev, [id]: { pending: true } }));
+        try {
+            const result = await knowledgeApi.retry(id);
+            queryClient.setQueryData(['knowledge', productId], (prev) =>
+                prev?.map((source) => source._id === id ? { ...source, status: result.status, error: null } : source)
+            );
+            setLiveProgress((prev) => ({ ...prev, [id]: { stage: 'Kuyruğa alındı', pct: 0 } }));
+            await queryClient.invalidateQueries({ queryKey: ['knowledge', productId] });
+            setRetryStates((prev) => ({ ...prev, [id]: {} }));
+        } catch (err) {
+            setRetryStates((prev) => ({ ...prev, [id]: { error: err.message || 'Yeniden başlatılamadı. Tekrar deneyin.' } }));
+        }
     }
 
     async function onDelete(id) {
@@ -1032,6 +1128,7 @@ export function Knowledge() {
                             <div key={s._id}>
                                 <SourceRow
                                     source={s}
+                                    progress={liveProgress[s._id]}
                                     icon={children.length > 0 ? FolderArchive : undefined}
                                     isGroup={isGroup}
                                     expanded={expanded}
@@ -1039,6 +1136,9 @@ export function Knowledge() {
                                     childCount={children.length}
                                     childFailedCount={children.filter((c) => c.status === 'failed').length}
                                     groupLabel={groupLabel}
+                                    onRetry={onRetry}
+                                    retrying={retryStates[s._id]?.pending}
+                                    retryError={retryStates[s._id]?.error}
                                     onDelete={onDelete}
                                     onOpen={(src) => setDetailId(src._id)}
                                 />
@@ -1048,6 +1148,7 @@ export function Knowledge() {
                                             <SourceRow
                                                 key={c._id}
                                                 source={c}
+                                                progress={liveProgress[c._id]}
                                                 onDelete={onDelete}
                                                 onOpen={(src) => setDetailId(src._id)}
                                             />

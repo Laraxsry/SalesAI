@@ -13,7 +13,10 @@ async function main() {
         async (job) => {
             switch (job.name) {
                 case 'ingest-source':
-                    return handleIngestSource(job.data);
+                    return handleIngestSource({
+                        ...job.data,
+                        runId: `${job.id}:${job.attemptsMade + 1}`
+                    });
                 default:
                     Logger.warn('Unknown ingestion job', { name: job.name });
             }
@@ -53,14 +56,27 @@ async function main() {
         const sourceId = job?.data?.sourceId;
         const exhausted = Boolean(job) && (Boolean(job.finishedOn) || job.attemptsMade >= (job.opts?.attempts ?? 1));
         if (sourceId && exhausted) {
-            await KnowledgeSource.findByIdAndUpdate(sourceId, {
-                status: 'failed',
-                error: err?.message || 'Ingestion failed'
-            }).catch(() => {});
+            const runId = `${job.id}:${job.attemptsMade}`;
+            const failed = await KnowledgeSource.updateOne(
+                {
+                    _id: sourceId,
+                    ...(job.data?.generation !== undefined && { 'meta.ingestGeneration': job.data.generation }),
+                    'meta.activeRunId': runId
+                },
+                {
+                    $set: {
+                        status: 'failed',
+                        error: err?.message || 'Ingestion failed',
+                        'meta.ingestionProgress': { stage: 'Başarısız', pct: 100, runId, updatedAt: new Date() }
+                    }
+                }
+            ).catch(() => null);
+            if (!failed?.matchedCount) return;
             await publishEvent(RT_EVENTS.INGESTION_PROGRESS, {
                 sourceId,
                 stage: 'Başarısız',
-                pct: 100
+                pct: 100,
+                runId
             }).catch(() => {});
         }
     });

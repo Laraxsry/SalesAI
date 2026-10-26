@@ -6,6 +6,7 @@ import { chunkText } from './chunk.js';
 import { getVectorStore } from './stores/index.js';
 import { diffChunks, multisetEqual, matchTextsToIds } from './chunk-diff.js';
 import { autoDedupeSourceChunks } from './audit/auto-dedupe.js';
+import { invalidateProductCache } from './retrieve.js';
 
 /**
  * Outer ceiling on one `ingestSource()` call. `embedBatch()` already has its
@@ -24,7 +25,10 @@ import { autoDedupeSourceChunks } from './audit/auto-dedupe.js';
  * call: whatever hangs, it fails out and the per-source status ends up
  * 'failed' with a real error instead of 'processing' forever.
  */
-const INGEST_TIMEOUT_MS = 3 * 60_000;
+const configuredIngestTimeoutMs = Number(process.env.RAG_INGEST_TIMEOUT_MS || 10 * 60_000);
+const INGEST_TIMEOUT_MS = Number.isFinite(configuredIngestTimeoutMs) && configuredIngestTimeoutMs > 0
+    ? configuredIngestTimeoutMs
+    : 10 * 60_000;
 
 /**
  * Classifies each chunk as 'general' or 'technical' in a single LLM call
@@ -73,16 +77,14 @@ Respond ONLY with valid JSON (no markdown): {"labels": ["general"|"technical", .
  * ingestion pass, not one call per page — a second call would wipe out the
  * previous page's just-inserted chunks).
  *
- * @param {{ sourceId:string, productId:string, text:string|{text:string, metadata?:object}[], modality?:string, metadata?:object }} input
+ * @param {{ sourceId:string, productId:string, text:string|{text:string, metadata?:object}[], modality?:string, metadata?:object, kind?:'knowledge'|'ui' }} input
  */
-export async function ingestSource({ sourceId, productId, text, modality = 'text', metadata = {} }) {
+export async function ingestSource({ sourceId, productId, text, modality = 'text', metadata = {}, kind }) {
     const store = getVectorStore();
     await KnowledgeSource.findByIdAndUpdate(sourceId, { status: 'processing' });
 
     try {
         return await withTimeout(async () => {
-            await store.deleteBySource(sourceId);
-
             const segments = Array.isArray(text) ? text : [{ text, metadata: {} }];
             const items = [];
             // Katman 1 — exact-duplicate collapse, across the whole source
@@ -126,6 +128,7 @@ export async function ingestSource({ sourceId, productId, text, modality = 'text
                         embedding: embeddings[i],
                         modality,
                         audience: audiences[i],
+                        ...(kind && { kind }),
                         metadata: segmentMetadata
                     });
                 });
@@ -139,10 +142,16 @@ export async function ingestSource({ sourceId, productId, text, modality = 'text
             }
 
             if (!items.length) {
+                await store.deleteBySource(sourceId);
+                await invalidateProductCache(productId);
                 await KnowledgeSource.findByIdAndUpdate(sourceId, { status: 'ready' });
                 return { chunks: 0 };
             }
 
+            // Keep the last successful index available while extraction,
+            // chunking and embedding run. Deleting first made an interrupted
+            // retry leave an otherwise healthy source with zero chunks.
+            await store.deleteBySource(sourceId);
             await store.upsert(items);
             // Katman 2 — near-duplicate/contradiction pass over this
             // source's own chunks, BEFORE 'ready' — see auto-dedupe.js for
@@ -152,6 +161,7 @@ export async function ingestSource({ sourceId, productId, text, modality = 'text
             // try/catch) — worst case this is a missed cleanup, not a
             // reason to mark an otherwise-successful ingestion 'failed'.
             await autoDedupeSourceChunks({ productId, sourceId });
+            await invalidateProductCache(productId);
             await KnowledgeSource.findByIdAndUpdate(sourceId, { status: 'ready' });
             return { chunks: items.length };
         }, INGEST_TIMEOUT_MS);
@@ -190,7 +200,10 @@ export async function ingestTopicDocument({ topicId, productId, text }) {
     await store.deleteByTopic(topicId);
 
     const chunks = chunkText(text);
-    if (!chunks.length) return { chunks: 0 };
+    if (!chunks.length) {
+        await invalidateProductCache(productId);
+        return { chunks: 0 };
+    }
 
     const [embeddings, audiences] = await Promise.all([embedBatch(chunks), classifyAudience(chunks)]);
     const items = chunks.map((c, i) => ({
@@ -203,6 +216,7 @@ export async function ingestTopicDocument({ topicId, productId, text }) {
         metadata: { isTopicDoc: true }
     }));
     await store.upsert(items);
+    await invalidateProductCache(productId);
     return { chunks: items.length };
 }
 
@@ -271,6 +285,7 @@ export async function reingestSourceIncremental({ sourceId, productId, oldText, 
             );
         }
 
+        if (added.length || removed.length) await invalidateProductCache(productId);
         await KnowledgeSource.findByIdAndUpdate(sourceId, { status: 'ready' });
         const result = { chunks: newChunks.length, reused: newChunks.length - added.length, changed: added.length };
         Logger.info('[ingest] partial re-chunk', { sourceId, ...result });

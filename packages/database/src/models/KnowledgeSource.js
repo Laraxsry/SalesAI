@@ -16,6 +16,13 @@ const KnowledgeSourceSchema = new Schema(
         fileKey: { type: String },
         mimeType: { type: String }, // e.g. 'application/pdf', 'application/vnd.openxmlformats-officedocument.wordprocessingml.document'
         url: { type: String },
+        // URL sources are either crawled anonymously or after establishing
+        // the product's encrypted demoSession in the same browser context.
+        accessMode: {
+            type: String,
+            enum: ['public', 'authenticated'],
+            default: 'public'
+        },
         status: {
             type: String,
             enum: ['pending', 'processing', 'ready', 'failed', 'disabled'],

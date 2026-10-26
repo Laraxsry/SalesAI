@@ -163,7 +163,16 @@ export const KnowledgeSourceInput = z.object({
     content: z.string().optional(),
     fileKey: z.string().optional(),
     mimeType: z.string().optional(), // MIME type of the uploaded file (e.g. 'application/pdf')
-    url: z.string().url().optional()
+    url: z.string().url().optional(),
+    accessMode: z.enum(['public', 'authenticated']).default('public')
+}).superRefine((value, ctx) => {
+    if (value.accessMode === 'authenticated' && value.type !== 'url') {
+        ctx.addIssue({
+            code: z.ZodIssueCode.custom,
+            path: ['accessMode'],
+            message: 'Kimlik doğrulamalı tarama yalnızca URL kaynaklarında kullanılabilir'
+        });
+    }
 });
 
 // PATCH /knowledge/:id — title-only rename, editable-text save (content for

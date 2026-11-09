@@ -72,6 +72,8 @@ export function Register() {
                     id="password"
                     label={t('auth.password')}
                     type="password"
+                    showPasswordLabel={t('auth.showPassword')}
+                    hidePasswordLabel={t('auth.hidePassword')}
                     icon={Lock}
                     autoComplete="new-password"
                     placeholder="En az 8 karakter"

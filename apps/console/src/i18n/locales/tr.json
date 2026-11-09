@@ -22,7 +22,9 @@
         "name": "İsim",
         "registerButton": "Ücretsiz kayıt ol",
         "registering": "Oluşturuluyor…",
-        "haveAccount": "Zaten hesabın var mı?"
+        "haveAccount": "Zaten hesabın var mı?",
+        "showPassword": "Şifreyi göster",
+        "hidePassword": "Şifreyi gizle"
     },
     "settings": {
         "title": "Ayarlar",
@@ -43,5 +45,386 @@
         "copied": "Kopyalandı",
         "somethingWentWrong": "Bir şeyler ters gitti",
         "reload": "Sayfayı yenile"
+    },
+    "landing": {
+        "nav": {
+            "product": "Ürün",
+            "experience": "Deneyim",
+            "how": "Nasıl çalışır?",
+            "security": "Güvenlik",
+            "faq": "SSS"
+        },
+        "header": {
+            "login": "Giriş yap",
+            "start": "Ücretsiz başla",
+            "backToConsole": "Konsola dön",
+            "themeLight": "Açık temaya geç",
+            "themeDark": "Koyu temaya geç",
+            "language": "Dil seçimi",
+            "home": "Ana sayfa",
+            "menu": "Ana sayfa menüsü"
+        },
+        "hero": {
+            "badge": "Yeni",
+            "badgeText": "Canlı ürün turu ve ekran farkındalığı",
+            "titleLead": "Müşterinizle konuşan",
+            "titleAccent": "AI satış temsilcisi.",
+            "subtitle": "Müşterinizle doğal sesle konuşur, paylaşılan ekranı anlar, ürününüzü canlı gösterir ve her görüşmeyi net bir sonraki adıma dönüştürür.",
+            "primary": "AI temsilcini oluştur",
+            "primaryAuthed": "Çalışma alanına dön",
+            "secondary": "Nasıl çalıştığını izle",
+            "checks": [
+                "Kurulum dakikalar içinde",
+                "Kod gerektirmez",
+                "Türkçe ve çok dilli"
+            ]
+        },
+        "call": {
+            "live": "Canlı görüşme",
+            "liveBadge": "Canlı",
+            "title": "Ürün keşfi görüşmesi",
+            "speaking": "AI temsilci konuşuyor",
+            "listening": "Müşteriyi dinliyor",
+            "ai": "AI temsilci",
+            "visitor": "Müşteri",
+            "orbLabel": "Konuşan AI temsilcinin ses küresi",
+            "lines": [
+                {
+                    "speaker": "visitor",
+                    "text": "Raporu ekibimle paylaşabilir miyim?"
+                },
+                {
+                    "speaker": "ai",
+                    "text": "Elbette. Paylaşım ayarlarını şimdi ekranınızda göstereyim."
+                },
+                {
+                    "speaker": "visitor",
+                    "text": "Yetkileri kişi bazında verebiliyor muyuz?"
+                },
+                {
+                    "speaker": "ai",
+                    "text": "Evet, her üyeye ayrı rol atanır. Hemen bir örnekle açalım."
+                }
+            ],
+            "stats": [
+                [
+                    "Niyet",
+                    "Güçlü"
+                ],
+                [
+                    "Aşama",
+                    "Karar"
+                ],
+                [
+                    "Sonraki adım",
+                    "Demo"
+                ]
+            ],
+            "chipScreen": "Ekran analiz ediliyor",
+            "chipLead": "Lead kaydedildi"
+        },
+        "ribbon": [
+            "Doğal, kesintisiz ses",
+            "Ekran farkındalığı",
+            "Canlı ürün turu",
+            "Kendi bilginizle eğitilir",
+            "Anlık niyet sinyali",
+            "Çok dilli görüşme"
+        ],
+        "product": {
+            "eyebrow": "Ürün",
+            "titleLead": "Bir chatbot değil.",
+            "titleAccent": "Görüşmenin içinde çalışan",
+            "titleTail": "satış zekası.",
+            "subtitle": "Yalnızca cevap vermez. Müşterinin ne söylediğini, ne gördüğünü ve hangi noktada karar verdiğini aynı anda okur.",
+            "voiceTag": "GERÇEK ZAMANLI SES",
+            "voiceTitle": "Sadece duymaz. Ne demek istediğini anlar.",
+            "voiceText": "Söz kesmeyi anlayan, müşterinin ritmine uyan ve sessizlikte bile doğal kalan kesintisiz bir konuşma.",
+            "voiceOrbLabel": "Konuşan AI temsilci",
+            "waveLabel": "Canlı ses dalgası",
+            "features": [
+                {
+                    "lead": "Ekranı",
+                    "rest": "sizinle birlikte görür.",
+                    "description": "Müşterinin paylaştığı ürünü, tabloyu veya formu konuşmanın bağlamıyla birlikte yorumlar."
+                },
+                {
+                    "lead": "Ürünü",
+                    "rest": "canlı gezdirir.",
+                    "description": "Gerekli anda ürününüzü açar, doğru ekrana gider ve müşteriye adım adım gösterir."
+                },
+                {
+                    "lead": "Sizin bilginizle",
+                    "rest": "konuşur.",
+                    "description": "Doküman, video, web sitesi ve notlarınızdan öğrenir; cevaplarını kaynağa dayandırır."
+                },
+                {
+                    "lead": "Doğru anda",
+                    "rest": "doğru hamle.",
+                    "description": "Satın alma niyetini, itirazları ve ilgi alanlarını görüşme sürerken yakalar."
+                },
+                {
+                    "lead": "Her görüşme",
+                    "rest": "bir içgörü.",
+                    "description": "Özet, lead bilgisi ve bilgi boşlukları görüşme bittiği anda panelinize düşer."
+                }
+            ]
+        },
+        "experience": {
+            "eyebrow": "Nasıl çalışır, izleyin",
+            "titleLead": "Web sitenizden satış görüşmesine.",
+            "titleMuted": "Adım adım.",
+            "subtitle": "Sitenizi bağladığınız andan görüşmenin analizine kadar temsilcinin neler yaptığını kısa bir turda görün."
+        },
+        "film": {
+            "label": "Ürün tanıtım videosu",
+            "play": "Oynat",
+            "pause": "Duraklat",
+            "replay": "Baştan oynat",
+            "chapters": [
+                "Bağlayın",
+                "Analiz",
+                "Görüşme",
+                "Canlı tur",
+                "Sonuç"
+            ],
+            "steps": [
+                {
+                    "title": "Web sitenizi bağlayın",
+                    "text": "Adresinizi girin; temsilci sitenizi kendisi tarar."
+                },
+                {
+                    "title": "Siteniz analiz edilir",
+                    "text": "Ürünler, fiyatlar ve sık sorulan sorular bilgiye dönüşür."
+                },
+                {
+                    "title": "Ziyaretçi sitenizde konuşur",
+                    "text": "Sitenize eklenen widget ile sesli görüşme başlar."
+                },
+                {
+                    "title": "Sitenizi canlı gezdirir",
+                    "text": "Doğru sayfaya gider ve ilgili yeri gösterir."
+                },
+                {
+                    "title": "Her görüşme analize dönüşür",
+                    "text": "Özet, niyet, sorular ve bilgi boşlukları panelinizde."
+                }
+            ],
+            "connect": {
+                "title": "Web sitesi bağla",
+                "placeholder": "https://",
+                "url": "https://www.example.com",
+                "button": "Bağla",
+                "scanning": "Sayfalar taranıyor",
+                "pages": [
+                    [
+                        "Ana sayfa",
+                        "/"
+                    ],
+                    [
+                        "Özellikler",
+                        "/ozellikler"
+                    ],
+                    [
+                        "Fiyatlandırma",
+                        "/fiyatlandirma"
+                    ],
+                    [
+                        "Entegrasyonlar",
+                        "/entegrasyonlar"
+                    ],
+                    [
+                        "Sık sorulan sorular",
+                        "/sss"
+                    ]
+                ],
+                "pageCount": "sayfa"
+            },
+            "analyze": {
+                "learned": "Siteden öğrenilenler",
+                "topics": [
+                    [
+                        "Ürün özellikleri",
+                        34
+                    ],
+                    [
+                        "Fiyat planları",
+                        9
+                    ],
+                    [
+                        "Entegrasyonlar",
+                        16
+                    ],
+                    [
+                        "İade ve destek",
+                        7
+                    ],
+                    [
+                        "Sık sorulan sorular",
+                        22
+                    ]
+                ],
+                "ready": "Bilgi tabanı hazır",
+                "facts": "bilgi parçası",
+                "questions": "Temsilcinin soracağı sorular",
+                "questionList": [
+                    "Ekibiniz kaç kişiden oluşuyor?",
+                    "Şu an hangi aracı kullanıyorsunuz?",
+                    "Ne zaman başlamayı düşünüyorsunuz?"
+                ]
+            },
+            "site": {
+                "brand": "example.com",
+                "nav": [
+                    "Ana sayfa",
+                    "Özellikler",
+                    "Fiyatlandırma",
+                    "İletişim"
+                ],
+                "heroTitle": "Ekibinizin raporları tek yerde",
+                "heroText": "Satış verilerinizi toplayın, paylaşın, birlikte karar verin.",
+                "cta": "Ücretsiz dene",
+                "launcher": "AI ile konuş",
+                "panelTitle": "AI temsilci",
+                "visitorLine": "Ekip planında kaç kullanıcı var?",
+                "aiLine": "Ekip planı 10 kullanıcıya kadar destekliyor. İsterseniz fiyatlandırma sayfasını birlikte açalım.",
+                "pricingTitle": "Fiyatlandırma",
+                "plans": [
+                    [
+                        "Başlangıç",
+                        "3 kullanıcı"
+                    ],
+                    [
+                        "Ekip",
+                        "10 kullanıcı"
+                    ],
+                    [
+                        "Kurumsal",
+                        "Sınırsız"
+                    ]
+                ],
+                "popular": "Önerilen",
+                "tourCaption": "Ekip planı burada; 10 kullanıcı dahil."
+            },
+            "result": {
+                "title": "Görüşme analizi",
+                "intent": "Satın alma niyeti",
+                "intentValue": "Yüksek",
+                "fields": [
+                    [
+                        "İhtiyaç",
+                        "Ekip içi rapor paylaşımı"
+                    ],
+                    [
+                        "Ekip büyüklüğü",
+                        "8 kişi"
+                    ],
+                    [
+                        "İlgilendiği plan",
+                        "Ekip"
+                    ]
+                ],
+                "asked": "Müşterinin sorduğu sorular",
+                "askedList": [
+                    "Ekip planında kaç kullanıcı var?",
+                    "Raporlar dışa aktarılabiliyor mu?",
+                    "SSO desteği var mı?"
+                ],
+                "answered": "Yanıtlandı",
+                "gap": "Bilgi boşluğu",
+                "gapText": "“SSO desteği var mı?” sitenizde bulunamadı.",
+                "gapAction": "Bilgi ekle",
+                "saved": "Lead kaydedildi · Demo Perşembe 14:00"
+            }
+        },
+        "how": {
+            "eyebrow": "Kur ve çalıştır",
+            "title": "Dakikalar içinde satışa hazır.",
+            "subtitle": "Uzun entegrasyon projeleri yok. Bilginizi verin, temsilcinizi tanımlayın, görüşmeyi açın.",
+            "steps": [
+                {
+                    "title": "Bilgiyi öğretin",
+                    "description": "Ürününüzü, satış hedeflerinizi ve marka tonunuzu tek çalışma alanında tanımlayın."
+                },
+                {
+                    "title": "Temsilcinizi yayınlayın",
+                    "description": "Paylaşılabilir bir bağlantı ya da sitenize eklenen tek satırlık widget ile açın."
+                },
+                {
+                    "title": "Sinyali yakalayın",
+                    "description": "Her görüşme lead sinyaline, özete ve net bir sonraki adıma otomatik dönüşür."
+                }
+            ]
+        },
+        "security": {
+            "eyebrow": "Güvenlik sonradan eklenmedi",
+            "title": "Görüşmenin kontrolü hep sizde.",
+            "subtitle": "Ekip erişimi, temsilci bilgisi ve görüşme geçmişi tek çalışma alanında; yalnızca yetkilendirdiğiniz kişilerle.",
+            "items": [
+                {
+                    "title": "Yetkili erişim",
+                    "description": "Roller, ekip üyeleri ve davetler tek merkezden yönetilir."
+                },
+                {
+                    "title": "Kontrol kullanıcıda",
+                    "description": "Ekran paylaşımı ve görüşme, müşteri istediği an durdurulur."
+                },
+                {
+                    "title": "Saklama sizin kararınız",
+                    "description": "Ekran görüntüleri varsayılan olarak saklanmaz; veri süreleri ayarlanabilir."
+                }
+            ]
+        },
+        "cta": {
+            "title": "Satış ekibinize bir koltuk daha ekleyin.",
+            "subtitle": "7/24 hazır, ürününüzü ezbere bilen ve her görüşmeden sonra size net bir özet bırakan bir temsilci.",
+            "primary": "Hemen başla",
+            "secondary": "Giriş yap",
+            "note": "İlk temsilcinizi birkaç dakikada yayınlayın",
+            "orbLabel": "AI temsilci ses küresi"
+        },
+        "faq": {
+            "eyebrow": "Sıkça sorulan sorular",
+            "title": "Aklınızdaki sorular",
+            "subtitle": "Aradığınız cevap burada yoksa giriş yaptıktan sonra ekibimize her zaman yazabilirsiniz.",
+            "items": [
+                {
+                    "q": "AI satış temsilcisi tam olarak ne yapar?",
+                    "a": "Web sitenizi ya da paylaştığınız bağlantıyı açan müşteriyle sesli konuşur, sorularını sizin bilgilerinize dayanarak yanıtlar, gerektiğinde ürününüzü ekranda canlı gösterir ve görüşmenin sonunda size özet ile lead bilgisi bırakır."
+                },
+                {
+                    "q": "Kurulum ne kadar sürer, kod bilmem gerekir mi?",
+                    "a": "Kod gerekmez. Ürün bilgilerinizi yükleyip temsilcinizi tanımladıktan sonra size paylaşılabilir bir bağlantı verilir. Dilerseniz sitenize tek satırlık bir widget kodu ekleyerek de yayınlayabilirsiniz."
+                },
+                {
+                    "q": "Temsilci hangi bilgilerle konuşur?",
+                    "a": "Yüklediğiniz dokümanlardan, videolardan, web sitenizden ve yazdığınız notlardan öğrenir. Cevaplarını bu kaynaklara dayandırır; bilmediği bir konu çıkarsa uydurmak yerine bunu bilgi boşluğu olarak size raporlar."
+                },
+                {
+                    "q": "Müşterinin ekranını görebilir mi? Gizlilik nasıl korunuyor?",
+                    "a": "Yalnızca müşteri ekranını kendisi paylaşmayı seçerse görür ve müşteri paylaşımı istediği an durdurabilir. Ekran görüntüleri varsayılan olarak saklanmaz; ekip erişimi rollerle sınırlandırılır."
+                },
+                {
+                    "q": "Hangi dillerde konuşabilir?",
+                    "a": "Türkçe ve İngilizce dahil birçok dilde konuşabilir. Her temsilcinin konuşma dilini ve tonunu siz belirlersiniz."
+                },
+                {
+                    "q": "İnsan satış temsilcilerinin yerini mi alır?",
+                    "a": "Amaç ekibinizi desteklemek. Temsilci ilk görüşmeleri 7/24 karşılar, ihtiyacı anlar ve ilgili müşterileri hazır bir özetle ekibinize devreder; böylece ekibiniz zamanını en sıcak fırsatlara ayırır."
+                },
+                {
+                    "q": "Görüşme bittikten sonra ne olur?",
+                    "a": "Görüşmenin özeti, müşterinin ilgi alanları, satın alma niyeti ve iletişim bilgileri panelinize düşer. Temsilcinin cevaplayamadığı sorular da bilgi boşlukları ekranında listelenir."
+                }
+            ]
+        },
+        "footer": {
+            "tagline": "İnsan gibi konuşan, satış gibi düşünen AI temsilci.",
+            "explore": "Keşfet",
+            "account": "Hesap",
+            "login": "Giriş yap",
+            "register": "Kayıt ol",
+            "motto": "Konuşur. Görür. Satışı ilerletir."
+        }
     }
 }

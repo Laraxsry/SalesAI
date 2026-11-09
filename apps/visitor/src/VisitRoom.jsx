@@ -2,14 +2,14 @@ import { useEffect, useReducer, useRef, useState } from 'react';
 import {
     RoomAudioRenderer,
     VideoTrack,
-    BarVisualizer,
+    useMultibandTrackVolume,
     useVoiceAssistant,
     useLocalParticipant,
     useRoomContext,
     useTracks
 } from '@livekit/components-react';
 import { RoomEvent, Track } from 'livekit-client';
-import { Logo } from '@repo/ui';
+import { Logo, Sparkle, VoiceOrb } from '@repo/ui';
 import { Mic, MicOff, PhoneOff, ScreenShare, ScreenShareOff, X, Hand } from 'lucide-react';
 import { ParticipantsPanel } from './ParticipantsPanel.jsx';
 import { useMeetingState } from './useMeetingState.js';
@@ -45,6 +45,61 @@ const STATE_LABEL = {
 
 const API = import.meta.env.VITE_API_URL || 'http://localhost:5001';
 
+// Length of the closing "shrink into a glint" animation in index.css
+// (.assistant-portal[data-phase='exit']); the room disconnects after it.
+const EXIT_ANIMATION_MS = 950;
+
+function waitForExitAnimation() {
+    const reduceMotion = window.matchMedia?.('(prefers-reduced-motion: reduce)').matches;
+    return new Promise((resolve) => setTimeout(resolve, reduceMotion ? 0 : EXIT_ANIMATION_MS));
+}
+
+const ORB_MODE = {
+    speaking: 'speaking',
+    listening: 'listening',
+    idle: 'listening',
+    thinking: 'thinking'
+};
+
+function averageBands(bands) {
+    if (!bands?.length) return 0;
+    let sum = 0;
+    for (const value of bands) sum += value;
+    return sum / bands.length;
+}
+
+/** The voice orb, driven by the agent's voice while it speaks and by the
+ * visitor's mic while it listens. Kept as its own component so the volume
+ * hooks' frequent updates only re-render this subtree, not the whole room. */
+function AssistantOrb({ state, agentAudioTrack, micTrack, closing }) {
+    const agentBands = useMultibandTrackVolume(agentAudioTrack, { bands: 6, loPass: 80, hiPass: 300 });
+    const micBands = useMultibandTrackVolume(micTrack, { bands: 6, loPass: 80, hiPass: 300 });
+    const levelsRef = useRef({ agent: 0, mic: 0 });
+    levelsRef.current = { agent: averageBands(agentBands), mic: averageBands(micBands) };
+
+    const mode = ORB_MODE[state] ?? 'connecting';
+    // Multiband levels are already normalised, but speech rarely fills the
+    // whole band range — a gentle boost keeps the orb visibly alive.
+    const getLevel = () => {
+        const { agent, mic } = levelsRef.current;
+        return Math.min(1, (mode === 'speaking' ? agent : mic) * 1.8);
+    };
+
+    return (
+        <div className="assistant-portal" data-phase={closing ? 'exit' : 'enter'}>
+            <span className="assistant-portal__spark" aria-hidden="true">
+                <Sparkle size={132} />
+                <span className="assistant-portal__twinkle assistant-portal__twinkle--a"><Sparkle size={22} /></span>
+                <span className="assistant-portal__twinkle assistant-portal__twinkle--b"><Sparkle size={14} /></span>
+                <span className="assistant-portal__twinkle assistant-portal__twinkle--c"><Sparkle size={18} /></span>
+            </span>
+            <div className="assistant-portal__orb">
+                <VoiceOrb size={200} mode={mode} getLevel={getLevel} />
+            </div>
+        </div>
+    );
+}
+
 /** Live caption overlay — the agent's spoken text, synced via LiveKit's
  * transcription stream (`useVoiceAssistant()`'s `agentTranscriptions`, fed
  * by agent-worker's `SyncedTextOutput`). Only the most recent segment is
@@ -64,7 +119,8 @@ function Captions({ segments, surveyActive = false }) {
 /** Rendered inside <LiveKitRoom>; everything here relies on LiveKit's room context. */
 export function VisitRoom({ embed, embedConfig, sessionId, roomName, maxParticipants, onClose, onEnd }) {
     const { state, audioTrack, videoTrack, agentTranscriptions } = useVoiceAssistant();
-    const { localParticipant, isMicrophoneEnabled, isScreenShareEnabled } = useLocalParticipant();
+    const { localParticipant, isMicrophoneEnabled, isScreenShareEnabled, microphoneTrack } = useLocalParticipant();
+    const [closing, setClosing] = useState(false);
     // useVoiceAssistant only surfaces mic/camera; the guided-tour browser is
     // published as a screen-share track, so pick it up separately (remote only —
     // the visitor's own share must not be mirrored back to them).
@@ -194,24 +250,33 @@ export function VisitRoom({ embed, embedConfig, sessionId, roomName, maxParticip
     }
 
     async function endCall() {
+        if (closing) return;
+        setClosing(true);
         // Önce API'ye session'ın bittiğini bildir → analyze-session + lead extraction tetiklenir
-        if (sessionId && roomName) {
-            try {
-                await fetch(`${API}/api/v1/sessions/${sessionId}/end`, {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ roomName })
-                });
-            } catch {
+        const notifyEnd = sessionId && roomName
+            ? fetch(`${API}/api/v1/sessions/${sessionId}/end`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ roomName })
+            }).catch(() => {
                 // Non-fatal — stale session cron job 5 dakika sonra temizler
-            }
-        }
+            })
+            : Promise.resolve();
+        // The closing animation plays while the end notification is in flight.
+        await Promise.all([notifyEnd, waitForExitAnimation()]);
         room.disconnect();
         onEnd();
     }
 
+    async function closeWidget() {
+        if (closing) return;
+        setClosing(true);
+        await waitForExitAnimation();
+        onClose();
+    }
+
     return (
-        <div className="visitor-stage relative flex h-full flex-col overflow-hidden bg-bg">
+        <div className="visitor-stage relative flex h-full flex-col overflow-hidden bg-bg" data-closing={closing || undefined}>
             <RoomAudioRenderer />
             <div className="visitor-grid pointer-events-none absolute inset-0 opacity-30" />
 
@@ -230,7 +295,7 @@ export function VisitRoom({ embed, embedConfig, sessionId, roomName, maxParticip
             {embed && (
                 <button
                     type="button"
-                    onClick={onClose}
+                    onClick={closeWidget}
                     aria-label="Widget'ı kapat"
                     className="absolute right-3 top-3 z-30 flex h-10 w-10 items-center justify-center rounded-xl border border-white/10 bg-black/50 text-white/70 backdrop-blur hover:bg-black/70 hover:text-white"
                 >
@@ -245,26 +310,17 @@ export function VisitRoom({ embed, embedConfig, sessionId, roomName, maxParticip
                         className={`h-full w-full ${tourTrack ? 'object-contain' : 'object-cover'}`}
                     />
                 ) : (
-                    <div className="room-enter flex flex-col items-center gap-7">
-                        <div className="voice-orb relative flex h-36 w-36 items-center justify-center rounded-[44px] border border-white/10 bg-gradient-to-br from-[#10284b] to-[#0a1a33] shadow-[0_30px_90px_-28px_rgba(56,130,246,0.55)]">
-                            {state === 'speaking' && (
-                                <>
-                                    <span className="orb-ring pointer-events-none absolute inset-0 rounded-[44px] border border-[#67e8f9]/40" />
-                                    <span className="orb-ring pointer-events-none absolute inset-0 rounded-[44px] border border-[#67e8f9]/40" style={{ animationDelay: '1.1s' }} />
-                                </>
-                            )}
-                            <span className="orb-glow absolute -right-2 -top-2 h-8 w-8 rounded-xl bg-[#67e8f9]/90 blur-sm" />
-                            <BarVisualizer
-                                state={state}
-                                trackRef={audioTrack}
-                                barCount={5}
-                                options={{ minHeight: 20, maxHeight: 70 }}
-                                className="relative z-10 h-16 w-20 text-[#67e8f9]"
-                            />
-                        </div>
-                        <div className="text-center">
+                    <div className="flex flex-col items-center gap-8">
+                        <AssistantOrb
+                            state={state}
+                            agentAudioTrack={audioTrack}
+                            micTrack={isMicrophoneEnabled ? microphoneTrack?.track : undefined}
+                            closing={closing}
+                        />
+                        <div className="assistant-caption text-center">
                             <p className="text-base font-bold text-white">AI temsilciniz</p>
-                            <p className="mt-1 text-xs font-medium text-white/40">
+                            <p className="mt-1.5 inline-flex items-center gap-2 text-xs font-medium text-white/45">
+                                <span className={`assistant-state-dot assistant-state-dot--${ORB_MODE[state] ?? 'connecting'}`} />
                                 {meetingText || STATE_LABEL[state] || state}
                             </p>
                         </div>
@@ -336,7 +392,7 @@ export function VisitRoom({ embed, embedConfig, sessionId, roomName, maxParticip
                 </div>
             )}
 
-            <div className="relative z-20 flex items-center justify-center gap-3 border-t border-white/8 bg-[#071426]/90 px-6 py-4 backdrop-blur-xl">
+            <div className="room-controls relative z-20 flex items-center justify-center gap-3 border-t border-white/8 bg-[#071426]/90 px-6 py-4 backdrop-blur-xl">
                 <button
                     onClick={toggleMic}
                     title={isMicrophoneEnabled ? 'Mikrofonu kapat' : 'Mikrofonu aç'}

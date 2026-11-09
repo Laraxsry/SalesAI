@@ -60,6 +60,8 @@ export function Login() {
                     id="password"
                     label={t('auth.password')}
                     type="password"
+                    showPasswordLabel={t('auth.showPassword')}
+                    hidePasswordLabel={t('auth.hidePassword')}
                     icon={Lock}
                     autoComplete="current-password"
                     placeholder="••••••••"

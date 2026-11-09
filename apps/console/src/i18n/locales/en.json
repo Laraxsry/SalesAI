@@ -22,7 +22,9 @@
         "name": "Name",
         "registerButton": "Sign up for free",
         "registering": "Creating…",
-        "haveAccount": "Already have an account?"
+        "haveAccount": "Already have an account?",
+        "showPassword": "Show password",
+        "hidePassword": "Hide password"
     },
     "settings": {
         "title": "Settings",
@@ -43,5 +45,386 @@
         "copied": "Copied",
         "somethingWentWrong": "Something went wrong",
         "reload": "Reload page"
+    },
+    "landing": {
+        "nav": {
+            "product": "Product",
+            "experience": "Experience",
+            "how": "How it works",
+            "security": "Security",
+            "faq": "FAQ"
+        },
+        "header": {
+            "login": "Log in",
+            "start": "Start free",
+            "backToConsole": "Back to console",
+            "themeLight": "Switch to light theme",
+            "themeDark": "Switch to dark theme",
+            "language": "Language",
+            "home": "Home",
+            "menu": "Main menu"
+        },
+        "hero": {
+            "badge": "New",
+            "badgeText": "Live product tours and screen awareness",
+            "titleLead": "The AI sales rep that",
+            "titleAccent": "talks to your customers.",
+            "subtitle": "It speaks with your customers in a natural voice, understands their shared screen, demos your product live and turns every call into a clear next step.",
+            "primary": "Create your AI rep",
+            "primaryAuthed": "Back to workspace",
+            "secondary": "Watch how it works",
+            "checks": [
+                "Set up in minutes",
+                "No code required",
+                "Multilingual, Turkish included"
+            ]
+        },
+        "call": {
+            "live": "Live call",
+            "liveBadge": "Live",
+            "title": "Product discovery call",
+            "speaking": "AI rep is speaking",
+            "listening": "Listening to the customer",
+            "ai": "AI rep",
+            "visitor": "Customer",
+            "orbLabel": "Voice orb of the speaking AI rep",
+            "lines": [
+                {
+                    "speaker": "visitor",
+                    "text": "Can I share this report with my team?"
+                },
+                {
+                    "speaker": "ai",
+                    "text": "Of course. Let me show you the sharing settings on your screen."
+                },
+                {
+                    "speaker": "visitor",
+                    "text": "Can we set permissions per person?"
+                },
+                {
+                    "speaker": "ai",
+                    "text": "Yes, every member gets their own role. Let me open an example."
+                }
+            ],
+            "stats": [
+                [
+                    "Intent",
+                    "Strong"
+                ],
+                [
+                    "Stage",
+                    "Decision"
+                ],
+                [
+                    "Next step",
+                    "Demo"
+                ]
+            ],
+            "chipScreen": "Analyzing screen",
+            "chipLead": "Lead saved"
+        },
+        "ribbon": [
+            "Natural, real-time voice",
+            "Screen awareness",
+            "Live product tours",
+            "Trained on your knowledge",
+            "Live intent signals",
+            "Multilingual calls"
+        ],
+        "product": {
+            "eyebrow": "Product",
+            "titleLead": "Not a chatbot.",
+            "titleAccent": "Sales intelligence that works",
+            "titleTail": "inside the conversation.",
+            "subtitle": "It doesn't just answer. It reads what the customer says, what they see and where they decide — all at once.",
+            "voiceTag": "REAL-TIME VOICE",
+            "voiceTitle": "It doesn't just hear. It understands what they mean.",
+            "voiceText": "A seamless conversation that handles interruptions, adapts to the customer’s pace and stays natural even in silence.",
+            "voiceOrbLabel": "Speaking AI rep",
+            "waveLabel": "Live sound wave",
+            "features": [
+                {
+                    "lead": "Sees the screen",
+                    "rest": "alongside you.",
+                    "description": "Interprets the product, table or form the customer shares in the context of the conversation."
+                },
+                {
+                    "lead": "Gives live",
+                    "rest": "product tours.",
+                    "description": "Opens your product at the right moment, navigates to the right screen and walks the customer through it."
+                },
+                {
+                    "lead": "Speaks from",
+                    "rest": "your knowledge.",
+                    "description": "Learns from your documents, videos, website and notes, and grounds every answer in those sources."
+                },
+                {
+                    "lead": "The right move",
+                    "rest": "at the right time.",
+                    "description": "Picks up buying intent, objections and interests while the call is still going."
+                },
+                {
+                    "lead": "Every call",
+                    "rest": "becomes insight.",
+                    "description": "Summary, lead details and knowledge gaps land in your dashboard the moment the call ends."
+                }
+            ]
+        },
+        "experience": {
+            "eyebrow": "See it in action",
+            "titleLead": "From your website to a sales call.",
+            "titleMuted": "Step by step.",
+            "subtitle": "A short tour of everything the rep does, from the moment you connect your site to the analysis of the call."
+        },
+        "film": {
+            "label": "Product walkthrough video",
+            "play": "Play",
+            "pause": "Pause",
+            "replay": "Replay",
+            "chapters": [
+                "Connect",
+                "Analyze",
+                "Call",
+                "Live tour",
+                "Result"
+            ],
+            "steps": [
+                {
+                    "title": "Connect your website",
+                    "text": "Enter your address; the rep crawls your site on its own."
+                },
+                {
+                    "title": "Your site gets analyzed",
+                    "text": "Products, pricing and FAQs turn into knowledge."
+                },
+                {
+                    "title": "Visitors talk on your site",
+                    "text": "A voice conversation starts from the widget on your site."
+                },
+                {
+                    "title": "It tours your site live",
+                    "text": "It goes to the right page and shows the relevant spot."
+                },
+                {
+                    "title": "Every call becomes analysis",
+                    "text": "Summary, intent, questions and knowledge gaps in your dashboard."
+                }
+            ],
+            "connect": {
+                "title": "Connect a website",
+                "placeholder": "https://",
+                "url": "https://www.example.com",
+                "button": "Connect",
+                "scanning": "Crawling pages",
+                "pages": [
+                    [
+                        "Home",
+                        "/"
+                    ],
+                    [
+                        "Features",
+                        "/features"
+                    ],
+                    [
+                        "Pricing",
+                        "/pricing"
+                    ],
+                    [
+                        "Integrations",
+                        "/integrations"
+                    ],
+                    [
+                        "FAQ",
+                        "/faq"
+                    ]
+                ],
+                "pageCount": "pages"
+            },
+            "analyze": {
+                "learned": "Learned from your site",
+                "topics": [
+                    [
+                        "Product features",
+                        34
+                    ],
+                    [
+                        "Pricing plans",
+                        9
+                    ],
+                    [
+                        "Integrations",
+                        16
+                    ],
+                    [
+                        "Returns & support",
+                        7
+                    ],
+                    [
+                        "FAQ",
+                        22
+                    ]
+                ],
+                "ready": "Knowledge base ready",
+                "facts": "knowledge chunks",
+                "questions": "Questions the rep will ask",
+                "questionList": [
+                    "How big is your team?",
+                    "Which tool are you using today?",
+                    "When are you planning to start?"
+                ]
+            },
+            "site": {
+                "brand": "example.com",
+                "nav": [
+                    "Home",
+                    "Features",
+                    "Pricing",
+                    "Contact"
+                ],
+                "heroTitle": "All your team’s reports in one place",
+                "heroText": "Collect your sales data, share it and decide together.",
+                "cta": "Try for free",
+                "launcher": "Talk to AI",
+                "panelTitle": "AI rep",
+                "visitorLine": "How many users does the Team plan include?",
+                "aiLine": "The Team plan supports up to 10 users. Want to open the pricing page together?",
+                "pricingTitle": "Pricing",
+                "plans": [
+                    [
+                        "Starter",
+                        "3 users"
+                    ],
+                    [
+                        "Team",
+                        "10 users"
+                    ],
+                    [
+                        "Enterprise",
+                        "Unlimited"
+                    ]
+                ],
+                "popular": "Recommended",
+                "tourCaption": "Here’s the Team plan — 10 users included."
+            },
+            "result": {
+                "title": "Call analysis",
+                "intent": "Buying intent",
+                "intentValue": "High",
+                "fields": [
+                    [
+                        "Need",
+                        "Sharing reports across the team"
+                    ],
+                    [
+                        "Team size",
+                        "8 people"
+                    ],
+                    [
+                        "Interested plan",
+                        "Team"
+                    ]
+                ],
+                "asked": "Questions the customer asked",
+                "askedList": [
+                    "How many users does the Team plan include?",
+                    "Can reports be exported?",
+                    "Do you support SSO?"
+                ],
+                "answered": "Answered",
+                "gap": "Knowledge gap",
+                "gapText": "“Do you support SSO?” wasn’t found on your site.",
+                "gapAction": "Add knowledge",
+                "saved": "Lead saved · Demo Thursday 2:00 PM"
+            }
+        },
+        "how": {
+            "eyebrow": "Set up and go",
+            "title": "Ready to sell in minutes.",
+            "subtitle": "No long integration projects. Add your knowledge, define your rep, open the call.",
+            "steps": [
+                {
+                    "title": "Teach it your knowledge",
+                    "description": "Define your product, sales goals and brand voice in a single workspace."
+                },
+                {
+                    "title": "Publish your rep",
+                    "description": "Go live with a shareable link or a one-line widget on your website."
+                },
+                {
+                    "title": "Capture the signal",
+                    "description": "Every call automatically becomes a lead signal, a summary and a clear next step."
+                }
+            ]
+        },
+        "security": {
+            "eyebrow": "Security built in, not bolted on",
+            "title": "You stay in control of every call.",
+            "subtitle": "Team access, rep knowledge and call history live in one workspace — shared only with the people you authorize.",
+            "items": [
+                {
+                    "title": "Authorized access",
+                    "description": "Manage roles, team members and invitations from one place."
+                },
+                {
+                    "title": "The user is in control",
+                    "description": "Customers can stop screen sharing and the call whenever they want."
+                },
+                {
+                    "title": "Retention is your call",
+                    "description": "Screenshots are not stored by default, and data retention periods are configurable."
+                }
+            ]
+        },
+        "cta": {
+            "title": "Add one more seat to your sales team.",
+            "subtitle": "A rep that is ready 24/7, knows your product by heart and leaves you a clear summary after every call.",
+            "primary": "Get started",
+            "secondary": "Log in",
+            "note": "Publish your first rep in a few minutes",
+            "orbLabel": "AI rep voice orb"
+        },
+        "faq": {
+            "eyebrow": "Frequently asked questions",
+            "title": "Questions you might have",
+            "subtitle": "If you can't find your answer here, you can always reach our team after signing in.",
+            "items": [
+                {
+                    "q": "What exactly does the AI sales rep do?",
+                    "a": "It talks by voice with customers who open your website or shared link, answers their questions based on your own knowledge, demos your product live on screen when needed, and leaves you a summary and lead details at the end of the call."
+                },
+                {
+                    "q": "How long does setup take? Do I need to code?",
+                    "a": "No code is needed. Once you upload your product knowledge and define your rep, you get a shareable link. You can also publish it on your website with a one-line widget snippet."
+                },
+                {
+                    "q": "What knowledge does the rep use?",
+                    "a": "It learns from the documents, videos, website and notes you provide, and grounds its answers in those sources. When a question comes up that it can’t answer, it reports it to you as a knowledge gap instead of making something up."
+                },
+                {
+                    "q": "Can it see the customer’s screen? How is privacy protected?",
+                    "a": "Only if the customer chooses to share their screen, and they can stop sharing at any moment. Screenshots are not stored by default, and team access is limited by roles."
+                },
+                {
+                    "q": "Which languages can it speak?",
+                    "a": "It can speak many languages, including Turkish and English. You choose each rep’s language and tone."
+                },
+                {
+                    "q": "Does it replace human sales reps?",
+                    "a": "It is designed to support your team. The rep handles first conversations 24/7, understands the need and hands qualified customers to your team with a ready summary, so your people can focus on the hottest opportunities."
+                },
+                {
+                    "q": "What happens after the call ends?",
+                    "a": "The call summary, the customer’s interests, buying intent and contact details land in your dashboard. Questions the rep couldn’t answer are listed on the knowledge gaps screen."
+                }
+            ]
+        },
+        "footer": {
+            "tagline": "An AI rep that talks like a person and thinks like a seller.",
+            "explore": "Explore",
+            "account": "Account",
+            "login": "Log in",
+            "register": "Sign up",
+            "motto": "It talks. It sees. It moves the sale forward."
+        }
     }
 }

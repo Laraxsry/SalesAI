@@ -127,14 +127,320 @@ a {
     animation: page-enter 420ms cubic-bezier(0.2, 0.75, 0.25, 1) backwards;
 }
 
-.wow-hero {
+/* ── Landing ─────────────────────────────────────────────────────── */
+.lp-hero,
+.lp-cta {
     isolation: isolate;
 }
 
-.wow-hero-image {
-    filter: saturate(0.92) contrast(1.03);
-    transform: scale(1.025);
-    animation: wow-hero-breathe 16s ease-in-out infinite alternate;
+.lp-root {
+    --lp-accent: #c4b5fd;
+    --lp-accent-strong: #ddd6fe;
+}
+
+.lp-btn-primary {
+    color: #fff;
+    background: linear-gradient(135deg, #8b5cf6 0%, #7c3aed 55%, #6d28d9 100%);
+    box-shadow: 0 18px 44px -18px rgb(139 92 246 / 85%), inset 0 1px 0 rgb(255 255 255 / 22%);
+}
+
+.lp-btn-primary:hover {
+    background: linear-gradient(135deg, #a78bfa 0%, #8b5cf6 55%, #7c3aed 100%);
+}
+
+.lp-aurora {
+    background:
+        radial-gradient(60rem 36rem at 78% 30%, rgb(109 40 217 / 34%), transparent 62%),
+        radial-gradient(40rem 30rem at 92% 75%, rgb(236 72 153 / 14%), transparent 60%),
+        radial-gradient(46rem 32rem at 8% 0%, rgb(79 70 229 / 22%), transparent 60%);
+    animation: lp-aurora 14s ease-in-out infinite alternate;
+}
+
+/* Faint starfield for the dark indigo sections. */
+.lp-stars {
+    background-image:
+        radial-gradient(1px 1px at 12% 18%, rgb(255 255 255 / 55%), transparent 60%),
+        radial-gradient(1px 1px at 27% 72%, rgb(255 255 255 / 40%), transparent 60%),
+        radial-gradient(1.5px 1.5px at 41% 33%, rgb(221 214 254 / 60%), transparent 60%),
+        radial-gradient(1px 1px at 58% 84%, rgb(255 255 255 / 35%), transparent 60%),
+        radial-gradient(1px 1px at 66% 12%, rgb(255 255 255 / 50%), transparent 60%),
+        radial-gradient(1.5px 1.5px at 79% 56%, rgb(251 207 232 / 55%), transparent 60%),
+        radial-gradient(1px 1px at 88% 28%, rgb(255 255 255 / 45%), transparent 60%),
+        radial-gradient(1px 1px at 94% 88%, rgb(255 255 255 / 35%), transparent 60%);
+    background-size: 520px 420px;
+    opacity: 0.8;
+    animation: lp-twinkle 6s ease-in-out infinite alternate;
+    pointer-events: none;
+}
+
+/* Dark tile behind the hero orb, lit along its border. */
+.lp-orb-tile {
+    background: radial-gradient(70% 70% at 50% 45%, #1d1458 0%, #0f0a2e 70%);
+    box-shadow:
+        inset 0 0 0 1px rgb(129 140 248 / 45%),
+        0 0 0 1px rgb(99 102 241 / 25%),
+        0 0 36px -6px rgb(99 102 241 / 55%);
+}
+
+/* Fine dotted texture for the light sections. */
+.lp-dots {
+    background-image: radial-gradient(circle, rgb(37 99 235 / 16%) 1px, transparent 1.3px);
+    background-size: 22px 22px;
+    mask-image: radial-gradient(ellipse 80% 70% at 50% 30%, black, transparent 80%);
+    pointer-events: none;
+}
+
+:root[data-theme='dark'] .lp-dots {
+    background-image: radial-gradient(circle, rgb(196 181 253 / 13%) 1px, transparent 1.3px);
+}
+
+@keyframes lp-twinkle {
+    from { opacity: 0.55; }
+    to { opacity: 0.95; }
+}
+
+.lp-gradient-text {
+    background: linear-gradient(92deg, #ffffff 0%, #ddd6fe 40%, #c4b5fd 65%, #f9a8d4 100%);
+    -webkit-background-clip: text;
+    background-clip: text;
+    color: transparent;
+}
+
+.lp-hero-card {
+    animation: lp-card-in 900ms cubic-bezier(0.16, 1, 0.3, 1) 180ms both;
+}
+
+.lp-hero-card__inner::before {
+    position: absolute;
+    inset: 0;
+    content: '';
+    border-radius: inherit;
+    box-shadow: inset 0 1px 0 rgb(255 255 255 / 12%);
+    pointer-events: none;
+}
+
+.lp-hero-chip {
+    animation: lp-chip-in 700ms cubic-bezier(0.16, 1, 0.3, 1) 900ms both, wow-float 6.5s ease-in-out 1.6s infinite;
+}
+
+.lp-hero-chip--late {
+    animation-delay: 1200ms, 2.2s;
+}
+
+.lp-bubble {
+    animation: lp-bubble-in 420ms cubic-bezier(0.16, 1, 0.3, 1) both;
+}
+
+.lp-ribbon {
+    scrollbar-width: none;
+}
+
+.lp-ribbon::-webkit-scrollbar {
+    display: none;
+}
+
+.lp-card {
+    transition: transform 380ms cubic-bezier(0.2, 0.75, 0.25, 1), box-shadow 380ms ease, border-color 380ms ease;
+}
+
+.lp-card:hover {
+    transform: translateY(-4px);
+    box-shadow: 0 30px 60px -40px rgb(12 26 51 / 45%);
+}
+
+:root[data-theme='dark'] .lp-card:hover {
+    box-shadow: 0 30px 60px -36px rgb(0 0 0 / 85%);
+}
+
+.lp-card-glow {
+    background: radial-gradient(circle, rgb(103 232 249 / 22%), rgb(37 99 235 / 10%) 45%, transparent 70%);
+    filter: blur(20px);
+    pointer-events: none;
+}
+
+.lp-reveal {
+    opacity: 0;
+    transform: translateY(22px);
+    transition:
+        opacity 700ms cubic-bezier(0.2, 0.75, 0.25, 1) var(--reveal-delay, 0ms),
+        transform 700ms cubic-bezier(0.2, 0.75, 0.25, 1) var(--reveal-delay, 0ms),
+        box-shadow 380ms ease,
+        border-color 380ms ease;
+}
+
+.lp-reveal.is-visible {
+    opacity: 1;
+    transform: none;
+}
+
+.lp-reveal.is-visible.lp-card:hover {
+    transform: translateY(-4px);
+    transition-delay: 0ms;
+}
+
+@keyframes lp-aurora {
+    from { transform: translate3d(0, 0, 0) scale(1); }
+    to { transform: translate3d(-2%, 1.5%, 0) scale(1.06); }
+}
+
+@keyframes lp-card-in {
+    from { opacity: 0; transform: translateY(28px) scale(0.97); }
+    to { opacity: 1; transform: none; }
+}
+
+@keyframes lp-chip-in {
+    from { opacity: 0; transform: translateY(10px) scale(0.94); }
+    to { opacity: 1; transform: none; }
+}
+
+@keyframes lp-bubble-in {
+    from { opacity: 0; transform: translateY(8px) scale(0.98); }
+    to { opacity: 1; transform: none; }
+}
+
+/* ── Landing: product film ───────────────────────────────────────── */
+.film-bg {
+    background:
+        radial-gradient(70% 80% at 50% 0%, rgb(99 102 241 / 70%), transparent 70%),
+        radial-gradient(50% 60% at 85% 100%, rgb(236 72 153 / 30%), transparent 70%),
+        radial-gradient(45% 55% at 10% 90%, rgb(139 92 246 / 40%), transparent 70%),
+        linear-gradient(160deg, #2b1d8f 0%, #1e1b4b 55%, #0f0a2e 100%);
+}
+
+.film-scene {
+    animation: film-scene-in 520ms cubic-bezier(0.16, 1, 0.3, 1) both;
+}
+
+.film-pop {
+    opacity: 0;
+    transform: translateY(14px) scale(0.98);
+    transition: opacity 420ms ease, transform 520ms cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+.film-pop.is-on {
+    opacity: 1;
+    transform: none;
+}
+
+.film-drop {
+    opacity: 0;
+    transform: translateY(-6px) scale(0.96);
+    transform-origin: top right;
+    transition: opacity 260ms ease, transform 320ms cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+.film-drop.is-on {
+    opacity: 1;
+    transform: none;
+}
+
+.film-caret {
+    display: inline-block;
+    width: 2px;
+    height: 1.05em;
+    margin-left: 2px;
+    vertical-align: -0.15em;
+    background: #7c3aed;
+    animation: film-caret 900ms steps(1) infinite;
+}
+
+.film-spark {
+    position: absolute;
+    width: 120px;
+    height: 120px;
+    background: radial-gradient(circle, #fff 0 6%, rgb(249 168 212 / 90%) 12%, rgb(167 139 250 / 0%) 60%);
+    clip-path: polygon(50% 0, 57% 43%, 100% 50%, 57% 57%, 50% 100%, 43% 57%, 0 50%, 43% 43%);
+    filter: drop-shadow(0 0 14px rgb(236 72 153 / 80%));
+    animation: film-spark 1100ms cubic-bezier(0.22, 1, 0.36, 1) both;
+    pointer-events: none;
+}
+
+.film-bloom {
+    animation: film-bloom 900ms cubic-bezier(0.16, 1, 0.3, 1) 320ms both;
+}
+
+.film-ripple {
+    position: absolute;
+    left: 2px;
+    top: 2px;
+    width: 14px;
+    height: 14px;
+    border: 3px solid #f472b6;
+    border-radius: 999px;
+    transform: translate(-50%, -50%);
+    animation: film-ripple 480ms ease-out both;
+}
+
+.film-caption {
+    animation: film-caption-in 600ms cubic-bezier(0.16, 1, 0.3, 1) both;
+}
+
+.film-spin {
+    animation: film-spin 900ms linear infinite;
+}
+
+.film-launcher {
+    animation: film-launcher 1.6s ease-in-out infinite;
+}
+
+.film-panel {
+    transform-origin: bottom right;
+    animation: film-panel-in 520ms cubic-bezier(0.16, 1, 0.3, 1) both;
+}
+
+@keyframes film-caption-in {
+    from { opacity: 0; transform: translateY(-8px); }
+    to { opacity: 1; transform: none; }
+}
+
+@keyframes film-spin {
+    to { transform: rotate(360deg); }
+}
+
+@keyframes film-launcher {
+    0%, 100% { box-shadow: 0 10px 25px -10px rgb(30 27 75 / 60%), 0 0 0 0 rgb(167 139 250 / 55%); }
+    50% { box-shadow: 0 10px 25px -10px rgb(30 27 75 / 60%), 0 0 0 8px rgb(167 139 250 / 0%); }
+}
+
+@keyframes film-panel-in {
+    from { opacity: 0; transform: scale(0.6) translateY(12px); }
+    to { opacity: 1; transform: none; }
+}
+
+.film-controls {
+    background: linear-gradient(to top, rgb(10 6 35 / 75%), transparent);
+}
+
+.film-frame[data-paused] *,
+.film-frame[data-paused] *::before {
+    animation-play-state: paused !important;
+}
+
+@keyframes film-scene-in {
+    from { opacity: 0; filter: blur(6px); }
+    to { opacity: 1; filter: none; }
+}
+
+@keyframes film-caret {
+    50% { opacity: 0; }
+}
+
+@keyframes film-spark {
+    0% { opacity: 0; transform: scale(0) rotate(-120deg); }
+    35% { opacity: 1; transform: scale(0.7) rotate(-10deg); }
+    55% { opacity: 1; transform: scale(1.1) rotate(25deg); }
+    100% { opacity: 0; transform: scale(2.2) rotate(70deg); }
+}
+
+@keyframes film-bloom {
+    from { opacity: 0; transform: scale(0.04); filter: blur(8px) brightness(2); }
+    60% { opacity: 1; transform: scale(1.05); filter: none; }
+    to { opacity: 1; transform: scale(1); }
+}
+
+@keyframes film-ripple {
+    from { opacity: 1; transform: translate(-50%, -50%) scale(0.4); }
+    to { opacity: 0; transform: translate(-50%, -50%) scale(3.2); }
 }
 
 .wow-hero-noise {
@@ -148,14 +454,6 @@ a {
     animation: wow-reveal 780ms cubic-bezier(0.2, 0.75, 0.25, 1) both;
 }
 
-.wow-float-card {
-    animation: wow-float 6.5s ease-in-out 700ms infinite;
-}
-
-.wow-float-card .wow-wave {
-    color: var(--color-accent);
-}
-
 .wow-wave span {
     width: 3px;
     height: var(--wave-height);
@@ -163,27 +461,6 @@ a {
     background: currentColor;
     transform-origin: center;
     animation: wow-wave 920ms ease-in-out var(--wave-delay) infinite alternate;
-}
-
-.wow-marquee {
-    animation: wow-marquee 24s linear infinite;
-}
-
-.wow-bento-card {
-    box-shadow: 0 1px 0 rgb(255 255 255 / 7%) inset;
-    transition: transform 420ms cubic-bezier(0.2, 0.75, 0.25, 1), box-shadow 420ms ease;
-}
-
-.wow-bento-card:hover {
-    box-shadow: 0 32px 70px -42px rgb(7 23 19 / 50%), 0 1px 0 rgb(255 255 255 / 10%) inset;
-    transform: translateY(-6px);
-}
-
-.wow-ring {
-    box-shadow:
-        0 0 0 54px rgb(7 23 19 / 4%),
-        0 0 0 112px rgb(7 23 19 / 3%);
-    animation: wow-ring 5.5s ease-in-out infinite;
 }
 
 .wow-stage-section {
@@ -267,12 +544,6 @@ a {
     }
 }
 
-@keyframes wow-marquee {
-    to {
-        transform: translateX(calc(-50% - 1rem));
-    }
-}
-
 @keyframes wow-float {
     0%,
     100% {
@@ -280,27 +551,6 @@ a {
     }
     50% {
         transform: translateY(-10px);
-    }
-}
-
-@keyframes wow-hero-breathe {
-    from {
-        transform: scale(1.025) translate3d(0, 0, 0);
-    }
-    to {
-        transform: scale(1.065) translate3d(-0.5%, -0.3%, 0);
-    }
-}
-
-@keyframes wow-ring {
-    0%,
-    100% {
-        opacity: 0.45;
-        transform: scale(0.96);
-    }
-    50% {
-        opacity: 1;
-        transform: scale(1.04);
     }
 }
 
@@ -326,11 +576,6 @@ a {
 }
 
 @media (max-width: 767px) {
-    .wow-hero-image {
-        object-position: 72% center;
-        opacity: 0.62;
-    }
-
     .wow-product-shell {
         border-radius: 20px;
     }
@@ -355,5 +600,10 @@ a {
         animation-duration: 0.01ms !important;
         animation-iteration-count: 1 !important;
         transition-duration: 0.01ms !important;
+    }
+
+    .lp-reveal {
+        opacity: 1;
+        transform: none;
     }
 }

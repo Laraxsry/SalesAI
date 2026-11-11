@@ -162,7 +162,7 @@ export function KnowledgeAudit() {
                         type="button"
                         onClick={() => startAudit.mutate()}
                         disabled={!productId || startAudit.isPending || isRunning}
-                        className="inline-flex h-10 items-center gap-2 rounded-[var(--radius-input)] bg-brand px-4 text-sm font-medium text-white disabled:opacity-50"
+                        className="inline-flex h-10 items-center gap-2 rounded-[var(--radius-input)] bg-[image:var(--gradient-primary)] px-4 text-sm font-medium text-white shadow-(--shadow-primary) enabled:hover:bg-[image:var(--gradient-primary-hover)] disabled:opacity-50"
                     >
                         <RefreshCw size={14} className={startAudit.isPending || isRunning ? 'animate-spin' : ''} />
                         {isRunning ? 'Taranıyor…' : 'Yeni tarama'}
@@ -244,7 +244,7 @@ export function KnowledgeAudit() {
              * sidebar and match <main>'s padding.
              */}
             {(approvedCount > 0 || rejectedCount > 0) && (
-                <div className="fixed bottom-4 left-4 right-4 z-20 flex flex-wrap items-center justify-between gap-3 rounded-[var(--radius-card)] border border-border bg-surface-raised px-4 py-3 shadow-lg md:left-[calc(16rem+2rem)] md:right-8">
+                <div className="fixed bottom-4 left-4 right-4 z-20 flex flex-wrap items-center justify-between gap-3 rounded-[var(--radius-card)] border border-border bg-surface-raised px-4 py-3 shadow-[0_10px_25px_-10px_var(--color-scrim)] md:left-[calc(16rem+2rem)] md:right-8">
                     <p className="text-sm text-text">
                         {approvedCount} onay · {rejectedCount} ret
                         {approvedCount > 0 && (
@@ -265,7 +265,7 @@ export function KnowledgeAudit() {
                             type="button"
                             onClick={() => applyDecisions.mutate()}
                             disabled={applyDecisions.isPending}
-                            className="h-9 rounded-[var(--radius-input)] bg-brand px-4 text-sm font-medium text-white disabled:opacity-50"
+                            className="h-9 rounded-[var(--radius-input)] bg-[image:var(--gradient-primary)] px-4 text-sm font-medium text-white shadow-(--shadow-primary) enabled:hover:bg-[image:var(--gradient-primary-hover)] disabled:opacity-50"
                         >
                             {applyDecisions.isPending ? 'Uygulanıyor…' : 'Uygula'}
                         </button>
@@ -342,7 +342,7 @@ function FindingCard({ finding, decision, onDecide, readOnly }) {
                                 finding.stale
                                     ? 'cursor-not-allowed border border-border text-text-muted opacity-50'
                                     : decision === 'approved'
-                                      ? 'bg-brand text-white'
+                                      ? 'bg-brand text-on-brand'
                                       : 'border border-border text-text-muted hover:text-text'
                             }`}
                         >

@@ -10,7 +10,7 @@ export default function SavedConversationScreen() {
     const { id } = useLocalSearchParams();
     const router = useRouter();
     const { colors, isDark } = useAppTheme();
-    const styles = createStyles(colors);
+    const styles = createStyles(colors, isDark);
     const [messages, setMessages] = useState([]);
     const [loading, setLoading] = useState(true);
     const [error, setError] = useState('');
@@ -50,7 +50,7 @@ export default function SavedConversationScreen() {
             </View>
 
             {loading ? (
-                <View style={styles.center}><ActivityIndicator size="large" color={colors.teal} /></View>
+                <View style={styles.center}><ActivityIndicator size="large" color={isDark ? colors.accent : colors.primary} /></View>
             ) : error ? (
                 <View style={styles.center}><Text style={styles.error}>{error}</Text></View>
             ) : (
@@ -71,21 +71,24 @@ export default function SavedConversationScreen() {
     );
 }
 
-const createStyles = (colors) => StyleSheet.create({
+const createStyles = (colors, isDark) => StyleSheet.create({
     container: { flex: 1, backgroundColor: colors.canvas },
     header: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingTop: 60, paddingHorizontal: 20, paddingBottom: 16 },
     back: { color: colors.text, fontSize: 32, lineHeight: 32 },
     title: { color: colors.text, fontSize: 18, fontWeight: '700' },
     headerSpacer: { width: 24 },
     center: { flex: 1, alignItems: 'center', justifyContent: 'center', padding: 28 },
-    error: { color: colors.danger, textAlign: 'center', lineHeight: 21 },
+    // On the light canvas the danger red needs its deeper shade.
+    error: { color: isDark ? colors.danger : '#B91C1C', textAlign: 'center', lineHeight: 21 },
     list: { padding: 20, gap: 12 },
     empty: { color: colors.muted, textAlign: 'center', marginTop: 60 },
     message: { maxWidth: '88%', borderRadius: 16, padding: 14 },
     assistant: { alignSelf: 'flex-start', backgroundColor: colors.surface, borderWidth: 1, borderColor: colors.line },
-    visitor: { alignSelf: 'flex-end', backgroundColor: colors.teal },
-    role: { color: colors.teal, fontSize: 11, fontWeight: '700', marginBottom: 4, textTransform: 'uppercase' },
-    visitorRole: { color: 'rgba(255,255,255,0.72)' },
+    // Filled bubble as on the landing call card: violet with white text on the
+    // light theme, light violet with dark ink on the dark theme.
+    visitor: { alignSelf: 'flex-end', backgroundColor: isDark ? colors.accent : colors.primary },
+    role: { color: isDark ? colors.accent : colors.primary, fontSize: 11, fontWeight: '700', marginBottom: 4, textTransform: 'uppercase' },
+    visitorRole: { color: isDark ? 'rgba(11,7,38,0.65)' : 'rgba(255,255,255,0.85)' },
     messageText: { color: colors.text, fontSize: 15, lineHeight: 21 },
-    visitorMessageText: { color: colors.white },
+    visitorMessageText: { color: isDark ? colors.ink : colors.white },
 });

@@ -3,6 +3,7 @@ import { View, Text, StyleSheet, ActivityIndicator, TouchableOpacity } from 'rea
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
 import { verifyMagicLink } from '../../src/visitorIdentity';
+import { SHADOWS } from '../../src/theme';
 import { useAppTheme } from '../../src/theme-context';
 
 /**
@@ -40,7 +41,7 @@ export default function VerifyMagicLinkScreen() {
             <StatusBar style={isDark ? 'light' : 'dark'} />
             {status === 'verifying' && (
                 <>
-                    <ActivityIndicator size="large" color={colors.teal} />
+                    <ActivityIndicator size="large" color={isDark ? colors.accent : colors.primary} />
                     <Text style={styles.text}>Bağlantı doğrulanıyor…</Text>
                 </>
             )}
@@ -72,10 +73,11 @@ const createStyles = (colors) => StyleSheet.create({
     text: { color: colors.muted, fontSize: 14, textAlign: 'center', marginTop: 12, lineHeight: 20 },
     button: {
         marginTop: 24,
-        backgroundColor: colors.teal,
+        backgroundColor: colors.primary,
         borderRadius: 12,
         paddingVertical: 14,
         paddingHorizontal: 28,
+        ...SHADOWS.button,
     },
     buttonText: { color: colors.white, fontSize: 15, fontWeight: '600' },
 });

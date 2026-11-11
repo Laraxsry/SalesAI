@@ -5,8 +5,10 @@ import { cn } from './cn.js';
  */
 export function Button({ className, variant = 'primary', size = 'md', ...props }) {
     const variants = {
+        // Same violet gradient as the landing call-to-action. The fill is a
+        // background-image, so overriding it needs `bg-none` next to a colour.
         primary:
-            'bg-brand text-white shadow-[0_1px_0_rgba(255,255,255,0.08)_inset,0_8px_20px_-8px_rgba(109,94,252,0.65)] hover:bg-brand-dark active:scale-[0.98]',
+            'bg-[image:var(--gradient-primary)] text-white shadow-(--shadow-primary) enabled:hover:bg-[image:var(--gradient-primary-hover)] active:scale-[0.98]',
         secondary: 'bg-surface-raised text-text border border-border hover:border-brand/50 active:scale-[0.98]',
         ghost: 'bg-transparent text-text-muted hover:bg-surface-raised hover:text-text'
     };

@@ -83,7 +83,7 @@ export function Login() {
 
                 <p className="mt-6 text-center text-sm text-text-muted">
                     {t('auth.noAccount')}{' '}
-                    <Link to="/register" className="font-semibold text-brand-light hover:text-brand">
+                    <Link to="/register" className="font-semibold text-brand hover:text-brand-hover">
                         {t('auth.register')}
                     </Link>
                 </p>

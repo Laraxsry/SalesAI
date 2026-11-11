@@ -585,7 +585,7 @@ export class GuidedTour {
             return; // not found — same silent no-op as before
         }
         await locator.evaluate((el) => {
-            el.style.outline = '3px solid #6d5efc';
+            el.style.outline = '3px solid #f472b6';
             el.scrollIntoView({ behavior: 'smooth', block: 'center' });
         });
     }

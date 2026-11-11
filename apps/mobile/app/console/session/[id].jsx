@@ -20,6 +20,9 @@ export default function SessionMonitorScreen() {
     const { token, apiFetch } = useAuth();
     const { colors, isDark } = useAppTheme();
     const styles = createStyles(colors, isDark);
+    // Brand tint for spinners: light violet on the dark theme's night
+    // surfaces, brand violet on the light ones.
+    const tint = isDark ? colors.accent : colors.primary;
     const flatListRef = useRef(null);
 
     const [loading, setLoading] = useState(true);
@@ -127,7 +130,7 @@ export default function SessionMonitorScreen() {
     if (loading) {
         return (
             <View style={styles.centerContainer}>
-                <ActivityIndicator size="large" color="#6d5efc" />
+                <ActivityIndicator size="large" color={tint} />
                 <Text style={styles.loadingText}>Görüşme dökümü yükleniyor…</Text>
             </View>
         );
@@ -140,7 +143,7 @@ export default function SessionMonitorScreen() {
             behavior={Platform.OS === 'ios' ? 'padding' : 'height'} 
             style={styles.container}
         >
-            <StatusBar style="light" />
+            <StatusBar style={isDark ? 'light' : 'dark'} />
 
             {/* Header info */}
             <View style={styles.header}>
@@ -212,12 +215,12 @@ export default function SessionMonitorScreen() {
                         return (
                             <View style={[styles.messageRow, isAssistant ? styles.rowAssistant : styles.rowUser]}>
                                 <View style={[styles.bubble, isAssistant ? styles.bubbleAssistant : styles.bubbleUser]}>
-                                    <Text style={styles.bubbleRole}>
+                                    <Text style={[styles.bubbleRole, isAssistant && styles.bubbleMetaAssistant]}>
                                         {isAssistant ? 'AI Temsilcisi' : 'Müşteri'}
                                     </Text>
-                                    <Text style={styles.bubbleText}>{item.text}</Text>
+                                    <Text style={[styles.bubbleText, isAssistant && styles.bubbleTextAssistant]}>{item.text}</Text>
                                     {item.at && (
-                                        <Text style={styles.bubbleTime}>
+                                        <Text style={[styles.bubbleTime, isAssistant && styles.bubbleMetaAssistant]}>
                                             {new Date(item.at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
                                         </Text>
                                     )}
@@ -259,8 +262,8 @@ export default function SessionMonitorScreen() {
                             <Text style={styles.summaryLabel}>Müşteri İtirazları</Text>
                             <View style={styles.chipsRow}>
                                 {(summary.objections || []).map((o, index) => (
-                                    <View key={index} style={[styles.chip, { backgroundColor: 'rgba(248, 113, 113, 0.15)' }]}>
-                                        <Text style={[styles.chipText, { color: '#f87171' }]}>{o}</Text>
+                                    <View key={index} style={[styles.chip, styles.chipObjection]}>
+                                        <Text style={[styles.chipText, styles.chipObjectionText]}>{o}</Text>
                                     </View>
                                 ))}
                                 {(!summary.objections || summary.objections.length === 0) && (
@@ -284,7 +287,7 @@ export default function SessionMonitorScreen() {
                     ) : (
                         <View style={styles.emptyContainer}>
                             {isLive ? (
-                                <ActivityIndicator size="small" color="#6d5efc" style={{ marginBottom: 12 }} />
+                                <ActivityIndicator size="small" color={tint} style={{ marginBottom: 12 }} />
                             ) : null}
                             <Text style={styles.emptyText}>
                                 {isLive ? 'Görüşme hâlâ devam ediyor. Sonlandığında analiz raporu oluşturulacaktır.' : 'Analiz raporu henüz oluşturulmadı.'}
@@ -359,11 +362,13 @@ const createStyles = (colors, isDark) => StyleSheet.create({
         paddingHorizontal: 10,
         borderRadius: 12,
     },
+    // "Live" is the semantic online green, as on the dashboard's session chips.
     badgeLive: {
-        backgroundColor: 'rgba(56, 189, 248, 0.15)',
+        backgroundColor: isDark ? 'rgba(52, 211, 153, 0.15)' : '#ECFDF5',
     },
+    // "Ended" is neutral: muted text on the raised surface, as on the dashboard.
     badgeEnded: {
-        backgroundColor: isDark ? 'rgba(255, 255, 255, 0.08)' : 'rgba(100, 116, 139, 0.12)',
+        backgroundColor: colors.surfaceMuted,
     },
     badgeText: {
         fontSize: 10.5,
@@ -371,7 +376,7 @@ const createStyles = (colors, isDark) => StyleSheet.create({
         letterSpacing: 0.5,
     },
     badgeLiveText: {
-        color: colors.lime,
+        color: colors.success,
     },
     badgeEndedText: {
         color: colors.muted,
@@ -410,9 +415,9 @@ const createStyles = (colors, isDark) => StyleSheet.create({
         fontFamily: FONT.bold,
     },
     liveBanner: {
-        backgroundColor: 'rgba(37, 99, 235, 0.12)',
+        backgroundColor: 'rgba(124, 58, 237, 0.12)',
         borderBottomWidth: 1,
-        borderColor: 'rgba(37, 99, 235, 0.25)',
+        borderColor: 'rgba(124, 58, 237, 0.25)',
         paddingVertical: 8,
         paddingHorizontal: 20,
         flexDirection: 'row',
@@ -423,11 +428,12 @@ const createStyles = (colors, isDark) => StyleSheet.create({
         width: 7,
         height: 7,
         borderRadius: 3.5,
-        backgroundColor: colors.lime,
+        // Deeper pink on the light theme so the dot stays visible on the tint.
+        backgroundColor: isDark ? colors.pink : '#DB2777',
         marginRight: 8,
     },
     liveBannerText: {
-        color: colors.teal,
+        color: isDark ? colors.accent : colors.primaryDark,
         fontFamily: FONT.bold,
         fontSize: 12,
     },
@@ -462,8 +468,10 @@ const createStyles = (colors, isDark) => StyleSheet.create({
         borderWidth: 1,
         borderColor: colors.line,
     },
+    // Filled bubble as on the landing call card: violet with white text on the
+    // light theme, light violet with dark ink on the dark theme.
     bubbleAssistant: {
-        backgroundColor: colors.teal,
+        backgroundColor: isDark ? colors.accent : colors.primary,
         borderBottomRightRadius: 4,
     },
     bubbleRole: {
@@ -482,8 +490,15 @@ const createStyles = (colors, isDark) => StyleSheet.create({
     bubbleTime: {
         alignSelf: 'flex-end',
         fontSize: 9.5,
-        color: colors.soft,
+        color: colors.muted,
         marginTop: 4,
+    },
+    // Colour-only overrides for text sitting on the filled assistant bubble.
+    bubbleTextAssistant: {
+        color: isDark ? colors.ink : colors.white,
+    },
+    bubbleMetaAssistant: {
+        color: isDark ? 'rgba(11,7,38,0.65)' : 'rgba(255,255,255,0.85)',
     },
     systemMessageContainer: {
         flexDirection: 'row',
@@ -509,7 +524,8 @@ const createStyles = (colors, isDark) => StyleSheet.create({
         alignItems: 'center',
     },
     errorText: {
-        color: colors.danger,
+        // On the light canvas the danger red needs its deeper shade.
+        color: isDark ? colors.danger : '#B91C1C',
         fontFamily: FONT.medium,
         fontSize: 14,
         textAlign: 'center',
@@ -520,7 +536,7 @@ const createStyles = (colors, isDark) => StyleSheet.create({
         justifyContent: 'center',
     },
     emptyText: {
-        color: colors.soft,
+        color: colors.muted,
         fontFamily: FONT.regular,
         fontSize: 14,
         textAlign: 'center',
@@ -533,7 +549,7 @@ const createStyles = (colors, isDark) => StyleSheet.create({
         borderColor: colors.line,
     },
     summaryLabel: {
-        color: colors.teal,
+        color: isDark ? colors.accent : colors.primary,
         fontFamily: FONT.bold,
         fontSize: 13,
         marginTop: 20,
@@ -553,20 +569,29 @@ const createStyles = (colors, isDark) => StyleSheet.create({
         gap: 8,
     },
     chip: {
-        backgroundColor: isDark ? 'rgba(59, 130, 246, 0.15)' : 'rgba(37, 99, 235, 0.08)',
+        backgroundColor: isDark ? 'rgba(139, 92, 246, 0.15)' : 'rgba(124, 58, 237, 0.08)',
         paddingVertical: 6,
         paddingHorizontal: 12,
         borderRadius: 12,
         borderWidth: 1,
-        borderColor: isDark ? 'rgba(59, 130, 246, 0.25)' : 'rgba(37, 99, 235, 0.15)',
+        borderColor: isDark ? 'rgba(139, 92, 246, 0.25)' : 'rgba(124, 58, 237, 0.15)',
     },
     chipText: {
-        color: colors.teal,
+        color: isDark ? colors.accent : colors.primary,
         fontFamily: FONT.bold,
         fontSize: 12,
     },
+    // Objections are the summary's negative signal. Colour-only overrides of
+    // the chip: the danger red on its own tint and border, in both themes.
+    chipObjection: {
+        backgroundColor: isDark ? 'rgba(244, 63, 94, 0.15)' : '#FFF1F2',
+        borderColor: isDark ? 'rgba(244, 63, 94, 0.3)' : 'rgba(220, 38, 38, 0.2)',
+    },
+    chipObjectionText: {
+        color: isDark ? '#FB7185' : '#B91C1C',
+    },
     noDataText: {
-        color: colors.soft,
+        color: colors.muted,
         fontFamily: FONT.regular,
         fontSize: 13.5,
         fontStyle: 'italic',
@@ -581,7 +606,7 @@ const createStyles = (colors, isDark) => StyleSheet.create({
         lineHeight: 20,
     },
     nextStepText: {
-        color: colors.lime,
+        color: isDark ? colors.accent : colors.primaryDark,
         fontFamily: FONT.bold,
         fontSize: 14,
     },

@@ -5,6 +5,7 @@ import { StatusBar } from 'expo-status-bar';
 import { getSavedConversations, removeSavedConversation } from '../src/savedConversations';
 import { requestPushPermission, getNotificationPref, setNotificationPref } from '../src/push';
 import { getVisitorAuth, requestMagicLink, verifyMagicLink } from '../src/visitorIdentity';
+import { inputTint } from '../src/theme';
 import { useAppTheme } from '../src/theme-context';
 
 function formatDate(iso) {
@@ -104,7 +105,7 @@ export default function SavedScreen() {
                 <Switch
                     value={notificationsOn}
                     onValueChange={onToggleNotifications}
-                    trackColor={{ false: colors.line, true: colors.tealDark }}
+                    trackColor={{ false: colors.line, true: colors.primary }}
                     thumbColor={colors.white}
                 />
             </View>
@@ -124,6 +125,7 @@ export default function SavedScreen() {
                                     style={styles.syncInput}
                                     placeholder="ornek@eposta.com"
                                     placeholderTextColor={colors.soft}
+                                    {...inputTint(colors, isDark)}
                                     value={emailInput}
                                     onChangeText={setEmailInput}
                                     autoCapitalize="none"
@@ -140,6 +142,7 @@ export default function SavedScreen() {
                                         style={styles.syncInput}
                                         placeholder="Bağlantıdaki kodu yapıştır"
                                         placeholderTextColor={colors.soft}
+                                        {...inputTint(colors, isDark)}
                                         value={tokenInput}
                                         onChangeText={setTokenInput}
                                         autoCapitalize="none"
@@ -226,7 +229,7 @@ const createStyles = (colors) => StyleSheet.create({
         paddingVertical: 10,
     },
     syncButton: {
-        backgroundColor: colors.teal,
+        backgroundColor: colors.primary,
         borderRadius: 10,
         paddingHorizontal: 16,
         alignItems: 'center',
@@ -251,7 +254,7 @@ const createStyles = (colors) => StyleSheet.create({
     cardTitle: { color: colors.text, fontSize: 15, fontWeight: '600' },
     cardDate: { color: colors.muted, fontSize: 12, marginTop: 2 },
     resumeButton: {
-        backgroundColor: colors.teal,
+        backgroundColor: colors.primary,
         borderRadius: 10,
         paddingVertical: 8,
         paddingHorizontal: 14,

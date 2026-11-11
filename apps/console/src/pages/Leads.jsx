@@ -12,9 +12,9 @@ const STATUS_FILTERS = [
 ];
 
 const STATUS_STYLE = {
-    new: 'text-brand-light bg-brand/10',
+    new: 'text-brand bg-brand/15 ring-1 ring-inset ring-brand/30',
     qualified: 'text-emerald-400 bg-emerald-500/10',
-    dismissed: 'text-text-muted bg-surface-raised'
+    dismissed: 'text-text-muted bg-text-muted/10'
 };
 
 const STATUS_LABEL = {
@@ -74,7 +74,7 @@ export function Leads() {
                             onClick={() => setStatusFilter(f.value)}
                             className={`rounded-[var(--radius-input)] px-3 py-1.5 text-xs font-medium transition-colors ${
                                 statusFilter === f.value
-                                    ? 'bg-brand/15 text-brand-light'
+                                    ? 'bg-brand/15 text-brand'
                                     : 'text-text-muted hover:text-text'
                             }`}
                         >
@@ -86,7 +86,7 @@ export function Leads() {
 
             <div className="mb-5 grid grid-cols-3 gap-3">
                 <div className="rounded-[var(--radius-card)] border border-border bg-surface p-4"><p className="text-xs text-text-muted">Toplam lead</p><p className="mt-1 text-2xl font-semibold text-text">{(counts.new || 0) + (counts.qualified || 0) + (counts.dismissed || 0)}</p></div>
-                <div className="rounded-[var(--radius-card)] border border-border bg-surface p-4"><p className="text-xs text-text-muted">Yeni</p><p className="mt-1 text-2xl font-semibold text-brand-light">{counts.new || 0}</p></div>
+                <div className="rounded-[var(--radius-card)] border border-border bg-surface p-4"><p className="text-xs text-text-muted">Yeni</p><p className="mt-1 text-2xl font-semibold text-brand">{counts.new || 0}</p></div>
                 <div className="rounded-[var(--radius-card)] border border-border bg-surface p-4"><p className="text-xs text-text-muted">Nitelikli</p><p className="mt-1 text-2xl font-semibold text-emerald-400">{counts.qualified || 0}</p></div>
             </div>
 
@@ -118,11 +118,11 @@ export function Leads() {
                             className="grid w-full grid-cols-[1fr_auto] items-center gap-4 border-b border-border px-5 py-4 text-left transition last:border-b-0 hover:bg-surface-raised/60 md:grid-cols-[minmax(180px,1.4fr)_minmax(220px,2fr)_90px_120px_24px]"
                         >
                             <div className="flex min-w-0 items-center gap-3">
-                                <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-brand/15 text-brand-light"><Users size={16} /></span>
+                                <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-brand/15 text-brand"><Users size={16} /></span>
                                 <div className="min-w-0"><p className="truncate text-sm font-semibold text-text">{displayName(lead)}</p><p className="mt-0.5 truncate text-xs text-text-muted">{lead.contact?.email || lead.contact?.phone || 'İletişim bilgisi alınmadı'}</p></div>
                             </div>
                             <div className="hidden min-w-0 md:block"><p className="truncate text-sm text-text">{lead.summary?.tldr || 'Görüşme özeti hazırlanıyor'}</p><p className="mt-1 flex items-center gap-1 text-xs text-text-muted"><Clock size={12} />{formatLeadDate(lead.session?.startedAt || lead.createdAt)}</p></div>
-                            <div className="hidden md:block"><p className="text-lg font-semibold text-text">{lead.score}</p><div className="mt-1 h-1.5 w-14 overflow-hidden rounded-full bg-bg"><div className="h-full rounded-full bg-brand" style={{ width: `${Math.max(0, Math.min(100, lead.score))}%` }} /></div></div>
+                            <div className="hidden md:block"><p className="text-lg font-semibold text-text">{lead.score}</p><div className="mt-1 h-1.5 w-14 overflow-hidden rounded-full bg-brand/15"><div className="brand-gradient h-full rounded-full" style={{ width: `${Math.max(0, Math.min(100, lead.score))}%` }} /></div></div>
                             <div className="flex justify-end md:justify-start">
                                 <span className={`rounded-full px-2.5 py-1 text-xs font-medium ${STATUS_STYLE[lead.status]}`}>{STATUS_LABEL[lead.status]}</span>
                             </div>
@@ -133,22 +133,22 @@ export function Leads() {
             )}
 
             {selectedLead && (
-                <div className="fixed inset-0 z-50 flex justify-end bg-black/40" onClick={() => setSelectedLead(null)}>
-                    <aside className="h-full w-full max-w-md overflow-y-auto border-l border-border bg-bg p-6 shadow-2xl" onClick={(event) => event.stopPropagation()}>
+                <div className="app-scrim fixed inset-0 z-50 flex justify-end" onClick={() => setSelectedLead(null)}>
+                    <aside className="h-full w-full max-w-md overflow-y-auto border-l border-border bg-bg p-6 shadow-(--shadow-float)" onClick={(event) => event.stopPropagation()}>
                         <div className="mb-6 flex items-start justify-between">
                             <div>
-                                <p className="text-xs font-medium uppercase tracking-wider text-brand-light">Lead detayı</p>
+                                <p className="text-xs font-medium uppercase tracking-wider text-brand">Lead detayı</p>
                                 <h2 className="mt-1 text-xl font-semibold text-text">{displayName(selectedLead)}</h2>
                             </div>
                             <button type="button" aria-label="Kapat" onClick={() => setSelectedLead(null)} className="rounded-full p-2 text-text-muted hover:bg-surface-raised hover:text-text"><X size={18} /></button>
                         </div>
                         <div className="space-y-3 rounded-[var(--radius-card)] border border-border bg-surface p-4 text-sm">
-                            {selectedLead.contact?.email && <a href={`mailto:${selectedLead.contact.email}`} className="flex items-center gap-2 text-brand-light"><Mail size={15} />{selectedLead.contact.email}</a>}
+                            {selectedLead.contact?.email && <a href={`mailto:${selectedLead.contact.email}`} className="flex items-center gap-2 text-brand"><Mail size={15} />{selectedLead.contact.email}</a>}
                             {selectedLead.contact?.phone && <p className="flex items-center gap-2 text-text-muted"><Phone size={15} />{selectedLead.contact.phone}</p>}
                             {selectedLead.contact?.company && <p className="flex items-center gap-2 text-text-muted"><Building2 size={15} />{selectedLead.contact.company}</p>}
                             <p className="text-text-muted">Skor: <span className="font-semibold text-text">{selectedLead.score}</span></p>
                         </div>
-                        <div className="mt-4 grid grid-cols-3 gap-2">{['new', 'qualified', 'dismissed'].map((status) => <button type="button" key={status} onClick={() => onStatusChange(selectedLead, status)} className={`rounded-lg border px-2 py-2 text-xs font-medium ${selectedLead.status === status ? 'border-brand bg-brand text-white' : 'border-border text-text-muted hover:text-text'}`}>{STATUS_LABEL[status]}</button>)}</div>
+                        <div className="mt-4 grid grid-cols-3 gap-2">{['new', 'qualified', 'dismissed'].map((status) => <button type="button" key={status} onClick={() => onStatusChange(selectedLead, status)} className={`rounded-lg border px-2 py-2 text-xs font-medium ${selectedLead.status === status ? 'border-brand bg-brand text-on-brand' : 'border-border text-text-muted hover:text-text'}`}>{STATUS_LABEL[status]}</button>)}</div>
                         {selectedLead.summary && <section className="mt-6"><h3 className="mb-2 flex items-center gap-2 text-sm font-semibold text-text"><StickyNote size={15} />Görüşme özeti</h3><div className="rounded-[var(--radius-card)] border border-border bg-surface p-4"><p className="text-sm leading-6 text-text-muted">{selectedLead.summary.tldr || 'Özet mevcut değil.'}</p>{selectedLead.summary.nextStep && <p className="mt-3 flex items-start gap-2 border-t border-border pt-3 text-sm text-text"><CheckCircle2 size={15} className="mt-0.5 shrink-0 text-emerald-400" />{selectedLead.summary.nextStep}</p>}</div></section>}
                         {selectedLead.surveyAnswers?.length > 0 && <section className="mt-6"><h3 className="mb-2 text-sm font-semibold text-text">Survey cevapları</h3><div className="space-y-2">{selectedLead.surveyAnswers.map((answer, index) => <div key={`${answer.nodeId || 'answer'}-${index}`} className="rounded-lg border border-border bg-surface p-3 text-sm"><p className="text-xs text-text-muted">{answer.question || answer.fieldKey || 'Özel soru'}</p><p className="mt-1 text-text">{answer.answer || 'Atlandı'}</p></div>)}</div></section>}
                         {selectedLead.availability?.date && <section className="mt-6"><h3 className="mb-2 flex items-center gap-2 text-sm font-semibold text-text"><CalendarDays size={15} />Uygunluk</h3><p className="text-sm text-text-muted">{selectedLead.availability.date}{selectedLead.availability.timeRange ? ` · ${selectedLead.availability.timeRange}` : ''}</p></section>}

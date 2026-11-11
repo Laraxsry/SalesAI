@@ -1,4 +1,5 @@
 import { View, Text, StyleSheet } from 'react-native';
+import { COLORS } from '../theme';
 
 /** Live transcription captions, or a "listening" placeholder while the agent is silent. */
 export function Captions({ text }) {
@@ -23,7 +24,7 @@ const styles = StyleSheet.create({
         marginBottom: 20,
     },
     captionsBox: {
-        backgroundColor: 'rgba(27, 27, 42, 0.85)',
+        backgroundColor: 'rgba(20, 13, 56, 0.85)',
         borderRadius: 16,
         padding: 16,
         borderWidth: 1,
@@ -31,13 +32,13 @@ const styles = StyleSheet.create({
         width: '100%',
     },
     captionsText: {
-        color: '#f5f5fa',
+        color: COLORS.text,
         fontSize: 16,
         textAlign: 'center',
         lineHeight: 24,
     },
     listeningText: {
-        color: '#4e5564',
+        color: COLORS.soft,
         fontSize: 14,
         fontStyle: 'italic',
     },

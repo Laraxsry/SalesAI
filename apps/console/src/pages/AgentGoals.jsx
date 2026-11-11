@@ -513,7 +513,7 @@ export function AgentGoals() {
                                 type="button"
                                 onClick={() => { setCreationMode(value); setGeneratedDraft(null); }}
                                 className={`rounded-[calc(var(--radius-input)-3px)] px-3 py-1.5 text-xs transition-colors ${creationMode === value
-                                    ? 'bg-brand/15 text-brand-light'
+                                    ? 'bg-brand/15 text-brand'
                                     : 'text-text-muted hover:text-text'
                                     }`}
                             >
@@ -566,6 +566,7 @@ export function AgentGoals() {
                             <label className="flex items-center gap-2 text-xs text-text-muted">
                                 <input
                                     type="checkbox"
+                                    className="accent-brand"
                                     checked={includeSurvey}
                                     disabled={Number(data?.maxParticipants) > 1}
                                     onChange={(event) => setIncludeSurvey(event.target.checked)}
@@ -576,7 +577,7 @@ export function AgentGoals() {
                                 type="button"
                                 onClick={onGenerate}
                                 disabled={generating}
-                                className="inline-flex h-10 items-center justify-center gap-2 rounded-[var(--radius-input)] bg-brand px-3 text-sm font-medium text-white transition-opacity disabled:opacity-50"
+                                className="inline-flex h-10 items-center justify-center gap-2 rounded-[var(--radius-input)] bg-[image:var(--gradient-primary)] px-3 text-sm font-medium text-white shadow-(--shadow-primary) transition-opacity enabled:hover:bg-[image:var(--gradient-primary-hover)] disabled:opacity-50"
                             >
                                 <Sparkles size={15} />
                                 {generating ? 'Taslak hazırlanıyor…' : 'Taslak oluştur'}
@@ -605,7 +606,7 @@ export function AgentGoals() {
                                 <button
                                     type="button"
                                     onClick={applyGeneratedDraft}
-                                    className="rounded-[var(--radius-input)] bg-brand px-3 py-1.5 text-xs font-medium text-white"
+                                    className="rounded-[var(--radius-input)] bg-[image:var(--gradient-primary)] px-3 py-1.5 text-xs font-medium text-white shadow-(--shadow-primary) hover:bg-[image:var(--gradient-primary-hover)]"
                                 >
                                     Editöre uygula
                                 </button>
@@ -614,7 +615,7 @@ export function AgentGoals() {
                         <ol className="mt-3 grid gap-1.5">
                             {generatedDraft.nodes.map((node, index) => (
                                 <li key={node.id || index} className="flex gap-2 text-xs text-text-muted">
-                                    <span className="text-brand-light">{index + 1}.</span>
+                                    <span className="text-brand">{index + 1}.</span>
                                     <span className="flex-1">{node.type === 'survey' ? `Soru: ${node.survey?.question}` : node.directive}</span>
                                     <span className="rounded-full border border-border px-2 py-0.5 text-[10px]">
                                         {PLAYBOOK_IMPORTANCE_OPTIONS.find((option) =>
@@ -628,7 +629,7 @@ export function AgentGoals() {
             </section>
 
             <div className="mb-5 flex items-start gap-2.5 rounded-[var(--radius-input)] border border-brand/30 bg-brand/5 px-3.5 py-3">
-                <Info size={15} className="mt-0.5 shrink-0 text-brand-light" />
+                <Info size={15} className="mt-0.5 shrink-0 text-brand" />
                 <p className="text-[13px] leading-relaxed text-text-muted">
                     Her adımda ulaşılacak amacı yazın; konuşma metni hazırlamanız gerekmez.
                     Bir adımda ekran gösterilecekse <Globe size={12} className="inline align-[-1px]" />{' '}
@@ -651,7 +652,7 @@ export function AgentGoals() {
                         <span className="rounded-full bg-surface-raised px-2.5 py-1">{authoringSummary.screenStepCount} ekran adımı</span>
                         <span className="rounded-full bg-surface-raised px-2.5 py-1">{authoringSummary.surveyCount} soru</span>
                         <span className={`rounded-full px-2.5 py-1 ${authoringSummary.closingCount
-                            ? 'bg-brand/15 text-brand-light'
+                            ? 'bg-brand/15 text-brand in-data-[theme=dark]:bg-[#8b5cf6]/30'
                             : 'bg-amber-500/10 text-amber-400'}`}
                         >
                             {authoringSummary.closingCount} kapanış hedefi
@@ -662,7 +663,7 @@ export function AgentGoals() {
                     <ol className="mt-3 grid gap-2">
                         {behaviorPreview.map((item) => (
                             <li key={item.id} className="flex gap-3 rounded-[var(--radius-input)] bg-bg px-3 py-2.5">
-                                <span className="mt-0.5 text-xs font-semibold text-brand-light">{item.position}</span>
+                                <span className="mt-0.5 text-xs font-semibold text-brand">{item.position}</span>
                                 <div className="min-w-0">
                                     <div className="flex flex-wrap items-center gap-2">
                                         <p className="truncate text-xs font-medium text-text">{item.objective}</p>
@@ -725,7 +726,7 @@ export function AgentGoals() {
 
                                 <span
                                     className={`flex h-7 w-7 shrink-0 items-center justify-center rounded-full text-xs font-semibold ${rowText(row).trim()
-                                            ? 'bg-brand/15 text-brand-light'
+                                            ? 'bg-brand/15 text-brand in-data-[theme=dark]:bg-[#8b5cf6]/30'
                                             : 'bg-surface-raised text-text-muted'
                                         }`}
                                 >
@@ -781,7 +782,7 @@ export function AgentGoals() {
                                     onClick={() => toggleUrl(row)}
                                     title={row.url === null ? 'Sayfa adresi ekle' : 'Sayfa adresini kaldır'}
                                     className={`flex h-10 w-10 shrink-0 items-center justify-center rounded-[var(--radius-input)] border transition-colors ${row.url !== null
-                                            ? 'border-brand/50 bg-brand/10 text-brand-light'
+                                            ? 'border-brand/50 bg-brand/10 text-brand in-data-[theme=dark]:border-brand/80 in-data-[theme=dark]:bg-[#8b5cf6]/30'
                                             : 'border-border bg-surface-raised text-text-muted hover:border-brand/50 hover:text-text'
                                         }`}
                                 >
@@ -793,7 +794,7 @@ export function AgentGoals() {
                                     onClick={() => toggleActions(row)}
                                     title={row.actions === null ? 'Ekran aksiyonu ekle' : 'Aksiyonları kaldır'}
                                     className={`flex h-10 w-10 shrink-0 items-center justify-center rounded-[var(--radius-input)] border transition-colors ${row.actions !== null
-                                            ? 'border-brand/50 bg-brand/10 text-brand-light'
+                                            ? 'border-brand/50 bg-brand/10 text-brand in-data-[theme=dark]:border-brand/80 in-data-[theme=dark]:bg-[#8b5cf6]/30'
                                             : 'border-border bg-surface-raised text-text-muted hover:border-brand/50 hover:text-text'
                                         }`}
                                 >
@@ -819,7 +820,7 @@ export function AgentGoals() {
                                         value={row.url}
                                         onChange={(e) => updateRow(row.id, { url: e.target.value })}
                                         placeholder="https://www.cyberverse.com.tr/kvkk"
-                                        className="h-9 min-w-0 flex-1 rounded-[var(--radius-input)] border border-border bg-bg px-3 text-[13px] text-brand-light outline-none placeholder:text-text-muted/60 focus:border-brand"
+                                        className="h-9 min-w-0 flex-1 rounded-[var(--radius-input)] border border-border bg-bg px-3 text-[13px] text-brand outline-none placeholder:text-text-muted/60 focus:border-brand"
                                     />
                                     <span className="h-9 w-[12.5rem] shrink-0" aria-hidden="true" />
                                     <span className="h-9 w-10 shrink-0" aria-hidden="true" />
@@ -910,6 +911,7 @@ export function AgentGoals() {
                                             <label className="flex items-center gap-2">
                                                 <input
                                                     type="checkbox"
+                                                    className="accent-brand"
                                                     checked={row.survey.allowFreeText}
                                                     onChange={(e) => updateRow(row.id, {
                                                         survey: { ...row.survey, allowFreeText: e.target.checked }
@@ -921,6 +923,7 @@ export function AgentGoals() {
                                         <label className="flex items-center gap-2">
                                             <input
                                                 type="checkbox"
+                                                className="accent-brand"
                                                 checked={row.survey.required}
                                                 onChange={(e) => updateRow(row.id, {
                                                     survey: { ...row.survey, required: e.target.checked }

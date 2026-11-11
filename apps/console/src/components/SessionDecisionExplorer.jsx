@@ -4,12 +4,16 @@ import {
 } from 'lucide-react';
 import { routeDiff } from '../lib/sessionDecisionTraceView.js';
 
+// Hues: emerald / red / amber are semantic, brand violet is informational and
+// fuchsia marks what ran or is new (pink sat too close to the red of
+// failed / removed). Fuchsia has no theme token, so its text shade follows the
+// console theme through the in-data-[theme=dark] variant.
 const NODE_STATUS = {
     completed: { label: 'Tamamlandı', style: 'bg-emerald-500/10 text-emerald-300', icon: Check },
-    active: { label: 'Çalıştırıldı', style: 'bg-cyan-500/10 text-cyan-300', icon: Sparkles },
+    active: { label: 'Çalıştırıldı', style: 'bg-fuchsia-500/10 text-fuchsia-700 in-data-[theme=dark]:text-fuchsia-400', icon: Sparkles },
     failed: { label: 'Başarısız', style: 'bg-red-500/10 text-red-300', icon: X },
     deferred: { label: 'Ertelendi', style: 'bg-amber-500/10 text-amber-300', icon: Clock3 },
-    interrupted: { label: 'Müşteri kesti', style: 'bg-violet-500/10 text-violet-300', icon: AlertTriangle },
+    interrupted: { label: 'Müşteri kesti', style: 'bg-brand/10 text-brand', icon: AlertTriangle },
     pending: { label: 'Bekliyor', style: 'bg-surface-raised text-text-muted', icon: Circle }
 };
 
@@ -42,7 +46,7 @@ function StatusBadge({ status }) {
 function CohortBadge({ cohort }) {
     const styles = {
         canary: 'border-amber-400/30 bg-amber-400/10 text-amber-300',
-        shadow: 'border-violet-400/30 bg-violet-400/10 text-violet-300',
+        shadow: 'border-brand/30 bg-brand/10 text-brand',
         control: 'border-border bg-surface-raised text-text-muted'
     };
     return (
@@ -97,7 +101,7 @@ export function RouteExplorer({ trace, selectedRevision, onRevisionChange }) {
             <div className="flex flex-wrap items-center justify-between gap-3">
                 <div>
                     <div className="flex items-center gap-2">
-                        <GitBranch size={17} className="text-brand-light" />
+                        <GitBranch size={17} className="text-brand" />
                         <h3 className="text-sm font-semibold text-text">Görüşme karar rotası</h3>
                     </div>
                     <p className="mt-1 text-xs text-text-muted">
@@ -109,7 +113,7 @@ export function RouteExplorer({ trace, selectedRevision, onRevisionChange }) {
                     <select
                         value={revision.revision}
                         onChange={(event) => onRevisionChange(Number(event.target.value))}
-                        className="ml-2 rounded-lg border border-input-border bg-input-bg px-3 py-2 text-xs text-text"
+                        className="ml-2 rounded-lg border border-border bg-surface px-3 py-2 text-xs text-text"
                     >
                         {trace.revisions.map((item) => (
                             <option key={item.revision} value={item.revision}>
@@ -122,11 +126,11 @@ export function RouteExplorer({ trace, selectedRevision, onRevisionChange }) {
 
             {revision.revision > 0 && (
                 <div className="flex flex-wrap gap-2 text-[11px]">
-                    <span className="rounded-full bg-cyan-500/10 px-2 py-1 text-cyan-300">+{diff.added.length} eklendi</span>
+                    <span className="rounded-full bg-fuchsia-500/10 px-2 py-1 text-fuchsia-700 in-data-[theme=dark]:text-fuchsia-400">+{diff.added.length} eklendi</span>
                     <span className="rounded-full bg-emerald-500/10 px-2 py-1 text-emerald-300">{diff.retained.length} korundu</span>
                     <span className="rounded-full bg-red-500/10 px-2 py-1 text-red-300">−{diff.removed.length} kaldırıldı</span>
                     {revision.status === 'proposed_shadow' && (
-                        <span className="rounded-full bg-violet-500/10 px-2 py-1 text-violet-300">Müşteriye uygulanmadı</span>
+                        <span className="rounded-full bg-brand/10 px-2 py-1 text-brand">Müşteriye uygulanmadı</span>
                     )}
                 </div>
             )}
@@ -135,17 +139,17 @@ export function RouteExplorer({ trace, selectedRevision, onRevisionChange }) {
                 {revision.nodes.map((node, index) => {
                     const added = diff.added.includes(node.id) && revision.revision > 0;
                     return (
-                        <article key={node.id} className={`relative rounded-[var(--radius-card)] border p-4 pl-12 ${added ? 'border-cyan-400/30 bg-cyan-400/5' : 'border-border bg-surface'}`}>
-                            <span className="absolute left-2.5 top-4 z-10 flex h-6 w-6 items-center justify-center rounded-full border border-border bg-bg text-xs font-semibold text-brand-light">
+                        <article key={node.id} className={`relative rounded-[var(--radius-card)] border p-4 pl-12 ${added ? 'border-fuchsia-400/30 bg-fuchsia-400/5 in-data-[theme=dark]:bg-fuchsia-400/10' : 'border-border bg-surface'}`}>
+                            <span className="absolute left-2.5 top-4 z-10 flex h-6 w-6 items-center justify-center rounded-full border border-border bg-bg text-xs font-semibold text-brand">
                                 {index + 1}
                             </span>
                             <div className="flex flex-wrap items-start justify-between gap-3">
                                 <div className="min-w-0 flex-1">
                                     <div className="flex flex-wrap items-center gap-2">
-                                        <span className="text-[11px] font-semibold uppercase tracking-wider text-brand-light">
+                                        <span className="text-[11px] font-semibold uppercase tracking-wider text-brand">
                                             {NODE_TYPE_LABEL[node.type] || node.type}
                                         </span>
-                                        {added && <span className="text-[10px] font-medium text-cyan-300">YENİ</span>}
+                                        {added && <span className="text-[10px] font-medium text-fuchsia-700 in-data-[theme=dark]:text-fuchsia-400">YENİ</span>}
                                         {node.requirement === 'required_before_close' && (
                                             <span className="inline-flex items-center gap-1 text-[10px] text-amber-300">
                                                 <ShieldCheck size={11} /> Kapanış yükümlülüğü
@@ -198,7 +202,7 @@ export function RouteExplorer({ trace, selectedRevision, onRevisionChange }) {
                     </summary>
                     <div className="mt-3 grid gap-2 sm:grid-cols-2">
                         {revision.reviews.map((review) => (
-                            <div key={`${review.seq}-${review.reviewerId}`} className="flex items-center justify-between rounded-xl bg-bg-muted p-3">
+                            <div key={`${review.seq}-${review.reviewerId}`} className="flex items-center justify-between rounded-xl bg-bg p-3">
                                 <span className="text-xs text-text">{REVIEWER_LABEL[review.reviewerId] || review.reviewerId}</span>
                                 <span className={`text-[11px] font-medium ${review.status === 'passed' ? 'text-emerald-300' : 'text-amber-300'}`}>
                                     {review.status === 'accepted' ? 'kabul edildi' : review.status}
@@ -214,7 +218,7 @@ export function RouteExplorer({ trace, selectedRevision, onRevisionChange }) {
                     <summary className="cursor-pointer text-sm font-medium text-text">Rota karar geçmişi</summary>
                     <div className="mt-3 space-y-2">
                         {trace.decisions.filter((decision) => decision.status !== 'started').map((decision) => (
-                            <div key={decision.seq} className="flex flex-wrap items-center justify-between gap-2 rounded-xl bg-bg-muted p-3">
+                            <div key={decision.seq} className="flex flex-wrap items-center justify-between gap-2 rounded-xl bg-bg p-3">
                                 <div>
                                     <p className="text-xs font-medium text-text">{decision.reason}</p>
                                     <p className="mt-0.5 text-[11px] text-text-muted">
@@ -246,12 +250,12 @@ export function AnalystExplorer({ trace }) {
     return (
         <div className="space-y-3">
             <div className="rounded-[var(--radius-card)] border border-brand/20 bg-brand/5 p-4">
-                <div className="flex items-center gap-2"><Layers3 size={17} className="text-brand-light" /><h3 className="text-sm font-semibold text-text">Arka plan uzmanları</h3></div>
+                <div className="flex items-center gap-2"><Layers3 size={17} className="text-brand" /><h3 className="text-sm font-semibold text-text">Arka plan uzmanları</h3></div>
                 <p className="mt-1 text-xs leading-5 text-text-muted">Bu işlemler ana konuşmayı bekletmeden çalışır; yalnız doğrulanmış sonuçlar görüşme hafızasına uygulanabilir.</p>
             </div>
             {trace.analysts.map((analyst) => (
                 <div key={`${analyst.seq}-${analyst.analystId}`} className="flex items-center gap-3 rounded-[var(--radius-card)] border border-border bg-surface p-4">
-                    <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-brand/10 text-brand-light"><Bot size={17} /></span>
+                    <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-brand/10 text-brand"><Bot size={17} /></span>
                     <div className="min-w-0 flex-1">
                         <p className="text-sm font-medium text-text">{ANALYST_LABEL[analyst.analystId] || analyst.analystId}</p>
                         <p className="mt-0.5 text-xs text-text-muted">{analyst.proposalType || 'Analiz'}{analyst.reason ? ` · ${analyst.reason}` : ''}</p>
@@ -267,8 +271,8 @@ export function TechnicalTimeline({ trace }) {
     if (!trace?.technical?.length) return <EmptyTrace />;
     return (
         <div className="space-y-2">
-            <div className="mb-4 flex items-start gap-2 rounded-xl border border-border bg-bg-muted p-3 text-xs leading-5 text-text-muted">
-                <ShieldCheck size={15} className="mt-0.5 shrink-0 text-brand-light" />
+            <div className="mb-4 flex items-start gap-2 rounded-xl border border-border bg-surface-raised p-3 text-xs leading-5 text-text-muted">
+                <ShieldCheck size={15} className="mt-0.5 shrink-0 text-brand" />
                 Güvenli teknik özet gösteriliyor. Ham model düşüncesi, müşteri verileri, form değerleri ve araç argümanları burada yer almaz.
             </div>
             {trace.technical.map((event) => (

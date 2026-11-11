@@ -66,7 +66,7 @@ function DemoSessionForm({ product }) {
     return (
         <div className="mt-8 rounded-[var(--radius-card)] border border-border bg-surface p-5">
             <div className="flex items-center gap-2 mb-2">
-                <Key size={18} className="text-brand-light" />
+                <Key size={18} className="text-brand" />
                 <h2 className="text-lg font-medium text-text">Demo Oturumu (Guided Tour)</h2>
             </div>
             <p className="text-sm text-text-muted mb-4">
@@ -75,8 +75,8 @@ function DemoSessionForm({ product }) {
                 doldurulup giriş yapılır — süresi dolan bir oturum/token yapıştırmanız gerekmez.
             </p>
 
-            <div className="mb-4 rounded bg-bg-muted p-3 text-xs text-text-muted border border-border/50">
-                <p className="flex items-center gap-1.5 font-medium text-brand-light mb-1">
+            <div className="mb-4 rounded bg-bg p-3 text-xs text-text-muted border border-border/50">
+                <p className="flex items-center gap-1.5 font-medium text-brand mb-1">
                     <AlertTriangle size={14} /> Güvenlik Uyarısı
                 </p>
                 <ul className="list-disc pl-4 space-y-1">
@@ -91,7 +91,7 @@ function DemoSessionForm({ product }) {
                     <label className="block text-xs font-medium text-text-muted mb-2">Demo Kullanici Adi / E-posta</label>
                     <input
                         type="text"
-                        className="w-full rounded-[var(--radius-input)] border border-input-border bg-input-bg px-3 py-2 text-sm text-text focus:border-brand focus:outline-none focus:ring-1 focus:ring-brand"
+                        className="w-full rounded-[var(--radius-input)] border border-border bg-bg px-3 py-2 text-sm text-text focus:border-brand focus:outline-none focus:ring-1 focus:ring-brand"
                         placeholder="demo-kullanici veya demo@urun.com"
                         value={username}
                         onChange={(e) => setUsername(e.target.value)}
@@ -101,7 +101,7 @@ function DemoSessionForm({ product }) {
                     <label className="block text-xs font-medium text-text-muted mb-2">Demo Hesap Şifresi</label>
                     <input
                         type="password"
-                        className="w-full rounded-[var(--radius-input)] border border-input-border bg-input-bg px-3 py-2 text-sm text-text focus:border-brand focus:outline-none focus:ring-1 focus:ring-brand"
+                        className="w-full rounded-[var(--radius-input)] border border-border bg-bg px-3 py-2 text-sm text-text focus:border-brand focus:outline-none focus:ring-1 focus:ring-brand"
                         placeholder="••••••••"
                         value={password}
                         onChange={(e) => setPassword(e.target.value)}
@@ -115,7 +115,7 @@ function DemoSessionForm({ product }) {
                 </label>
                 <input
                     type="text"
-                    className="w-full rounded-[var(--radius-input)] border border-input-border bg-input-bg px-3 py-2 text-sm text-text focus:border-brand focus:outline-none focus:ring-1 focus:ring-brand"
+                    className="w-full rounded-[var(--radius-input)] border border-border bg-bg px-3 py-2 text-sm text-text focus:border-brand focus:outline-none focus:ring-1 focus:ring-brand"
                     placeholder="https://urun.com/login"
                     value={loginUrl}
                     onChange={(e) => setLoginUrl(e.target.value)}
@@ -125,13 +125,13 @@ function DemoSessionForm({ product }) {
             <button
                 type="button"
                 onClick={() => setShowAdvanced((v) => !v)}
-                className="mb-3 text-xs font-medium text-brand-light hover:underline"
+                className="mb-3 text-xs font-medium text-brand hover:underline"
             >
                 {showAdvanced ? 'Gelişmiş ayarları gizle' : 'Gelişmiş ayarlar (form alanı bulunamazsa)'}
             </button>
 
             {showAdvanced && (
-                <div className="mb-4 grid gap-4 rounded border border-border/50 bg-bg-muted p-3 sm:grid-cols-2">
+                <div className="mb-4 grid gap-4 rounded border border-border/50 bg-bg p-3 sm:grid-cols-2">
                     <p className="sm:col-span-2 text-xs text-text-muted">
                         Giris formu otomatik algilanir; algilama basarisiz olursa DevTools'tan buldugunuz CSS
                         selector'ları buraya girin.
@@ -140,7 +140,7 @@ function DemoSessionForm({ product }) {
                         <label className="block text-xs font-medium text-text-muted mb-2">Kullanici adi / e-posta input selector</label>
                         <input
                             type="text"
-                            className="w-full rounded-[var(--radius-input)] border border-input-border bg-input-bg px-3 py-2 text-xs font-mono text-text focus:border-brand focus:outline-none focus:ring-1 focus:ring-brand"
+                            className="w-full rounded-[var(--radius-input)] border border-border bg-surface px-3 py-2 text-xs font-mono text-text focus:border-brand focus:outline-none focus:ring-1 focus:ring-brand"
                             placeholder="otomatik algilanir"
                             value={usernameSelector}
                             onChange={(e) => setUsernameSelector(e.target.value)}
@@ -150,7 +150,7 @@ function DemoSessionForm({ product }) {
                         <label className="block text-xs font-medium text-text-muted mb-2">Devam / ileri butonu selector</label>
                         <input
                             type="text"
-                            className="w-full rounded-[var(--radius-input)] border border-input-border bg-input-bg px-3 py-2 text-xs font-mono text-text focus:border-brand focus:outline-none focus:ring-1 focus:ring-brand"
+                            className="w-full rounded-[var(--radius-input)] border border-border bg-surface px-3 py-2 text-xs font-mono text-text focus:border-brand focus:outline-none focus:ring-1 focus:ring-brand"
                             placeholder="iki aşamalı girişte otomatik algılanır"
                             value={nextSelector}
                             onChange={(e) => setNextSelector(e.target.value)}
@@ -160,7 +160,7 @@ function DemoSessionForm({ product }) {
                         <label className="block text-xs font-medium text-text-muted mb-2">Şifre input selector</label>
                         <input
                             type="text"
-                            className="w-full rounded-[var(--radius-input)] border border-input-border bg-input-bg px-3 py-2 text-xs font-mono text-text focus:border-brand focus:outline-none focus:ring-1 focus:ring-brand"
+                            className="w-full rounded-[var(--radius-input)] border border-border bg-surface px-3 py-2 text-xs font-mono text-text focus:border-brand focus:outline-none focus:ring-1 focus:ring-brand"
                             placeholder="otomatik algılanır"
                             value={passwordSelector}
                             onChange={(e) => setPasswordSelector(e.target.value)}
@@ -170,7 +170,7 @@ function DemoSessionForm({ product }) {
                         <label className="block text-xs font-medium text-text-muted mb-2">Giriş butonu selector</label>
                         <input
                             type="text"
-                            className="w-full rounded-[var(--radius-input)] border border-input-border bg-input-bg px-3 py-2 text-xs font-mono text-text focus:border-brand focus:outline-none focus:ring-1 focus:ring-brand"
+                            className="w-full rounded-[var(--radius-input)] border border-border bg-surface px-3 py-2 text-xs font-mono text-text focus:border-brand focus:outline-none focus:ring-1 focus:ring-brand"
                             placeholder="otomatik algılanır"
                             value={submitSelector}
                             onChange={(e) => setSubmitSelector(e.target.value)}
@@ -185,7 +185,7 @@ function DemoSessionForm({ product }) {
                 <button
                     onClick={handleSave}
                     disabled={mutation.isPending}
-                    className="rounded-[var(--radius-button)] bg-brand px-4 py-2 text-sm font-medium text-white hover:bg-brand-hover disabled:opacity-50"
+                    className="rounded-[var(--radius-button)] bg-[image:var(--gradient-primary)] px-4 py-2 text-sm font-medium text-white shadow-(--shadow-primary) enabled:hover:bg-[image:var(--gradient-primary-hover)] disabled:opacity-50"
                 >
                     {mutation.isPending ? 'Kaydediliyor...' : 'Kaydet'}
                 </button>
@@ -256,7 +256,7 @@ export function ProductDetail() {
                     href={product.websiteUrl}
                     target="_blank"
                     rel="noreferrer"
-                    className="mt-2 inline-flex items-center gap-1.5 text-sm text-brand-light hover:text-brand"
+                    className="mt-2 inline-flex items-center gap-1.5 text-sm text-brand hover:text-brand-hover"
                 >
                     <ExternalLink size={14} />
                     {product.websiteUrl}
@@ -266,9 +266,9 @@ export function ProductDetail() {
             <div className="mt-8 grid grid-cols-1 gap-4 sm:grid-cols-2">
                 <Link
                     to={`/knowledge?product=${id}`}
-                    className="flex items-center gap-3 rounded-[var(--radius-card)] border border-border bg-surface p-5 transition-colors hover:border-brand/50"
+                    className="card-lift flex items-center gap-3 rounded-[var(--radius-card)] border border-border bg-surface p-5 hover:border-brand/50"
                 >
-                    <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-brand/15 text-brand-light">
+                    <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-brand/15 text-brand">
                         <BookOpen size={18} />
                     </span>
                     <div>
@@ -279,9 +279,9 @@ export function ProductDetail() {
 
                 <Link
                     to={`/agents?product=${id}`}
-                    className="flex items-center gap-3 rounded-[var(--radius-card)] border border-border bg-surface p-5 transition-colors hover:border-brand/50"
+                    className="card-lift flex items-center gap-3 rounded-[var(--radius-card)] border border-border bg-surface p-5 hover:border-brand/50"
                 >
-                    <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-brand/15 text-brand-light">
+                    <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-brand/15 text-brand">
                         <Bot size={18} />
                     </span>
                     <div>

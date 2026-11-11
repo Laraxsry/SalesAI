@@ -83,7 +83,7 @@ function Shell({ children }) {
                 <button
                     type="button"
                     aria-label="Menüyü kapat"
-                    className="fixed inset-0 z-30 bg-[color-mix(in_srgb,var(--color-shell)_70%,transparent)] backdrop-blur-sm md:hidden"
+                    className="fixed inset-0 z-30 bg-[var(--color-scrim)] backdrop-blur-sm md:hidden"
                     onClick={() => setMobileNavOpen(false)}
                 />
             )}
@@ -91,6 +91,10 @@ function Shell({ children }) {
                 aria-label="Ana menü"
                 className={`sidebar-glow fixed inset-y-0 left-0 z-40 flex w-[280px] shrink-0 flex-col overflow-hidden border-r border-white/8 bg-[var(--color-shell)] px-4 py-5 text-white shadow-2xl shadow-black/10 transition-transform md:sticky md:top-0 md:h-screen md:translate-x-0 ${mobileNavOpen ? 'translate-x-0' : '-translate-x-full'}`}
             >
+                {/* Landing night sky behind the menu; the content wrappers stack above it.
+                    The star tile is nudged so no star lands on the eyebrow or a nav label. */}
+                <div className="app-aurora absolute inset-0 opacity-70" aria-hidden="true" />
+                <div className="lp-stars absolute inset-0 [background-position:14px_-16px]" aria-hidden="true" />
                 <div className="relative z-10 mb-7 px-2">
                     <div className="flex items-center justify-between">
                         <div className="flex items-center gap-3">
@@ -119,7 +123,7 @@ function Shell({ children }) {
                                 )
                             }
                         >
-                            <span className="flex h-8 w-8 items-center justify-center rounded-lg bg-white/[0.04] text-white/70 transition-colors group-hover:text-[var(--color-accent)]">
+                            <span className="flex h-8 w-8 items-center justify-center rounded-lg bg-white/[0.04] text-white/70 transition-colors group-hover:text-[var(--color-accent)] group-aria-[current=page]:bg-[image:var(--gradient-primary)] group-aria-[current=page]:text-white group-aria-[current=page]:shadow-(--shadow-primary)">
                                 <Icon size={16} strokeWidth={2} aria-hidden="true" />
                             </span>
                             {t(`nav.${key}`)}

@@ -62,8 +62,8 @@ const styles = StyleSheet.create({
         backgroundColor: 'rgba(255,255,255,0.07)',
     },
     controlButtonActive: {
-        borderColor: COLORS.lime,
-        backgroundColor: COLORS.lime,
+        borderColor: COLORS.accent,
+        backgroundColor: COLORS.accent,
     },
     controlButtonDanger: {
         borderColor: 'rgba(244,63,94,0.45)',

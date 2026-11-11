@@ -96,7 +96,7 @@ export function Register() {
 
                 <p className="mt-6 text-center text-sm text-text-muted">
                     {t('auth.haveAccount')}{' '}
-                    <Link to="/login" className="font-semibold text-brand-light hover:text-brand">
+                    <Link to="/login" className="font-semibold text-brand hover:text-brand-hover">
                         {t('auth.loginButton')}
                     </Link>
                 </p>

@@ -4,16 +4,32 @@
    automatic content detection skips it by default — opt it back in explicitly. */
 @source '../../ui/src/**/*.{js,jsx,ts,tsx}';
 
+/* One visual identity for every SalesAI surface: the landing page's indigo
+   night + violet/pink aurora. Apps override the surface tokens per theme in
+   their own :root block; the names below are the shared contract. */
 @theme {
-    --color-brand: #6d5efc;
-    --color-brand-light: #8b7dff;
-    --color-brand-dark: #4b3fd6;
-    --color-bg: #0a0a10;
-    --color-surface: #14141e;
-    --color-surface-raised: #1a1a27;
-    --color-border: #26263a;
-    --color-text: #f5f5fa;
-    --color-text-muted: #9494a8;
+    --color-brand: #7c3aed;
+    --color-brand-light: #8b5cf6;
+    --color-brand-dark: #6d28d9;
+    --color-brand-hover: #6d28d9;
+    /* Text/icon colour that sits on a solid `bg-brand` fill. */
+    --color-on-brand: #ffffff;
+    --color-bg: #0b0726;
+    --color-surface: #140d38;
+    --color-surface-raised: #1d1458;
+    --color-border: #2f2668;
+    --color-text: #f5f3ff;
+    --color-text-muted: #a8a3c7;
     --radius-card: 14px;
     --radius-input: 10px;
+}
+
+:root {
+    /* Primary call-to-action fill (same gradient as the landing hero CTA). */
+    --gradient-primary: linear-gradient(135deg, #8b5cf6 0%, #7c3aed 55%, #6d28d9 100%);
+    --gradient-primary-hover: linear-gradient(135deg, #9569f7 0%, #8b5cf6 55%, #7c3aed 100%);
+    /* Signature violet → pink sweep used for progress, meters and highlights. */
+    --gradient-brand: linear-gradient(90deg, #a78bfa 0%, #f472b6 100%);
+    --shadow-primary: inset 0 1px 0 rgb(255 255 255 / 22%), 0 14px 30px -14px rgb(124 58 237 / 80%);
+    --radius-button: 12px;
 }

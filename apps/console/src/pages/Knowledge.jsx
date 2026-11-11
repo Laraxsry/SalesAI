@@ -49,7 +49,7 @@ const TYPES = [
 
 const STATUS = {
     pending: { label: 'Bekliyor', icon: Clock, className: 'text-text-muted bg-surface-raised' },
-    processing: { label: 'İşleniyor', icon: Loader2, className: 'text-brand-light bg-brand/15', spin: true },
+    processing: { label: 'İşleniyor', icon: Loader2, className: 'text-brand bg-brand/15 ring-1 ring-inset ring-brand/40', spin: true },
     ready: { label: 'Hazır', icon: CheckCircle2, className: 'text-emerald-400 bg-emerald-500/10' },
     failed: { label: 'Başarısız', icon: XCircle, className: 'text-red-400 bg-red-500/10' }
 };
@@ -76,7 +76,7 @@ function Dropzone({ file, accept, onFile }) {
                 dragging ? 'border-brand bg-brand/10' : 'border-border hover:border-brand/50'
             }`}
         >
-            <UploadCloud size={22} className={dragging ? 'text-brand-light' : 'text-text-muted'} />
+            <UploadCloud size={22} className={dragging ? 'text-brand' : 'text-text-muted'} />
             <p className="text-sm text-text">
                 {file ? file.name : 'Dosyayı sürükle bırak ya da seçmek için tıkla'}
             </p>
@@ -169,7 +169,7 @@ function SourceRow({ source: s, progress, icon, isGroup, expanded, onToggle, chi
                         </p>
                     )}
                     {isInProgress && persistedProgress?.stage && (
-                        <p className="mt-0.5 text-[11px] text-brand-light">
+                        <p className="mt-0.5 text-[11px] text-brand">
                             {persistedProgress.stage}
                             {persistedProgress.attemptCurrent != null
                                 ? ` · Bu deneme: ${persistedProgress.attemptCurrent}/${persistedProgress.attemptMax}`
@@ -204,7 +204,7 @@ function SourceRow({ source: s, progress, icon, isGroup, expanded, onToggle, chi
             {isInProgress && (
                 <span className="absolute inset-x-0 bottom-0 h-0.5 bg-surface-raised">
                     <span
-                        className={`block h-full bg-brand ${isIndeterminate ? 'w-1/3 animate-pulse' : 'transition-[width] duration-300'}`}
+                        className={`block h-full brand-gradient ${isIndeterminate ? 'w-1/3 animate-pulse' : 'transition-[width] duration-300'}`}
                         style={isIndeterminate ? undefined : { width: `${progressPct}%` }}
                     />
                 </span>
@@ -246,8 +246,8 @@ function TopicPreviewRow({ topic, onOpen }) {
  */
 function TopicPreviewModal({ topic, productId, onClose }) {
     return (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4">
-            <div className="flex max-h-[85vh] w-full max-w-2xl flex-col rounded-[var(--radius-card)] border border-border bg-surface p-6">
+        <div className="app-scrim fixed inset-0 z-50 flex items-center justify-center p-4">
+            <div className="flex max-h-[85vh] w-full max-w-2xl flex-col rounded-[var(--radius-card)] border border-border bg-surface p-6 shadow-(--shadow-float)">
                 <div className="mb-4 flex items-center justify-between">
                     <div className="flex items-center gap-2">
                         <Sparkles size={16} className="text-brand" />
@@ -259,7 +259,7 @@ function TopicPreviewModal({ topic, productId, onClose }) {
                 </div>
 
                 <div className="min-h-0 flex-1 overflow-y-auto pr-1">
-                    <span className="mb-4 inline-block rounded bg-brand/15 px-1.5 py-0.5 text-[10px] font-medium text-brand-light">
+                    <span className="mb-4 inline-block rounded bg-brand/15 px-1.5 py-0.5 text-[10px] font-medium text-brand">
                         Otomatik oluşturuldu
                     </span>
 
@@ -286,7 +286,7 @@ function TopicPreviewModal({ topic, productId, onClose }) {
                     </Button>
                     <Link
                         to={`/knowledge/gaps?product=${productId}&tab=site`}
-                        className="flex h-10 items-center rounded-[var(--radius-input)] bg-brand px-4 text-sm font-medium text-white transition-colors hover:bg-brand-dark"
+                        className="flex h-10 items-center rounded-[var(--radius-input)] bg-[image:var(--gradient-primary)] px-4 text-sm font-medium text-white shadow-(--shadow-primary) transition-colors hover:bg-[image:var(--gradient-primary-hover)]"
                     >
                         Düzenle → Site Bilgisi&apos;nde aç
                     </Link>
@@ -356,8 +356,8 @@ function AddSourceModal({ productId, onClose, onCreated }) {
     }
 
     return (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4">
-            <div className="w-full max-w-md rounded-[var(--radius-card)] border border-border bg-surface p-6">
+        <div className="app-scrim fixed inset-0 z-50 flex items-center justify-center p-4">
+            <div className="w-full max-w-md rounded-[var(--radius-card)] border border-border bg-surface p-6 shadow-(--shadow-float)">
                 <div className="mb-6 flex items-center justify-between">
                     <h2 className="text-lg font-semibold text-text">Knowledge ekle</h2>
                     <button onClick={onClose} aria-label="Kapat" className="text-text-muted hover:text-text">
@@ -374,7 +374,7 @@ function AddSourceModal({ productId, onClose, onCreated }) {
                                 onClick={() => setType(value)}
                                 className={`flex flex-col items-center gap-1.5 rounded-[var(--radius-input)] border px-2 py-3 text-xs transition-colors ${
                                     type === value
-                                        ? 'border-brand bg-brand/10 text-brand-light'
+                                        ? 'border-brand bg-brand/10 text-brand'
                                         : 'border-border text-text-muted hover:border-brand/40 hover:text-text'
                                 }`}
                             >
@@ -420,11 +420,11 @@ function AddSourceModal({ productId, onClose, onCreated }) {
                                     <legend className="mb-2 text-sm font-medium text-text-muted">Erişim türü</legend>
                                     <div className="grid grid-cols-2 gap-2">
                                         <label className="rounded-[var(--radius-input)] border border-border p-3 text-sm text-text">
-                                            <input className="mr-2" type="radio" value="public" {...register('accessMode')} />
+                                            <input className="mr-2 accent-brand" type="radio" value="public" {...register('accessMode')} />
                                             Public / anonim
                                         </label>
                                         <label className="rounded-[var(--radius-input)] border border-border p-3 text-sm text-text">
-                                            <input className="mr-2" type="radio" value="authenticated" {...register('accessMode')} />
+                                            <input className="mr-2 accent-brand" type="radio" value="authenticated" {...register('accessMode')} />
                                             Giriş gerektiren panel
                                         </label>
                                     </div>
@@ -633,8 +633,8 @@ function KnowledgeDetailModal({ source: s, onClose, onSaved }) {
     }
 
     return (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4">
-            <div className="flex max-h-[85vh] w-full max-w-2xl flex-col rounded-[var(--radius-card)] border border-border bg-surface p-6">
+        <div className="app-scrim fixed inset-0 z-50 flex items-center justify-center p-4">
+            <div className="flex max-h-[85vh] w-full max-w-2xl flex-col rounded-[var(--radius-card)] border border-border bg-surface p-6 shadow-(--shadow-float)">
                 <div className="mb-4 flex items-center justify-between">
                     <div className="flex items-center gap-2">
                         <TypeIcon size={16} className="text-text-muted" />
@@ -744,7 +744,7 @@ function KnowledgeDetailModal({ source: s, onClose, onSaved }) {
                             )}
                             {overviewChunk && (
                                 <div className="mb-3 rounded-[var(--radius-input)] border border-brand/30 bg-brand/5 p-3">
-                                    <span className="mb-1.5 inline-block rounded bg-brand/15 px-1.5 py-0.5 text-[10px] font-medium text-brand-light">
+                                    <span className="mb-1.5 inline-block rounded bg-brand/15 px-1.5 py-0.5 text-[10px] font-medium text-brand">
                                         genel özet
                                     </span>
                                     <p className="whitespace-pre-wrap text-xs text-text">{overviewChunk.text}</p>
@@ -757,7 +757,7 @@ function KnowledgeDetailModal({ source: s, onClose, onSaved }) {
                                         className="rounded-[var(--radius-input)] border border-border bg-bg p-3"
                                     >
                                         <p
-                                            className="mb-2 truncate font-mono text-xs text-brand-light"
+                                            className="mb-2 truncate font-mono text-xs text-brand"
                                             title={pageUrl || undefined}
                                         >
                                             {pageUrl || 'Sayfa bilgisi yok (eski kayıt)'}
@@ -775,14 +775,14 @@ function KnowledgeDetailModal({ source: s, onClose, onSaved }) {
                                                     <span
                                                         className={`mb-1 mr-1 inline-block rounded px-1.5 py-0.5 text-[10px] font-medium ${
                                                             c.audience === 'technical'
-                                                                ? 'bg-brand/15 text-brand-light'
+                                                                ? 'bg-brand/15 text-brand'
                                                                 : 'bg-surface text-text-muted'
                                                         }`}
                                                     >
                                                         {c.audience === 'technical' ? 'teknik' : 'genel'}
                                                     </span>
                                                     {c.synthesized && (
-                                                        <span className="mb-1 inline-block rounded bg-brand/15 px-1.5 py-0.5 text-[10px] font-medium text-brand-light">
+                                                        <span className="mb-1 inline-block rounded bg-brand/15 px-1.5 py-0.5 text-[10px] font-medium text-brand">
                                                             yorumlanmış özet
                                                         </span>
                                                     )}

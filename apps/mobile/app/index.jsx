@@ -13,7 +13,7 @@ import { StatusBar } from 'expo-status-bar';
 import { useRouter, useFocusEffect } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import { getSavedConversations } from '../src/savedConversations';
-import { FONT, SHADOWS } from '../src/theme';
+import { DARK_COLORS, FONT, SHADOWS, inputTint } from '../src/theme';
 import { useAppTheme } from '../src/theme-context';
 
 /** Mobile visitor landing. Users join with an agent token or share link. */
@@ -82,7 +82,7 @@ export default function Home() {
 
                     <View style={styles.heroCopy}>
                         <Text style={styles.eyebrow}>YAPAY ZEKA İLE CANLI GÖRÜŞME</Text>
-                        <Text style={styles.heroTitle}>Doğru cevaba,{`\n`}daha hızlı ulaşın.</Text>
+                        <Text style={styles.heroTitle}>Doğru cevaba,{`\n`}<Text style={styles.heroTitleAccent}>daha hızlı ulaşın.</Text></Text>
                         <Text style={styles.heroDescription}>
                             Sorularınızı sorun, ürünü canlı görün ve ihtiyacınız olan desteği anında alın.
                         </Text>
@@ -92,7 +92,7 @@ export default function Home() {
                 <View style={styles.joinCard}>
                     <View style={styles.cardHeadingRow}>
                         <View style={styles.cardIcon}>
-                            <Ionicons name="sparkles-outline" size={19} color={colors.tealDark} />
+                            <Ionicons name="sparkles-outline" size={19} color={isDark ? colors.accent : colors.primary} />
                         </View>
                         <View style={styles.cardHeadingCopy}>
                             <Text style={styles.cardTitle}>Görüşmeye katılın</Text>
@@ -107,6 +107,7 @@ export default function Home() {
                             style={styles.input}
                             placeholder="Bağlantı veya kod"
                             placeholderTextColor={colors.soft}
+                            {...inputTint(colors, isDark)}
                             value={input}
                             onChangeText={(text) => {
                                 setInput(text);
@@ -129,12 +130,12 @@ export default function Home() {
 
                     <View style={styles.assuranceRow}>
                         <View style={styles.assuranceItem}>
-                            <Ionicons name="mic-outline" size={15} color={colors.teal} />
+                            <Ionicons name="mic-outline" size={15} color={isDark ? colors.accent : colors.primary} />
                             <Text style={styles.assuranceText}>Sesli görüşme</Text>
                         </View>
                         <View style={styles.assuranceDivider} />
                         <View style={styles.assuranceItem}>
-                            <Ionicons name="shield-checkmark-outline" size={15} color={colors.teal} />
+                            <Ionicons name="shield-checkmark-outline" size={15} color={isDark ? colors.accent : colors.primary} />
                             <Text style={styles.assuranceText}>Şifreli bağlantı</Text>
                         </View>
                     </View>
@@ -184,7 +185,7 @@ const createStyles = (colors, isDark) => StyleSheet.create({
         height: 280,
         borderRadius: 140,
         borderWidth: 42,
-        borderColor: 'rgba(4, 120, 87, 0.12)',
+        borderColor: 'rgba(124, 58, 237, 0.18)',
         right: -118,
         top: 86,
     },
@@ -193,13 +194,13 @@ const createStyles = (colors, isDark) => StyleSheet.create({
         width: 190,
         height: 190,
         borderRadius: 95,
-        backgroundColor: 'rgba(6, 78, 59, 0.2)',
+        backgroundColor: 'rgba(236, 72, 153, 0.12)',
         left: -110,
         top: -68,
     },
     brandRow: { flexDirection: 'row', alignItems: 'center' },
     brand: { color: colors.white, fontFamily: FONT.bold, fontSize: 19, letterSpacing: -0.5 },
-    brandAccent: { color: colors.lime },
+    brandAccent: { color: colors.accent },
     headerActions: { marginLeft: 'auto', flexDirection: 'row', alignItems: 'center', gap: 8 },
     themeButton: {
         width: 34,
@@ -222,11 +223,14 @@ const createStyles = (colors, isDark) => StyleSheet.create({
         paddingHorizontal: 10,
         paddingVertical: 7,
     },
-    liveDot: { width: 6, height: 6, borderRadius: 3, backgroundColor: '#10B981' },
+    // The hero is a night surface in both themes, so its "secure" dot uses the
+    // dark palette's success green.
+    liveDot: { width: 6, height: 6, borderRadius: 3, backgroundColor: DARK_COLORS.success },
     secureText: { color: 'rgba(255,255,255,0.72)', fontFamily: FONT.bold, fontSize: 9, letterSpacing: 1 },
     heroCopy: { marginTop: 62, maxWidth: 340 },
-    eyebrow: { color: '#10B981', fontFamily: FONT.bold, fontSize: 10, letterSpacing: 1.7 },
+    eyebrow: { color: colors.accent, fontFamily: FONT.bold, fontSize: 10, letterSpacing: 1.7 },
     heroTitle: { marginTop: 13, color: colors.white, fontFamily: FONT.bold, fontSize: 38, lineHeight: 43, letterSpacing: -1.6 },
+    heroTitleAccent: { color: colors.accent },
     heroDescription: { marginTop: 15, maxWidth: 315, color: 'rgba(255,255,255,0.65)', fontFamily: FONT.regular, fontSize: 15, lineHeight: 23 },
     joinCard: {
         marginTop: -58,
@@ -239,7 +243,7 @@ const createStyles = (colors, isDark) => StyleSheet.create({
         ...SHADOWS.card,
     },
     cardHeadingRow: { flexDirection: 'row', alignItems: 'center', marginBottom: 23 },
-    cardIcon: { width: 42, height: 42, borderRadius: 14, alignItems: 'center', justifyContent: 'center', backgroundColor: isDark ? colors.surfaceMuted : '#ECFDF5' },
+    cardIcon: { width: 42, height: 42, borderRadius: 14, alignItems: 'center', justifyContent: 'center', backgroundColor: isDark ? colors.surfaceMuted : '#F5F3FF' },
     cardHeadingCopy: { flex: 1, marginLeft: 12 },
     cardTitle: { color: colors.text, fontFamily: FONT.bold, fontSize: 18, letterSpacing: -0.35 },
     cardSubtitle: { marginTop: 3, color: colors.muted, fontFamily: FONT.regular, fontSize: 12.5, lineHeight: 18 },
@@ -265,7 +269,7 @@ const createStyles = (colors, isDark) => StyleSheet.create({
         alignItems: 'center',
         justifyContent: 'center',
         borderRadius: 16,
-        backgroundColor: colors.teal,
+        backgroundColor: colors.primary,
         paddingHorizontal: 8,
         ...SHADOWS.button,
     },
@@ -300,5 +304,5 @@ const createStyles = (colors, isDark) => StyleSheet.create({
     secondaryActionText: { marginTop: 2, color: colors.muted, fontFamily: FONT.regular, fontSize: 11 },
     sellerLink: { marginTop: 10, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 7, paddingVertical: 12 },
     sellerLinkText: { color: colors.muted, fontFamily: FONT.medium, fontSize: 11.5 },
-    footer: { marginTop: 'auto', paddingTop: 20, textAlign: 'center', color: colors.soft, fontFamily: FONT.medium, fontSize: 10.5 },
+    footer: { marginTop: 'auto', paddingTop: 20, textAlign: 'center', color: colors.muted, fontFamily: FONT.medium, fontSize: 10.5 },
 });

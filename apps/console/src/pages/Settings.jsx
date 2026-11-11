@@ -42,7 +42,7 @@ export function Settings() {
             <section className="mb-8">
                 <h2 className="mb-3 text-sm font-semibold text-text-muted">{t('settings.tabs.account')}</h2>
                 <div className="flex items-center gap-4 rounded-[var(--radius-card)] border border-border bg-surface p-5">
-                    <span className="flex h-12 w-12 shrink-0 items-center justify-center rounded-full bg-brand/20 text-sm font-bold text-brand-light">
+                    <span className="flex h-12 w-12 shrink-0 items-center justify-center rounded-full bg-brand/15 text-sm font-bold text-brand">
                         {initials(user?.name || user?.email)}
                     </span>
                     <div>
@@ -63,7 +63,7 @@ export function Settings() {
                             aria-pressed={i18n.resolvedLanguage === lang.code}
                             className={`rounded-[var(--radius-input)] px-3 py-1.5 text-sm font-medium transition-colors ${
                                 i18n.resolvedLanguage === lang.code
-                                    ? 'bg-brand/15 text-brand-light'
+                                    ? 'bg-brand/15 text-brand'
                                     : 'text-text-muted hover:text-text'
                             }`}
                         >
@@ -90,15 +90,15 @@ export function Settings() {
                                     className="flex w-full items-center justify-between px-5 py-3.5 text-left transition-colors hover:bg-surface-raised"
                                 >
                                     <div className="flex items-center gap-3">
-                                        <span className="flex h-9 w-9 items-center justify-center rounded-full bg-brand/15 text-brand-light">
+                                        <span className="flex h-9 w-9 items-center justify-center rounded-full bg-brand/15 text-brand">
                                             <Building2 size={16} aria-hidden="true" />
                                         </span>
                                         <div>
-                                            <p className={`text-sm font-medium ${isActive ? 'text-brand-light' : 'text-text'}`}>{ws.name}</p>
+                                            <p className={`text-sm font-medium ${isActive ? 'text-brand' : 'text-text'}`}>{ws.name}</p>
                                             <p className="text-xs text-text-muted">{ws.role}</p>
                                         </div>
                                     </div>
-                                    {isActive && <Check size={16} className="text-brand-light" aria-hidden="true" />}
+                                    {isActive && <Check size={16} className="text-brand" aria-hidden="true" />}
                                 </button>
                             );
                         })}

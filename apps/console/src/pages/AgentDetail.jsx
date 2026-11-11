@@ -156,7 +156,7 @@ export function AgentDetail() {
             </div>
 
             <div className="mb-6 flex items-center gap-3">
-                <span className="flex h-11 w-11 items-center justify-center rounded-full bg-brand/15 text-brand-light">
+                <span className="flex h-11 w-11 items-center justify-center rounded-full bg-brand/15 text-brand">
                     <Bot size={20} />
                 </span>
                 <div>
@@ -246,7 +246,7 @@ export function AgentDetail() {
                                             type="button"
                                             onClick={saveMaxParticipants}
                                             disabled={busy}
-                                            className="rounded-[var(--radius-input)] bg-brand px-2.5 py-1 text-xs font-semibold text-white disabled:opacity-50"
+                                            className="rounded-[var(--radius-input)] bg-[image:var(--gradient-primary)] px-2.5 py-1 text-xs font-semibold text-white shadow-(--shadow-primary) enabled:hover:bg-[image:var(--gradient-primary-hover)] disabled:opacity-50"
                                         >
                                             Kaydet
                                         </button>
@@ -269,7 +269,7 @@ export function AgentDetail() {
                                         disabled={busy}
                                         className={`rounded-[var(--radius-input)] px-2.5 py-1 text-xs font-semibold disabled:opacity-50 ${
                                             agent.preCallSurveyEnabled
-                                                ? 'bg-brand text-white'
+                                                ? 'bg-brand text-on-brand'
                                                 : 'border border-border text-text-muted'
                                         }`}
                                     >
@@ -336,7 +336,7 @@ export function AgentDetail() {
                             href={agent.shareUrl}
                             target="_blank"
                             rel="noreferrer"
-                            className="flex flex-1 items-center gap-1.5 truncate rounded-[var(--radius-input)] border border-border bg-bg px-3 py-2 text-sm text-brand-light hover:text-brand"
+                            className="flex flex-1 items-center gap-1.5 truncate rounded-[var(--radius-input)] border border-border bg-bg px-3 py-2 text-sm text-brand hover:text-brand-hover"
                         >
                             <ExternalLink size={13} className="shrink-0" />
                             <span className="truncate">{agent.shareUrl}</span>

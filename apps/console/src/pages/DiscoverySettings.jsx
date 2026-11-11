@@ -33,7 +33,7 @@ export function DiscoverySettings({ product }) {
     return (
         <section className="mt-8 rounded-[var(--radius-card)] border border-border bg-surface p-5">
             <div className="flex items-center gap-2">
-                <MessageCircleQuestion size={18} className="text-brand-light" />
+                <MessageCircleQuestion size={18} className="text-brand" />
                 <h2 className="text-lg font-medium text-text">Görüşme içi keşif soruları</h2>
             </div>
             <p className="mt-2 text-sm text-text-muted">
@@ -51,7 +51,7 @@ export function DiscoverySettings({ product }) {
             </label>
             <div className="mt-4 space-y-3">
                 {FIELDS.map((field) => (
-                    <div key={field.id} className="flex flex-col gap-2 rounded-xl border border-border/70 bg-bg-muted p-3 sm:flex-row sm:items-center sm:justify-between">
+                    <div key={field.id} className="flex flex-col gap-2 rounded-xl border border-border/70 bg-bg p-3 sm:flex-row sm:items-center sm:justify-between">
                         <div>
                             <p className="text-sm font-medium text-text">{field.label}</p>
                             <p className="text-xs text-text-muted">{field.effect}</p>
@@ -63,7 +63,7 @@ export function DiscoverySettings({ product }) {
                                 setPriorities((current) => ({ ...current, [field.id]: event.target.value }));
                                 setSaved(false);
                             }}
-                            className="rounded-[var(--radius-input)] border border-input-border bg-input-bg px-3 py-2 text-sm text-text"
+                            className="rounded-[var(--radius-input)] border border-border bg-surface px-3 py-2 text-sm text-text"
                         >
                             {PRIORITIES.map((priority) => (
                                 <option key={priority.value} value={priority.value}>{priority.label}</option>
@@ -81,12 +81,12 @@ export function DiscoverySettings({ product }) {
                 Bu deneysel özellik ayrıca sunucu tarafındaki pilot anahtarına bağlıdır; burada izin vermek tek başına canlı görüşmelerde açmaz.
             </p>
             {mutation.error && <p role="alert" className="mt-3 text-sm text-red-400">{mutation.error.message}</p>}
-            {saved && <p role="status" className="mt-3 text-sm text-brand-light">Ayarlar kaydedildi.</p>}
+            {saved && <p role="status" className="mt-3 text-sm text-brand">Ayarlar kaydedildi.</p>}
             <button
                 type="button"
                 disabled={mutation.isPending || (enabled && selected.length === 0)}
                 onClick={() => mutation.mutate({ enabled, priorities })}
-                className="mt-4 rounded-[var(--radius-button)] bg-brand px-4 py-2 text-sm font-medium text-white hover:bg-brand-hover disabled:opacity-50"
+                className="mt-4 rounded-[var(--radius-button)] bg-[image:var(--gradient-primary)] px-4 py-2 text-sm font-medium text-white shadow-(--shadow-primary) enabled:hover:bg-[image:var(--gradient-primary-hover)] disabled:opacity-50"
             >
                 {mutation.isPending ? 'Kaydediliyor…' : 'Keşif ayarlarını kaydet'}
             </button>

@@ -109,7 +109,7 @@ function Captions({ segments, surveyActive = false }) {
     if (!last?.text) return null;
     return (
         <div aria-live="polite" aria-atomic="true" className={`pointer-events-none absolute left-1/2 w-full max-w-lg -translate-x-1/2 px-4 ${surveyActive ? 'bottom-64 sm:bottom-56' : 'bottom-24'}`}>
-            <p className="rounded-xl border border-white/10 bg-[#071426]/85 px-4 py-2.5 text-center text-sm font-medium text-white backdrop-blur-xl">
+            <p className="rounded-xl border border-white/10 bg-(--color-shell)/85 px-4 py-2.5 text-center text-sm font-medium text-white backdrop-blur-xl">
                 {last.text}
             </p>
         </div>
@@ -278,15 +278,16 @@ export function VisitRoom({ embed, embedConfig, sessionId, roomName, maxParticip
     return (
         <div className="visitor-stage relative flex h-full flex-col overflow-hidden bg-bg" data-closing={closing || undefined}>
             <RoomAudioRenderer />
+            <div className="visitor-stars visitor-stars--room absolute inset-0" aria-hidden="true" />
             <div className="visitor-grid pointer-events-none absolute inset-0 opacity-30" />
 
             {!embed && (
-                <div className="relative z-20 flex h-[72px] items-center justify-between border-b border-white/8 bg-[#071426]/85 px-5 backdrop-blur-xl sm:px-7">
+                <div className="relative z-20 flex h-[72px] items-center justify-between border-b border-white/8 bg-(--color-shell)/85 px-5 backdrop-blur-xl sm:px-7">
                     <div className="flex items-center gap-3">
-                        <Logo className="[&_span]:text-white [&_span_span]:text-[#67e8f9]" />
+                        <Logo className="[&_span]:text-white [&_span_span]:text-(--color-accent)" />
                     </div>
                     <span className="inline-flex items-center gap-2 rounded-full border border-white/10 bg-white/[0.06] px-3 py-1.5 text-[11px] font-bold text-white/60">
-                        <span className="h-1.5 w-1.5 rounded-full bg-[#67e8f9]" />
+                        <span className="h-1.5 w-1.5 rounded-full bg-(--color-accent)" />
                         {STATE_LABEL[state] ?? state}
                     </span>
                 </div>
@@ -336,13 +337,13 @@ export function VisitRoom({ embed, embedConfig, sessionId, roomName, maxParticip
                 )}
 
                 {tourTrack && (
-                    <div className="absolute left-4 top-4 rounded-xl border border-white/10 bg-[#071426]/80 px-3 py-2 text-[11px] font-bold text-white backdrop-blur" role="status">
+                    <div className="absolute left-4 top-4 rounded-xl border border-white/10 bg-(--color-shell)/80 px-3 py-2 text-[11px] font-bold text-white backdrop-blur" role="status">
                         AI size ürünü gösteriyor
                     </div>
                 )}
 
                 {mainTrack && meetingText && (
-                    <div className="absolute left-1/2 top-4 -translate-x-1/2 rounded-xl border border-white/10 bg-[#071426]/85 px-3 py-2 text-center text-[11px] font-medium text-white/80 backdrop-blur" role="status">
+                    <div className="absolute left-1/2 top-4 -translate-x-1/2 rounded-xl border border-white/10 bg-(--color-shell)/85 px-3 py-2 text-center text-[11px] font-medium text-white/80 backdrop-blur" role="status">
                         {meetingText}
                     </div>
                 )}
@@ -354,7 +355,7 @@ export function VisitRoom({ embed, embedConfig, sessionId, roomName, maxParticip
                 )}
 
                 {isScreenShareEnabled && (
-                    <div className="absolute left-4 top-4 rounded-xl bg-brand px-3 py-2 text-[11px] font-bold text-white" role="status">
+                    <div className="absolute left-4 top-4 rounded-xl bg-brand px-3 py-2 text-[11px] font-bold text-on-brand" role="status">
                         Ekranınız görüşmeyle paylaşılıyor
                     </div>
                 )}
@@ -378,21 +379,21 @@ export function VisitRoom({ embed, embedConfig, sessionId, roomName, maxParticip
             <ParticipantsPanel maxParticipants={maxParticipants} />
 
             {showShareConsent && (
-                <div className="absolute inset-0 z-40 flex items-center justify-center bg-black/70 p-5">
-                    <div role="dialog" aria-modal="true" aria-labelledby="share-consent-title" className="w-full max-w-sm rounded-[24px] border border-white/10 bg-[#0b1830] p-6 shadow-2xl">
+                <div className="app-scrim absolute inset-0 z-40 flex items-center justify-center p-5">
+                    <div role="dialog" aria-modal="true" aria-labelledby="share-consent-title" className="w-full max-w-sm rounded-[24px] border border-white/10 bg-surface p-6 shadow-(--shadow-float)">
                         <h2 id="share-consent-title" className="text-base font-semibold text-text">Ekranınızı paylaşmak istiyor musunuz?</h2>
                         <p className="mt-2 text-sm leading-6 text-text-muted">
                             Seçtiğiniz ekran görüşmedeki AI tarafından analiz edilebilir. Paylaşımı istediğiniz an durdurabilirsiniz; görüntüler varsayılan olarak saklanmaz.
                         </p>
                         <div className="mt-5 flex justify-end gap-2">
                             <button type="button" onClick={() => setShowShareConsent(false)} className="rounded-[var(--radius-input)] px-3 py-2 text-sm text-text-muted hover:bg-surface-raised">Vazgeç</button>
-                            <button type="button" onClick={confirmScreenShare} className="rounded-xl bg-[#67e8f9] px-4 py-2.5 text-sm font-bold text-[#071426]">Paylaş</button>
+                            <button type="button" onClick={confirmScreenShare} className="rounded-xl bg-[image:var(--gradient-primary)] px-4 py-2.5 text-sm font-bold text-white shadow-(--shadow-primary)">Paylaş</button>
                         </div>
                     </div>
                 </div>
             )}
 
-            <div className="room-controls relative z-20 flex items-center justify-center gap-3 border-t border-white/8 bg-[#071426]/90 px-6 py-4 backdrop-blur-xl">
+            <div className="room-controls relative z-20 flex items-center justify-center gap-3 border-t border-white/8 bg-(--color-shell)/90 px-6 py-4 backdrop-blur-xl">
                 <button
                     onClick={toggleMic}
                     title={isMicrophoneEnabled ? 'Mikrofonu kapat' : 'Mikrofonu aç'}
@@ -410,7 +411,7 @@ export function VisitRoom({ embed, embedConfig, sessionId, roomName, maxParticip
                         aria-pressed={handRaised}
                         className={`flex h-12 w-12 items-center justify-center rounded-2xl border transition-colors ${
                             handRaised
-                                ? 'border-[#67e8f9] bg-[#67e8f9] text-[#071426]'
+                                ? 'border-(--color-accent) bg-(--color-accent) text-[#1a1145]'
                                 : 'border-white/10 bg-white/[0.07] text-white hover:bg-white/10'
                         }`}
                     >
@@ -422,7 +423,7 @@ export function VisitRoom({ embed, embedConfig, sessionId, roomName, maxParticip
                     onClick={toggleScreenShare}
                     title={isScreenShareEnabled ? 'Ekran paylaşımını durdur' : 'Ekranımı paylaş'}
                     className={`flex h-12 w-12 items-center justify-center rounded-2xl border transition-colors ${
-                        isScreenShareEnabled ? 'border-[#67e8f9] bg-[#67e8f9] text-[#071426]' : 'border-white/10 bg-white/[0.07] text-white hover:bg-white/10'
+                        isScreenShareEnabled ? 'border-(--color-accent) bg-(--color-accent) text-[#1a1145]' : 'border-white/10 bg-white/[0.07] text-white hover:bg-white/10'
                     }`}
                 >
                     {isScreenShareEnabled ? <ScreenShareOff size={18} /> : <ScreenShare size={18} />}
@@ -431,7 +432,7 @@ export function VisitRoom({ embed, embedConfig, sessionId, roomName, maxParticip
                 <button
                     onClick={endCall}
                     title="Görüşmeyi sonlandır"
-                    className="ml-2 flex h-12 w-12 items-center justify-center rounded-2xl bg-[#e7584a] text-white transition-colors hover:bg-[#d94b3e]"
+                    className="ml-2 flex h-12 w-12 items-center justify-center rounded-2xl bg-[#f43f5e] text-white transition-colors hover:bg-[#e11d48]"
                 >
                     <PhoneOff size={18} />
                 </button>

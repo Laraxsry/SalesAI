@@ -64,7 +64,7 @@ export function EngagementSettings({ product }) {
     return (
         <section className="mt-8 rounded-[var(--radius-card)] border border-border bg-surface p-5">
             <div className="flex items-center gap-2">
-                <BrainCircuit size={18} className="text-brand-light" />
+                <BrainCircuit size={18} className="text-brand" />
                 <h2 className="text-lg font-medium text-text">Akıllı görüşme orkestrasyonu</h2>
             </div>
             <p className="mt-2 text-sm text-text-muted">
@@ -74,7 +74,7 @@ export function EngagementSettings({ product }) {
 
             <div className="mt-5 grid gap-3 sm:grid-cols-2">
                 {CAPABILITIES.map(([key, label, description]) => (
-                    <label key={key} className="flex gap-3 rounded-xl border border-border/70 bg-bg-muted p-3">
+                    <label key={key} className="flex gap-3 rounded-xl border border-border/70 bg-bg p-3">
                         <input
                             type="checkbox"
                             checked={settings[key]}
@@ -107,7 +107,7 @@ export function EngagementSettings({ product }) {
                                     }
                                 }));
                             }}
-                            className="rounded-[var(--radius-input)] border border-input-border bg-input-bg px-3 py-2 text-xs text-text"
+                            className="rounded-[var(--radius-input)] border border-border bg-bg px-3 py-2 text-xs text-text"
                         >
                             {POLICIES.map(([value, text]) => (
                                 <option key={value} value={value}>{text}</option>
@@ -117,7 +117,7 @@ export function EngagementSettings({ product }) {
                 ))}
             </div>
 
-            <div className="mt-6 rounded-xl border border-border/70 bg-bg-muted p-3">
+            <div className="mt-6 rounded-xl border border-border/70 bg-bg p-3">
                 <label className="flex items-center gap-3 text-sm text-text">
                     <input
                         type="checkbox"
@@ -146,7 +146,7 @@ export function EngagementSettings({ product }) {
                                         scheduling: { ...current.scheduling, timezone: event.target.value }
                                     }));
                                 }}
-                                className="mt-1 w-full rounded-[var(--radius-input)] border border-input-border bg-input-bg px-3 py-2 text-sm text-text"
+                                className="mt-1 w-full rounded-[var(--radius-input)] border border-border bg-surface px-3 py-2 text-sm text-text"
                             />
                         </label>
                         <label className="text-xs text-text-muted">
@@ -166,7 +166,7 @@ export function EngagementSettings({ product }) {
                                         }
                                     }));
                                 }}
-                                className="mt-1 w-full rounded-[var(--radius-input)] border border-input-border bg-input-bg px-3 py-2 text-sm text-text"
+                                className="mt-1 w-full rounded-[var(--radius-input)] border border-border bg-surface px-3 py-2 text-sm text-text"
                             />
                         </label>
                     </div>
@@ -176,12 +176,12 @@ export function EngagementSettings({ product }) {
             {mutation.error && (
                 <p role="alert" className="mt-3 text-sm text-red-400">{mutation.error.message}</p>
             )}
-            {saved && <p role="status" className="mt-3 text-sm text-brand-light">Ayarlar kaydedildi.</p>}
+            {saved && <p role="status" className="mt-3 text-sm text-brand">Ayarlar kaydedildi.</p>}
             <button
                 type="button"
                 disabled={mutation.isPending}
                 onClick={() => mutation.mutate(settings)}
-                className="mt-4 rounded-[var(--radius-button)] bg-brand px-4 py-2 text-sm font-medium text-white hover:bg-brand-hover disabled:opacity-50"
+                className="mt-4 rounded-[var(--radius-button)] bg-[image:var(--gradient-primary)] px-4 py-2 text-sm font-medium text-white shadow-(--shadow-primary) enabled:hover:bg-[image:var(--gradient-primary-hover)] disabled:opacity-50"
             >
                 {mutation.isPending ? 'Kaydediliyor…' : 'Orkestrasyon ayarlarını kaydet'}
             </button>

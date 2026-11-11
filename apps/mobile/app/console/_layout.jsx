@@ -12,7 +12,7 @@ export const useAuth = () => useContext(AuthContext);
 const STORAGE_KEY = 'salesai-console-auth';
 
 export default function ConsoleLayout() {
-    const { colors } = useAppTheme();
+    const { colors, isDark } = useAppTheme();
     const styles = createStyles(colors);
     const [token, setToken] = useState(null);
     const [refreshToken, setRefreshToken] = useState(null);
@@ -129,7 +129,7 @@ export default function ConsoleLayout() {
     if (restoring) {
         return (
             <View style={styles.splash}>
-                <ActivityIndicator size="large" color={colors.lime} />
+                <ActivityIndicator size="large" color={isDark ? colors.accent : colors.primary} />
             </View>
         );
     }

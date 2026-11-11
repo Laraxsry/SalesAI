@@ -56,17 +56,17 @@ export function ParticipantsPanel({ maxParticipants }) {
                     type="button"
                     onClick={() => setOpen(true)}
                     aria-label={`Katılımcılar (${humanCount})`}
-                    className="absolute right-0 top-24 z-30 flex items-center gap-2 rounded-l-2xl border border-r-0 border-white/10 bg-[#071426]/90 py-3 pl-3 pr-2.5 text-white/70 backdrop-blur-xl transition-colors hover:text-white"
+                    className="absolute right-0 top-24 z-30 flex items-center gap-2 rounded-l-2xl border border-r-0 border-white/10 bg-(--color-shell)/90 py-3 pl-3 pr-2.5 text-white/70 backdrop-blur-xl transition-colors hover:text-white"
                 >
                     <Users size={16} />
-                    <span className="min-w-[20px] rounded-full bg-[#67e8f9] px-1.5 text-center text-[11px] font-bold text-[#071426]">
+                    <span className="min-w-[20px] rounded-full bg-(--color-accent) px-1.5 text-center text-[11px] font-bold text-[#1a1145]">
                         {humanCount}
                     </span>
                 </button>
             )}
 
             <aside
-                className={`absolute right-0 top-0 bottom-0 z-30 flex w-[264px] max-w-[82vw] flex-col border-l border-white/8 bg-[#071426]/95 backdrop-blur-xl transition-transform duration-300 ${
+                className={`absolute right-0 top-0 bottom-0 z-30 flex w-[264px] max-w-[82vw] flex-col border-l border-white/8 bg-(--color-shell)/95 backdrop-blur-xl transition-transform duration-300 ${
                     open ? 'translate-x-0' : 'translate-x-full'
                 }`}
                 aria-hidden={!open}
@@ -89,15 +89,15 @@ export function ParticipantsPanel({ maxParticipants }) {
                 <ul className="flex-1 overflow-y-auto px-2 py-3">
                     <li className="mb-1 flex items-center gap-3 rounded-xl px-2 py-2">
                         <span
-                            className={`flex h-9 w-9 items-center justify-center rounded-full bg-gradient-to-br from-[#10284b] to-[#0a1a33] text-[#67e8f9] ${
-                                agent.speaking ? 'ring-2 ring-[#67e8f9]' : 'ring-1 ring-white/10'
+                            className={`flex h-9 w-9 items-center justify-center rounded-full bg-gradient-to-br from-surface-raised to-(--color-shell) text-(--color-accent) ${
+                                agent.speaking ? 'ring-2 ring-(--color-accent)' : 'ring-1 ring-white/10'
                             }`}
                         >
                             <Bot size={16} />
                         </span>
                         <span className="flex-1 truncate text-sm text-white">{agent.name}</span>
                         {agent.speaking && (
-                            <span className="text-[11px] font-medium text-[#67e8f9]">konuşuyor</span>
+                            <span className="text-[11px] font-medium text-(--color-accent)">konuşuyor</span>
                         )}
                     </li>
 
@@ -108,12 +108,12 @@ export function ParticipantsPanel({ maxParticipants }) {
                             <li
                                 key={h.identity}
                                 className={`flex items-center gap-3 rounded-xl px-2 py-2 ${
-                                    hasFloor ? 'bg-[#67e8f9]/10' : 'hover:bg-white/[0.04]'
+                                    hasFloor ? 'bg-(--color-accent)/10' : 'hover:bg-white/[0.04]'
                                 }`}
                             >
                                 <span
                                     className={`flex h-9 w-9 items-center justify-center rounded-full bg-white/[0.08] text-sm font-semibold text-white/80 ${
-                                        h.speaking || hasFloor ? 'ring-2 ring-[#67e8f9]' : 'ring-1 ring-white/10'
+                                        h.speaking || hasFloor ? 'ring-2 ring-(--color-accent)' : 'ring-1 ring-white/10'
                                     }`}
                                 >
                                     {initial(h.name)}
@@ -122,12 +122,12 @@ export function ParticipantsPanel({ maxParticipants }) {
                                     {h.name}
                                     {h.isLocal && <span className="ml-1 text-white/40">(siz)</span>}
                                     {hasFloor && (
-                                        <span className="ml-1.5 text-[11px] font-medium text-[#67e8f9]">· söz onda</span>
+                                        <span className="ml-1.5 text-[11px] font-medium text-(--color-accent)">· söz onda</span>
                                     )}
                                 </span>
                                 {place && (
                                     <span
-                                        className="flex shrink-0 items-center gap-0.5 text-[11px] font-semibold text-[#67e8f9]"
+                                        className="flex shrink-0 items-center gap-0.5 text-[11px] font-semibold text-(--color-accent)"
                                         title={`El kaldırdı — sıra ${place}`}
                                     >
                                         <Hand size={13} />

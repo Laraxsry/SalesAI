@@ -957,7 +957,7 @@ setInterval(1000ms):
   → Ziyaretçi tarayıcısında 'screen_share' track görünür (~1 FPS)
   
 AI: navigate_to('/billing/invoices') → page.goto()
-AI: highlight('#invoice-table')      → el.style.outline = '3px solid #6d5efc'
+AI: highlight('#invoice-table')      → el.style.outline = '3px solid #f472b6'
 AI: "Göründüğü gibi faturalarınız burada listelenmiştir..."
 
 [Mode B: Customer Screen Share]

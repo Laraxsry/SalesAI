@@ -125,8 +125,8 @@ function NewAgentModal({ productId, onClose, onCreated }) {
     }
 
     return (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4">
-            <div className="max-h-[90vh] w-full max-w-md overflow-y-auto rounded-[var(--radius-card)] border border-border bg-surface p-6">
+        <div className="app-scrim fixed inset-0 z-50 flex items-center justify-center p-4">
+            <div className="max-h-[90vh] w-full max-w-md overflow-y-auto rounded-[var(--radius-card)] border border-border bg-surface p-6 shadow-(--shadow-float)">
                 <div className="mb-6 flex items-center justify-between">
                     <h2 className="text-lg font-semibold text-text">Yeni agent</h2>
                     <button onClick={onClose} aria-label="Kapat" className="text-text-muted hover:text-text">
@@ -398,17 +398,17 @@ export function Agents() {
                         <Link
                             key={a._id}
                             to={`/agents/${a._id}`}
-                            className="group rounded-[var(--radius-card)] border border-border bg-surface p-5 transition-colors hover:border-brand/50"
+                            className="card-lift group rounded-[var(--radius-card)] border border-border bg-surface p-5 hover:border-brand/50"
                         >
                             <div className="mb-3 flex items-center justify-between">
-                                <span className="flex h-9 w-9 items-center justify-center rounded-full bg-brand/15 text-brand-light">
+                                <span className="flex h-9 w-9 items-center justify-center rounded-full bg-brand/15 text-brand">
                                     <Bot size={16} />
                                 </span>
                                 <span className={`rounded-full px-2.5 py-1 text-xs font-medium ${STATUS_STYLE[a.status]}`}>
                                     {STATUS_LABEL[a.status]}
                                 </span>
                             </div>
-                            <h3 className="font-semibold text-text group-hover:text-brand-light">{a.name}</h3>
+                            <h3 className="font-semibold text-text group-hover:text-brand">{a.name}</h3>
                             <p className="mt-1 text-xs text-text-muted">{a.persona?.language?.toUpperCase() || 'EN'} · {a.avatarProvider}</p>
                         </Link>
                     ))}

@@ -89,7 +89,7 @@ export function SettingsBilling() {
                 <section className="mb-8 rounded-[var(--radius-card)] border border-brand/30 bg-brand/5 p-5">
                     <div className="flex items-center justify-between gap-4">
                         <div>
-                            <p className="text-xs font-semibold uppercase text-brand-light">Mevcut plan</p>
+                            <p className="text-xs font-semibold uppercase text-brand">Mevcut plan</p>
                             <p className="mt-1 text-lg font-bold text-text">{subscription.planName}</p>
                             <p className="mt-0.5 text-xs text-text-muted">
                                 Durum: {subscription.status}
@@ -121,7 +121,7 @@ export function SettingsBilling() {
                                     </p>
                                     {limit > 0 && (
                                         <div className="h-1.5 w-full overflow-hidden rounded-full bg-surface-raised">
-                                            <div className="h-full bg-brand" style={{ width: `${pct}%` }} />
+                                            <div className="brand-gradient h-full" style={{ width: `${pct}%` }} />
                                         </div>
                                     )}
                                 </div>
@@ -150,7 +150,7 @@ export function SettingsBilling() {
                                 <ul className="mt-4 flex flex-col gap-1.5">
                                     {planFeatureList(plan.features).map((f) => (
                                         <li key={f} className="flex items-center gap-1.5 text-xs text-text-muted">
-                                            <Check size={12} className="shrink-0 text-brand-light" />
+                                            <Check size={12} className="shrink-0 text-brand" />
                                             {f}
                                         </li>
                                     ))}

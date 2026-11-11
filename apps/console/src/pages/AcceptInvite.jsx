@@ -39,8 +39,10 @@ export function AcceptInvite() {
     }, [accessToken, token, setSession]);
 
     return (
-        <div className="flex min-h-screen items-center justify-center bg-bg p-4">
-            <div className="w-full max-w-sm rounded-[var(--radius-card)] border border-border bg-surface p-8 text-center">
+        <div className="relative flex min-h-screen items-center justify-center bg-bg bg-[radial-gradient(40rem_30rem_at_88%_0%,rgb(124_58_237/0.10),transparent_60%),radial-gradient(36rem_28rem_at_8%_100%,rgb(244_114_182/0.08),transparent_60%)] p-4">
+            {/* The wrapper carries a violet and a pink corner wash, the same pair as the login card panel. */}
+            <div className="lp-dots absolute inset-0" aria-hidden="true" />
+            <div className="relative w-full max-w-sm rounded-[var(--radius-card)] border border-border bg-surface p-8 text-center shadow-(--shadow-float)">
                 <div className="mb-6 flex justify-center">
                     <Logo />
                 </div>

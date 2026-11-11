@@ -42,23 +42,24 @@ function makeKey() {
 function CenteredMessage({ embed, icon: Icon, loading = false, onClose, children }) {
     return (
         <div className="visitor-stage relative flex h-full flex-col items-center justify-center overflow-hidden px-6 text-center">
+            <div className="visitor-stars absolute inset-0" aria-hidden="true" />
             <div className="visitor-grid pointer-events-none absolute inset-0 opacity-50" />
             {embed && onClose && (
                 <button type="button" onClick={onClose} aria-label="Widget'ı kapat" className="absolute right-4 top-4 z-10 flex h-10 w-10 items-center justify-center rounded-xl border border-white/10 bg-white/[0.06] text-white/60 hover:bg-white/10 hover:text-white">
                     <X size={17} aria-hidden="true" />
                 </button>
             )}
-            <div className="status-card relative z-10 w-full max-w-sm rounded-[28px] border border-white/10 bg-white/[0.055] p-8 shadow-2xl shadow-black/20 backdrop-blur-xl">
+            <div className="status-card relative z-10 w-full max-w-sm rounded-[28px] border border-white/10 bg-surface/80 p-8 shadow-2xl shadow-black/20 backdrop-blur-xl">
                 {!embed && (
                     <div className="mb-9 flex items-center justify-center gap-3">
-                        <Logo className="[&_span]:text-white [&_span_span]:text-[#67e8f9]" />
+                        <Logo className="[&_span]:text-white [&_span_span]:text-(--color-accent)" />
                     </div>
                 )}
-                <span className="mx-auto flex h-14 w-14 items-center justify-center rounded-2xl border border-white/10 bg-white/[0.06] text-[#67e8f9]">
+                <span className="mx-auto flex h-14 w-14 items-center justify-center rounded-2xl border border-white/10 bg-white/[0.06] text-(--color-accent)">
                     <Icon size={23} className={loading ? 'animate-spin' : ''} />
                 </span>
                 <p className="mt-5 text-sm font-medium leading-6 text-white/60">{children}</p>
-                {loading && <div className="mx-auto mt-6 h-1.5 w-28 overflow-hidden rounded-full bg-white/8"><div className="load-bar-fill h-full w-2/5 rounded-full bg-gradient-to-r from-transparent via-[#67e8f9] to-transparent" /></div>}
+                {loading && <div className="mx-auto mt-6 h-1.5 w-28 overflow-hidden rounded-full bg-white/8"><div className="load-bar-fill h-full w-2/5 rounded-full bg-[linear-gradient(90deg,transparent,#a78bfa,#f472b6,transparent)]" /></div>}
             </div>
         </div>
     );
@@ -204,17 +205,17 @@ export function Visit() {
     if (isDebug && !started) {
         return (
             <div className="visitor-stage flex h-full flex-col items-center justify-center gap-4 px-6">
-                <Logo />
+                <Logo className="[&_span_span]:text-[#a78bfa]" />
                 <p className="text-sm text-text-muted">Test için çerezlerinizi JSON olarak yapıştırın:</p>
                 <textarea 
-                    className="h-48 w-full max-w-lg rounded-2xl border border-white/10 bg-white/[0.06] p-4 text-xs text-white outline-none focus:border-brand-light"
+                    className="h-48 w-full max-w-lg rounded-2xl border border-white/10 bg-white/[0.06] p-4 text-xs text-white outline-none focus:border-[#a78bfa]"
                     value={debugAuth}
                     onChange={(e) => setDebugAuth(e.target.value)}
                     placeholder='{"cookies": [{"name": "__Secure-1PSID", "value": "...", "domain": ".youtube.com", "path": "/", "secure": true}]}'
                 />
                 <button 
                     onClick={() => setStarted(true)}
-                    className="rounded-xl bg-[#67e8f9] px-4 py-2.5 text-sm font-bold text-[#071426] hover:bg-[#8ceefa]"
+                    className="rounded-xl bg-[image:var(--gradient-primary)] px-4 py-2.5 text-sm font-bold text-white shadow-(--shadow-primary) hover:bg-[image:var(--gradient-primary-hover)]"
                 >
                     Çerezlerle Oturum Başlat
                 </button>
@@ -232,13 +233,14 @@ export function Visit() {
         };
         return (
             <div className="visitor-stage relative flex h-full flex-col items-center justify-center overflow-hidden px-6 text-center">
+                <div className="visitor-stars absolute inset-0" aria-hidden="true" />
                 <div className="visitor-grid pointer-events-none absolute inset-0 opacity-50" />
                 <form
                     onSubmit={submit}
-                    className="relative z-10 w-full max-w-sm rounded-[28px] border border-white/10 bg-white/[0.055] p-8 shadow-2xl shadow-black/20 backdrop-blur-xl"
+                    className="relative z-10 w-full max-w-sm rounded-[28px] border border-white/10 bg-surface/80 p-8 shadow-2xl shadow-black/20 backdrop-blur-xl"
                 >
                     <div className="mb-7 flex items-center justify-center">
-                        <Logo className="[&_span]:text-white [&_span_span]:text-[#67e8f9]" />
+                        <Logo className="[&_span]:text-white [&_span_span]:text-(--color-accent)" />
                     </div>
                     <p className="mb-4 text-sm font-medium leading-6 text-white/70">
                         Görüşmeye başlamadan önce, size nasıl hitap edelim?
@@ -249,11 +251,11 @@ export function Visit() {
                         onChange={(e) => setNameInput(e.target.value)}
                         maxLength={60}
                         placeholder="Adınız"
-                        className="mb-4 h-11 w-full rounded-xl border border-white/10 bg-white/[0.06] px-4 text-sm text-white outline-none focus:border-[#67e8f9]"
+                        className="mb-4 h-11 w-full rounded-xl border border-white/10 bg-white/[0.06] px-4 text-sm text-white outline-none focus:border-(--color-accent)"
                     />
                     <button
                         type="submit"
-                        className="w-full rounded-xl bg-[#67e8f9] px-4 py-2.5 text-sm font-bold text-[#071426] hover:bg-[#8ceefa]"
+                        className="w-full rounded-xl bg-[image:var(--gradient-primary)] px-4 py-2.5 text-sm font-bold text-white shadow-(--shadow-primary) hover:bg-[image:var(--gradient-primary-hover)]"
                     >
                         {surveyEnabled ? 'Devam' : 'Katıl'}
                     </button>

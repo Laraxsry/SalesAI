@@ -94,10 +94,10 @@ function DomainList({ domains, onChange }) {
 function LauncherPreview({ theme, launcher, greeting }) {
     const positionClass = launcher.position === 'bottom-left' ? 'left-6' : 'right-6';
     return (
-        <div className="relative h-80 overflow-hidden rounded-[var(--radius-card)] border border-border bg-[#f4f4f6]">
+        <div className="relative h-80 overflow-hidden rounded-[var(--radius-card)] border border-border bg-[#f7f6fd]">
             <div className={`absolute bottom-6 ${positionClass} flex flex-col items-end gap-2`}>
                 {greeting && (
-                    <div className="max-w-[220px] rounded-2xl rounded-br-sm bg-white px-4 py-2.5 text-sm text-[#111] shadow-lg">
+                    <div className="max-w-[220px] rounded-2xl rounded-br-sm bg-white px-4 py-2.5 text-sm text-[#1e1b4b] shadow-lg">
                         {greeting}
                     </div>
                 )}

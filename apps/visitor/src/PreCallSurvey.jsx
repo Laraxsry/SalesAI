@@ -83,10 +83,11 @@ export function PreCallSurvey({ token, onComplete }) {
 
     const shell = (children) => (
         <div className="visitor-stage relative flex h-full flex-col items-center justify-center overflow-hidden px-6 text-center">
+            <div className="visitor-stars absolute inset-0" aria-hidden="true" />
             <div className="visitor-grid pointer-events-none absolute inset-0 opacity-50" />
-            <div className="relative z-10 w-full max-w-md rounded-[28px] border border-white/10 bg-white/[0.055] p-8 shadow-2xl shadow-black/20 backdrop-blur-xl">
+            <div className="relative z-10 w-full max-w-md rounded-[28px] border border-white/10 bg-surface/80 p-8 shadow-2xl shadow-black/20 backdrop-blur-xl">
                 <div className="mb-6 flex items-center justify-center">
-                    <Logo className="[&_span]:text-white [&_span_span]:text-[#67e8f9]" />
+                    <Logo className="[&_span]:text-white [&_span_span]:text-(--color-accent)" />
                 </div>
                 {children}
             </div>
@@ -96,7 +97,7 @@ export function PreCallSurvey({ token, onComplete }) {
     if (phase === 'loading' || phase === 'finalizing') {
         return shell(
             <div className="flex flex-col items-center gap-4 py-6">
-                <Loader2 size={24} className="animate-spin text-[#67e8f9]" />
+                <Loader2 size={24} className="animate-spin text-(--color-accent)" />
                 <p className="text-sm font-medium text-white/70">
                     {phase === 'finalizing'
                         ? 'Size özel bir tur planı hazırlanıyor…'
@@ -115,7 +116,7 @@ export function PreCallSurvey({ token, onComplete }) {
                 <ul className="mb-5 space-y-1.5 text-left">
                     {preview.map((s, i) => (
                         <li key={i} className="flex gap-2 text-sm text-white/70">
-                            <span className="text-[#67e8f9]">{i + 1}.</span>
+                            <span className="text-(--color-accent)">{i + 1}.</span>
                             <span>{s.label}</span>
                         </li>
                     ))}
@@ -123,7 +124,7 @@ export function PreCallSurvey({ token, onComplete }) {
                 <button
                     type="button"
                     onClick={() => onComplete(planTokenRef.current)}
-                    className="w-full rounded-xl bg-[#67e8f9] px-4 py-2.5 text-sm font-bold text-[#071426] hover:bg-[#8ceefa]"
+                    className="w-full rounded-xl bg-[image:var(--gradient-primary)] px-4 py-2.5 text-sm font-bold text-white shadow-(--shadow-primary) hover:bg-[image:var(--gradient-primary-hover)]"
                 >
                     Görüşmeye başla
                 </button>
@@ -134,7 +135,7 @@ export function PreCallSurvey({ token, onComplete }) {
     // phase === 'question'
     return shell(
         <>
-            <p className="mb-1 text-xs font-medium text-white/40">
+            <p className="mb-1 text-xs font-medium text-white/55">
                 {answersRef.current.length + 1}. soru · isterseniz atlayabilirsiniz
             </p>
             <p className="mb-5 text-[15px] font-medium leading-6 text-white/85">{question?.text}</p>
@@ -145,7 +146,7 @@ export function PreCallSurvey({ token, onComplete }) {
                         key={opt}
                         type="button"
                         onClick={() => answer(opt)}
-                        className="rounded-xl border border-white/10 bg-white/[0.06] px-4 py-2.5 text-sm text-white hover:border-[#67e8f9]/60 hover:bg-white/[0.1]"
+                        className="rounded-xl border border-white/10 bg-white/[0.06] px-4 py-2.5 text-sm text-white hover:border-(--color-accent)/60 hover:bg-white/[0.1]"
                     >
                         {opt}
                     </button>
@@ -165,19 +166,19 @@ export function PreCallSurvey({ token, onComplete }) {
                         onChange={(e) => setFreeText(e.target.value)}
                         maxLength={500}
                         placeholder={question?.options?.length ? 'Veya kendiniz yazın…' : 'Cevabınız…'}
-                        className="h-11 flex-1 rounded-xl border border-white/10 bg-white/[0.06] px-4 text-sm text-white outline-none focus:border-[#67e8f9]"
+                        className="h-11 flex-1 rounded-xl border border-white/10 bg-white/[0.06] px-4 text-sm text-white outline-none focus:border-(--color-accent)"
                     />
                     <button
                         type="submit"
                         disabled={!freeText.trim()}
-                        className="rounded-xl bg-[#67e8f9] px-4 text-sm font-bold text-[#071426] disabled:opacity-40"
+                        className="rounded-xl bg-[image:var(--gradient-primary)] px-4 text-sm font-bold text-white shadow-(--shadow-primary) disabled:opacity-50"
                     >
                         Devam
                     </button>
                 </form>
             )}
 
-            <div className="mt-4 flex items-center justify-center gap-4 text-xs text-white/40">
+            <div className="mt-4 flex items-center justify-center gap-4 text-xs text-white/55">
                 <button type="button" onClick={() => answer('—')} className="hover:text-white/70">
                     Bu soruyu atla
                 </button>

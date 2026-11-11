@@ -127,7 +127,7 @@ function LanguageSwitch() {
                     onClick={() => i18n.changeLanguage(lang)}
                     aria-pressed={current === lang}
                     className={`h-8 rounded-full px-2.5 text-[11px] font-extrabold uppercase tracking-[0.08em] transition-colors ${
-                        current === lang ? 'bg-white text-[#071426]' : 'text-white/60 hover:text-white'
+                        current === lang ? 'bg-white text-[#1a1145]' : 'text-white/60 hover:text-white'
                     }`}
                 >
                     {lang}
@@ -176,11 +176,11 @@ function HeroCall() {
                         key={index}
                         className={`lp-bubble flex max-w-[88%] flex-col gap-1 rounded-2xl px-4 py-3 text-sm font-semibold leading-6 ${
                             speaking
-                                ? 'ml-auto rounded-br-md bg-[var(--lp-accent)] text-[#071426]'
+                                ? 'ml-auto rounded-br-md bg-[var(--lp-accent)] text-[#1a1145]'
                                 : 'rounded-bl-md border border-white/10 bg-white/[0.06] text-white/85'
                         }`}
                     >
-                        <span className={`text-[10px] font-extrabold uppercase tracking-[0.14em] ${speaking ? 'text-[#071426]/55' : 'text-white/40'}`}>
+                        <span className={`text-[10px] font-extrabold uppercase tracking-[0.14em] ${speaking ? 'text-[#1a1145]/55' : 'text-white/40'}`}>
                             {speaking ? t('landing.call.ai') : t('landing.call.visitor')}
                         </span>
                         {line.text}
@@ -310,7 +310,7 @@ export function Landing() {
                             {isDark ? <Sun size={15} /> : <Moon size={15} />}
                         </button>
                         {!accessToken && <Link to="/login" className="hidden px-3 text-[13px] font-semibold text-white/70 transition-colors hover:text-white sm:block">{t('landing.header.login')}</Link>}
-                        <Link to={primaryHref} className="group hidden h-9 items-center gap-1.5 rounded-full bg-white px-4 text-[13px] font-bold text-[#071426] transition-colors hover:bg-[#ddd6fe] sm:flex">
+                        <Link to={primaryHref} className="group hidden h-9 items-center gap-1.5 rounded-full bg-white px-4 text-[13px] font-bold text-[#1a1145] transition-colors hover:bg-[#ddd6fe] sm:flex">
                             {accessToken ? t('landing.header.backToConsole') : t('landing.header.start')} <ArrowUpRight size={14} className="transition-transform group-hover:translate-x-0.5 group-hover:-translate-y-0.5" />
                         </Link>
                     </div>
@@ -326,7 +326,7 @@ export function Landing() {
                     <div className="relative z-10 mx-auto grid w-full max-w-[1240px] items-center gap-16 px-5 pb-24 pt-36 sm:px-8 lg:min-h-[100svh] lg:grid-cols-[1.08fr_0.92fr] lg:gap-10 lg:pb-20 lg:pt-32">
                         <div className="wow-reveal">
                             <div className="mb-7 inline-flex items-center gap-2.5 rounded-full border border-white/12 bg-white/[0.05] py-1.5 pl-1.5 pr-4 text-xs font-semibold text-white/70 backdrop-blur-xl">
-                                <span className="rounded-full bg-[var(--lp-accent)] px-2.5 py-1 text-[10px] font-extrabold uppercase tracking-[0.12em] text-[#071426]">{t('landing.hero.badge')}</span>
+                                <span className="rounded-full bg-[var(--lp-accent)] px-2.5 py-1 text-[10px] font-extrabold uppercase tracking-[0.12em] text-[#1a1145]">{t('landing.hero.badge')}</span>
                                 {t('landing.hero.badgeText')}
                             </div>
                             <h1 className="font-display text-[clamp(2.9rem,6.4vw,5.6rem)] font-bold leading-[0.98] tracking-[-0.045em]">
@@ -378,7 +378,7 @@ export function Landing() {
                         </div>
 
                         <div className="mt-16 grid gap-4 md:grid-cols-2 lg:grid-cols-3">
-                            <article data-reveal className="lp-reveal lp-card relative overflow-hidden rounded-[28px] bg-[#140d38] p-8 text-white md:col-span-2 lg:row-span-2">
+                            <article data-reveal className="lp-reveal lp-card relative overflow-hidden rounded-[28px] bg-[#140d38] p-8 text-white outline outline-1 -outline-offset-1 outline-white/10 md:col-span-2 lg:row-span-2">
                                 <div className="lp-card-glow absolute -right-24 -top-24 h-80 w-80 rounded-full" aria-hidden="true" />
                                 <div className="relative z-10 flex h-full flex-col">
                                     <div className="flex items-center justify-between">

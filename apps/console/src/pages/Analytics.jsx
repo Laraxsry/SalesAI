@@ -17,7 +17,7 @@ function KpiCard({ icon: Icon, label, value }) {
     return (
         <div className="rounded-[var(--radius-card)] border border-border bg-surface p-5">
             <div className="mb-2 flex items-center gap-2 text-text-muted">
-                <Icon size={15} />
+                <Icon size={15} className="text-brand" />
                 <span className="text-xs font-medium">{label}</span>
             </div>
             <p className="text-2xl font-bold text-text">{value}</p>
@@ -64,10 +64,10 @@ function SessionsChart({ dailyActivity }) {
                                 <div
                                     tabIndex={0}
                                     aria-label={`${dateLabel}, ${value} oturum`}
-                                    className={`w-full rounded-t-sm transition ${value ? 'bg-brand/70 hover:bg-brand focus:bg-brand' : 'bg-border/30'}`}
+                                    className={`w-full rounded-t-sm transition ${value ? 'chart-bar opacity-75 hover:opacity-100 focus:opacity-100' : 'bg-border/30'}`}
                                     style={{ height: `${heightPct}%` }}
                                 />
-                                <div className={`pointer-events-none absolute bottom-[calc(100%+8px)] z-20 hidden w-64 rounded-xl border border-border bg-bg p-3 text-left shadow-2xl group-hover:block group-focus-within:block ${index > 22 ? 'right-0' : index < 7 ? 'left-0' : 'left-1/2 -translate-x-1/2'}`}>
+                                <div className={`pointer-events-none absolute bottom-[calc(100%+8px)] z-20 hidden w-64 rounded-xl border border-border bg-bg p-3 text-left shadow-(--shadow-popover) group-hover:block group-focus-within:block ${index > 22 ? 'right-0' : index < 7 ? 'left-0' : 'left-1/2 -translate-x-1/2'}`}>
                                     <p className="font-semibold text-text">{dateLabel}</p>
                                     <div className="mt-2 grid grid-cols-2 gap-x-4 gap-y-1 text-xs text-text-muted">
                                         <span>Oturum</span><span className="text-right text-text">{value}</span>
@@ -75,7 +75,7 @@ function SessionsChart({ dailyActivity }) {
                                         <span>Tamamlanma</span><span className="text-right text-text">%{Math.round(point.metrics.completionRate * 100)}</span>
                                         <span>Cevapsız</span><span className="text-right text-text">%{Math.round(point.metrics.unansweredRate * 100)}</span>
                                     </div>
-                                    {point.sessions.length > 0 && <div className="mt-3 border-t border-border pt-2"><p className="mb-1 text-[10px] font-semibold uppercase tracking-wider text-text-muted">Oturumlar</p>{point.sessions.slice(0, 4).map((session) => <p key={session.id} className="truncate text-xs text-text">{new Date(session.startedAt).toLocaleTimeString('tr-TR', { hour: '2-digit', minute: '2-digit' })} · {session.name} · {formatDuration(session.durationSec)}</p>)}{point.sessions.length > 4 && <p className="mt-1 text-xs text-brand-light">+{point.sessions.length - 4} oturum daha</p>}</div>}
+                                    {point.sessions.length > 0 && <div className="mt-3 border-t border-border pt-2"><p className="mb-1 text-[10px] font-semibold uppercase tracking-wider text-text-muted">Oturumlar</p>{point.sessions.slice(0, 4).map((session) => <p key={session.id} className="truncate text-xs text-text">{new Date(session.startedAt).toLocaleTimeString('tr-TR', { hour: '2-digit', minute: '2-digit' })} · {session.name} · {formatDuration(session.durationSec)}</p>)}{point.sessions.length > 4 && <p className="mt-1 text-xs text-brand">+{point.sessions.length - 4} oturum daha</p>}</div>}
                                 </div>
                             </div>
                         );

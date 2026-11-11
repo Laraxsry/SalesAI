@@ -11,7 +11,7 @@ import {
 } from 'react-native';
 import { StatusBar } from 'expo-status-bar';
 import { Ionicons } from '@expo/vector-icons';
-import { FONT, SHADOWS } from '../theme';
+import { FONT, SHADOWS, inputTint } from '../theme';
 import { useAppTheme } from '../theme-context';
 
 export function SellerAuthShell({ eyebrow, title, subtitle, children, footer }) {
@@ -24,6 +24,7 @@ export function SellerAuthShell({ eyebrow, title, subtitle, children, footer }) 
             <ScrollView contentContainerStyle={styles.scroll} keyboardShouldPersistTaps="handled" showsVerticalScrollIndicator={false}>
                 <View style={styles.hero}>
                     <View style={styles.glow} />
+                    <View style={styles.glowPink} aria-hidden />
                     <View style={styles.brandRow}>
                         <Text style={styles.brand}>Sales<Text style={styles.brandAccent}>AI</Text></Text>
                         <View style={styles.headerActions}>
@@ -62,7 +63,7 @@ export function SellerAuthField({ icon, error, ...props }) {
             <TextInput
                 style={styles.fieldInput}
                 placeholderTextColor={colors.soft}
-                selectionColor={colors.tealDark}
+                {...inputTint(colors, isDark)}
                 {...props}
             />
         </View>
@@ -90,18 +91,18 @@ export function SellerAuthButton({ loading, children, label, ...props }) {
 }
 
 export function useSellerAuthStyles() {
-    const { colors } = useAppTheme();
-    return createSellerAuthStyles(colors);
+    const { colors, isDark } = useAppTheme();
+    return createSellerAuthStyles(colors, isDark);
 }
 
-const createSellerAuthStyles = (colors) => StyleSheet.create({
+const createSellerAuthStyles = (colors, isDark) => StyleSheet.create({
     formLabel: { marginTop: 18, marginBottom: 8, color: colors.muted, fontFamily: FONT.bold, fontSize: 9, letterSpacing: 1.35 },
     error: { marginTop: 12, color: colors.danger, fontFamily: FONT.medium, fontSize: 12.5, lineHeight: 18 },
     footerLink: { marginTop: 22, alignItems: 'center', paddingVertical: 6 },
     footerText: { color: colors.muted, fontFamily: FONT.medium, fontSize: 12.5 },
-    footerStrong: { color: colors.teal, fontFamily: FONT.bold },
+    footerStrong: { color: isDark ? colors.accent : colors.primary, fontFamily: FONT.bold },
     visitorLink: { marginTop: 10, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 6, paddingVertical: 8 },
-    visitorLinkText: { color: colors.soft, fontFamily: FONT.medium, fontSize: 11.5 },
+    visitorLinkText: { color: colors.muted, fontFamily: FONT.medium, fontSize: 11.5 },
 });
 
 const createStyles = (colors, isDark) => StyleSheet.create({
@@ -120,18 +121,31 @@ const createStyles = (colors, isDark) => StyleSheet.create({
         width: 280,
         height: 280,
         borderRadius: 140,
-        backgroundColor: 'rgba(6, 78, 59, 0.25)',
+        backgroundColor: 'rgba(124, 58, 237, 0.18)',
         right: -130,
         top: -86,
     },
+    // Decorative only: the pink half of the landing's violet → pink aurora,
+    // placed like the glow on the visitor home hero. Absolutely positioned, so
+    // it takes no part in the hero's layout.
+    glowPink: {
+        position: 'absolute',
+        pointerEvents: 'none',
+        width: 190,
+        height: 190,
+        borderRadius: 95,
+        backgroundColor: 'rgba(236, 72, 153, 0.12)',
+        left: -110,
+        top: -68,
+    },
     brandRow: { flexDirection: 'row', alignItems: 'center' },
     brand: { color: colors.white, fontFamily: FONT.bold, fontSize: 19, letterSpacing: -0.5 },
-    brandAccent: { color: '#10B981' },
+    brandAccent: { color: colors.accent },
     headerActions: { marginLeft: 'auto', flexDirection: 'row', alignItems: 'center', gap: 8 },
     themeButton: { width: 32, height: 32, alignItems: 'center', justifyContent: 'center', borderRadius: 16, borderWidth: 1, borderColor: 'rgba(255,255,255,0.12)', backgroundColor: 'rgba(255,255,255,0.06)' },
     consolePill: { borderRadius: 20, borderWidth: 1, borderColor: 'rgba(255,255,255,0.12)', paddingHorizontal: 9, paddingVertical: 6 },
     consolePillText: { color: 'rgba(255,255,255,0.6)', fontFamily: FONT.bold, fontSize: 8.5, letterSpacing: 1.2 },
-    eyebrow: { marginTop: 50, color: '#10B981', fontFamily: FONT.bold, fontSize: 9.5, letterSpacing: 1.6 },
+    eyebrow: { marginTop: 50, color: colors.accent, fontFamily: FONT.bold, fontSize: 9.5, letterSpacing: 1.6 },
     title: { marginTop: 10, color: colors.white, fontFamily: FONT.bold, fontSize: 34, lineHeight: 40, letterSpacing: -1.2 },
     subtitle: { marginTop: 11, maxWidth: 325, color: 'rgba(255,255,255,0.65)', fontFamily: FONT.regular, fontSize: 14, lineHeight: 21 },
     sheet: {
@@ -165,7 +179,7 @@ const createStyles = (colors, isDark) => StyleSheet.create({
         alignItems: 'center',
         justifyContent: 'center',
         borderRadius: 16,
-        backgroundColor: colors.teal,
+        backgroundColor: colors.primary,
         paddingHorizontal: 8,
         ...SHADOWS.button,
     },

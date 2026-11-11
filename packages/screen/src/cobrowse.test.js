@@ -466,7 +466,7 @@ describe('GuidedTour#highlight', () => {
 
         expect(page.locator).toHaveBeenCalledWith('text=Ücretler');
         expect(locator.evaluate).toHaveBeenCalled();
-        expect(element.style.outline).toBe('3px solid #6d5efc');
+        expect(element.style.outline).toBe('3px solid #f472b6');
         expect(element.scrollIntoView).toHaveBeenCalled();
     });
 

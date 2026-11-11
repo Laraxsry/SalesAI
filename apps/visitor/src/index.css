@@ -3,15 +3,28 @@
 @import '@livekit/components-styles';
 
 :root {
-    --color-brand: #2563eb;
-    --color-brand-light: #3b82f6;
-    --color-brand-dark: #1d4ed8;
-    --color-bg: #050c18;
-    --color-surface: #0b1830;
-    --color-surface-raised: #10284b;
+    /* Palette: the landing page's indigo night with violet/pink accents (see
+       the .lp-* rules in apps/console/src/index.css). The call room is
+       dark-only. An embedding customer may override --color-brand (Visit.jsx). */
+    --color-brand: #7c3aed;
+    --color-brand-light: #8b5cf6;
+    --color-brand-dark: #6d28d9;
+    --color-brand-hover: #6d28d9;
+    --color-on-brand: #ffffff;
+    --color-bg: #0b0726;
+    --color-surface: #140d38;
+    --color-surface-raised: #1d1458;
     --color-border: rgb(255 255 255 / 10%);
-    --color-text: #f3f6ff;
-    --color-text-muted: #94a8c5;
+    --color-text: #f5f3ff;
+    --color-text-muted: #a8a3c7;
+    --color-accent: #c4b5fd;
+    /* Same names and values as the console: shell = chrome panels (header,
+       control bar, captions, drawers), night = the page background. */
+    --color-shell: #0f0a2e;
+    --color-night: #0b0726;
+    --color-pink: #f472b6;
+    --color-scrim: rgb(5 3 20 / 72%);
+    --shadow-float: 0 32px 100px -35px rgb(0 0 0 / 90%);
     --radius-card: 22px;
     --radius-input: 13px;
 }
@@ -41,20 +54,60 @@ h3 {
     font-family: 'Space Grotesk', sans-serif;
 }
 
+::selection {
+    background: rgb(167 139 250 / 32%);
+}
+
+/* Indigo night with the landing hero's aurora (violet, pink, indigo). Sized in
+   percentages so it reads the same full-page as in a small embedded widget. */
 .visitor-stage {
     background:
-        radial-gradient(circle at 50% 35%, rgb(56 130 246 / 13%), transparent 31rem),
-        linear-gradient(145deg, #050c18, #0b1830 58%, #071426);
+        radial-gradient(circle at 50% 35%, rgb(139 92 246 / 14%), transparent 31rem),
+        radial-gradient(66% 72% at 78% 30%, rgb(109 40 217 / 34%), transparent 62%),
+        radial-gradient(44% 60% at 92% 75%, rgb(236 72 153 / 14%), transparent 60%),
+        radial-gradient(52% 64% at 8% 0%, rgb(79 70 229 / 22%), transparent 60%),
+        linear-gradient(145deg, #0b0726, #140d38 58%, #0f0a2e);
+}
+
+/* Faint starfield over the night stage (same recipe as the landing hero).
+   Use as an absolutely positioned, aria-hidden decorative child. */
+.visitor-stars {
+    background-image:
+        radial-gradient(1px 1px at 12% 18%, rgb(255 255 255 / 55%), transparent 60%),
+        radial-gradient(1px 1px at 27% 72%, rgb(255 255 255 / 40%), transparent 60%),
+        radial-gradient(1.5px 1.5px at 41% 33%, rgb(221 214 254 / 60%), transparent 60%),
+        radial-gradient(1px 1px at 58% 84%, rgb(255 255 255 / 35%), transparent 60%),
+        radial-gradient(1px 1px at 66% 12%, rgb(255 255 255 / 50%), transparent 60%),
+        radial-gradient(1.5px 1.5px at 79% 56%, rgb(251 207 232 / 55%), transparent 60%),
+        radial-gradient(1px 1px at 88% 28%, rgb(255 255 255 / 45%), transparent 60%),
+        radial-gradient(1px 1px at 94% 88%, rgb(255 255 255 / 35%), transparent 60%);
+    background-size: 520px 420px;
+    opacity: 0.8;
+    animation: visitor-twinkle 6s ease-in-out infinite alternate;
+    pointer-events: none;
+}
+
+/* Call room only: the state label, banners and captions sit straight on the
+   stage with no glass card behind them, and a star under a label reads as
+   stray punctuation. Keep the stars out of that centre column. */
+.visitor-stars--room {
+    mask-image: linear-gradient(90deg, #000 0 18%, transparent 34% 66%, #000 82% 100%);
+}
+
+/* Backdrop behind dialogs. */
+.app-scrim {
+    background: var(--color-scrim);
+    backdrop-filter: blur(6px);
 }
 
 .visitor-grid {
-    background-image: radial-gradient(circle, rgb(103 232 249 / 14%) 1px, transparent 1.2px);
+    background-image: radial-gradient(circle, rgb(196 181 253 / 14%) 1px, transparent 1.2px);
     background-size: 20px 20px;
     mask-image: radial-gradient(circle at center, black, transparent 68%);
 }
 
 .tour-cursor {
-    filter: drop-shadow(0 5px 8px rgb(7 20 38 / 45%));
+    filter: drop-shadow(0 5px 8px rgb(11 7 38 / 45%));
     transform: translate(-3px, -3px);
     transition-property: left, top, opacity;
     transition-timing-function: cubic-bezier(0.22, 1, 0.36, 1);
@@ -62,22 +115,30 @@ h3 {
 }
 
 .tour-outline {
-    border: 3px solid #67e8f9;
+    border: 3px solid var(--color-pink);
     border-radius: 12px;
-    box-shadow: 0 0 0 5px rgb(103 232 249 / 16%), 0 12px 34px rgb(7 20 38 / 24%);
+    /* The white keyline keeps the ring readable on dark and mid-tone pages,
+       where pink alone has little luminance contrast. */
+    box-shadow: 0 0 0 1px rgb(255 255 255 / 70%), 0 0 0 5px rgb(244 114 182 / 30%), 0 12px 34px rgb(11 7 38 / 24%);
     animation: tour-focus-in 220ms ease-out both;
 }
 
 .tour-spotlight {
     border-radius: 14px;
-    box-shadow: 0 0 0 200vmax rgb(7 20 38 / 28%), 0 0 0 3px #67e8f9, 0 12px 40px rgb(7 20 38 / 30%);
+    /* Ring and halo are listed first so they paint above the page dim and
+       keep their full colour on dark websites. The pink stays in a tight halo
+       and the far drop shadow is neutral, so no colour spills past the edge
+       of the shared screen onto the stage. */
+    box-shadow: 0 0 0 3px var(--color-pink), 0 0 0 6px rgb(244 114 182 / 28%), 0 12px 40px rgb(11 7 38 / 30%), 0 0 0 200vmax rgb(11 7 38 / 28%);
     animation: tour-focus-in 260ms ease-out both;
 }
 
 .tour-marker {
     border-radius: 4px;
-    background: rgb(103 232 249 / 42%);
-    box-shadow: 0 1px 0 rgb(103 232 249 / 55%);
+    background: rgb(167 139 250 / 45%);
+    /* Underline first (on top), then a light keyline that outlines the marker
+       on dark pages and disappears on light ones. */
+    box-shadow: 0 1px 0 rgb(139 92 246 / 65%), 0 0 0 1px rgb(221 214 254 / 60%);
     transform-origin: left center;
     animation: tour-marker-draw 360ms cubic-bezier(0.22, 1, 0.36, 1) both;
 }
@@ -86,8 +147,9 @@ h3 {
     height: 14px;
     width: 14px;
     transform: translate(-50%, -50%);
-    border: 3px solid #67e8f9;
+    border: 3px solid var(--color-pink);
     border-radius: 999px;
+    box-shadow: 0 0 0 1px rgb(255 255 255 / 75%);
     animation: tour-click-ripple 420ms ease-out both;
 }
 
@@ -100,8 +162,8 @@ h3 {
     min-width: 22px;
     border: 1px solid rgb(255 255 255 / 65%);
     border-radius: 999px;
-    background: rgb(7 20 38 / 58%);
-    box-shadow: 0 8px 24px rgb(7 20 38 / 30%);
+    background: rgb(15 10 46 / 58%);
+    box-shadow: 0 8px 24px rgb(11 7 38 / 30%);
 }
 
 .tour-scroll-cue span {
@@ -112,7 +174,7 @@ h3 {
     width: 4px;
     transform: translateX(-50%);
     border-radius: 999px;
-    background: #67e8f9;
+    background: #f9a8d4;
     animation: tour-scroll-down 560ms ease-in-out infinite;
 }
 
@@ -132,7 +194,7 @@ h3 {
 
 button:focus-visible,
 a:focus-visible {
-    outline: 2px solid #67e8f9;
+    outline: 2px solid var(--color-accent);
     outline-offset: 3px;
 }
 
@@ -223,7 +285,7 @@ a:focus-visible {
     height: 6px;
     width: 6px;
     border-radius: 999px;
-    background: #67e8f9;
+    background: var(--color-accent);
 }
 
 .assistant-state-dot--speaking,
@@ -274,6 +336,11 @@ a:focus-visible {
 @keyframes caption-in {
     from { opacity: 0; transform: translateY(8px); }
     to { opacity: 1; transform: translateY(0); }
+}
+
+@keyframes visitor-twinkle {
+    from { opacity: 0.55; }
+    to { opacity: 0.95; }
 }
 
 @keyframes state-pulse {

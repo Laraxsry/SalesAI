@@ -8,7 +8,7 @@ import { CONFIG } from '../../config';
 import { saveConversation } from '../../src/savedConversations';
 import { getVisitorId } from '../../src/visitorIdentity';
 import { CallControls } from '../../src/components/CallControls';
-import { COLORS, FONT } from '../../src/theme';
+import { COLORS, FONT, SHADOWS } from '../../src/theme';
 
 /* global __DEV__ */
 
@@ -180,7 +180,7 @@ function NativeSessionScreen() {
     if (connectionState === 'permissions') {
         return (
             <View style={styles.centerContainer}>
-                <ActivityIndicator size="large" color={COLORS.lime} />
+                <ActivityIndicator size="large" color={COLORS.accent} />
                 <Text style={styles.loadingText}>Mikrofon izni isteniyor…</Text>
             </View>
         );
@@ -189,7 +189,7 @@ function NativeSessionScreen() {
     if (connectionState === 'fetching') {
         return (
             <View style={styles.centerContainer}>
-                <ActivityIndicator size="large" color={COLORS.lime} />
+                <ActivityIndicator size="large" color={COLORS.accent} />
                 <Text style={styles.loadingText}>Temsilciyle görüşme hazırlanıyor…</Text>
                 <TouchableOpacity style={[styles.backButton, { marginTop: 24 }]} onPress={handleDisconnect}>
                     <Text style={styles.backText}>Vazgeç</Text>
@@ -219,7 +219,7 @@ function NativeSessionScreen() {
 
             {connectionState === 'connecting' && (
                 <View style={[StyleSheet.absoluteFill, styles.centerContainer, { zIndex: 10 }]}>
-                    <ActivityIndicator size="large" color={COLORS.lime} />
+                    <ActivityIndicator size="large" color={COLORS.accent} />
                     <Text style={styles.loadingText}>Görüşmeye bağlanılıyor…</Text>
                     <TouchableOpacity style={[styles.backButton, { marginTop: 24 }]} onPress={handleDisconnect}>
                         <Text style={styles.backText}>Vazgeç</Text>
@@ -469,7 +469,7 @@ function RoomView({ setAgentName }) {
                                 state={voiceState}
                                 trackRef={audioTrack}
                                 barCount={5}
-                                options={{ minHeight: 0.18, maxHeight: 0.82, barColor: COLORS.lime, barWidth: 6, barBorderRadius: 8 }}
+                                options={{ minHeight: 0.18, maxHeight: 0.82, barColor: COLORS.accent, barWidth: 6, barBorderRadius: 8 }}
                                 style={styles.barVisualizer}
                             />
                         </View>
@@ -561,7 +561,7 @@ const styles = StyleSheet.create({
         marginTop: 16,
     },
     errorHeader: {
-        color: '#FF9287',
+        color: COLORS.danger,
         fontSize: 24,
         fontFamily: FONT.bold,
         marginBottom: 8,
@@ -574,17 +574,19 @@ const styles = StyleSheet.create({
         lineHeight: 22,
         marginBottom: 32,
     },
+    // Call-to-action violet with white text, matching the web visitor room.
     retryButton: {
-        backgroundColor: COLORS.lime,
+        backgroundColor: COLORS.primary,
         borderRadius: 16,
         paddingVertical: 14,
         paddingHorizontal: 32,
         marginBottom: 12,
         width: '80%',
         alignItems: 'center',
+        ...SHADOWS.button,
     },
     retryText: {
-        color: COLORS.ink,
+        color: COLORS.white,
         fontSize: 16,
         fontFamily: FONT.bold,
     },
@@ -611,7 +613,7 @@ const styles = StyleSheet.create({
         flexDirection: 'row',
         alignItems: 'center',
         justifyContent: 'space-between',
-        backgroundColor: 'rgba(8,12,20,0.98)',
+        backgroundColor: 'rgba(15,10,46,0.98)',
         borderBottomWidth: 1,
         borderBottomColor: 'rgba(255,255,255,0.08)',
         zIndex: 5,
@@ -623,7 +625,7 @@ const styles = StyleSheet.create({
         letterSpacing: -0.55,
     },
     wordmarkAccent: {
-        color: COLORS.lime,
+        color: COLORS.accent,
     },
     statePill: {
         minHeight: 32,
@@ -640,13 +642,14 @@ const styles = StyleSheet.create({
         overflow: 'hidden',
         alignItems: 'center',
         justifyContent: 'center',
-        backgroundColor: '#06120F',
+        backgroundColor: COLORS.ink,
     },
     statusDot: {
         width: 6,
         height: 6,
         borderRadius: 3,
-        backgroundColor: COLORS.lime,
+        // Light violet, like the web visitor room's state dot.
+        backgroundColor: COLORS.accent,
         marginRight: 8,
     },
     statusDotWarn: {
@@ -661,7 +664,7 @@ const styles = StyleSheet.create({
         ...StyleSheet.absoluteFillObject,
         width: '100%',
         height: '100%',
-        backgroundColor: '#020806',
+        backgroundColor: COLORS.ink,
     },
     voiceStage: {
         alignItems: 'center',
@@ -675,9 +678,12 @@ const styles = StyleSheet.create({
         overflow: 'hidden',
         borderRadius: 44,
         borderWidth: 1,
-        borderColor: 'rgba(255,255,255,0.1)',
-        backgroundColor: COLORS.inkSoft,
-        shadowColor: COLORS.teal,
+        // Indigo-lit tile, like the one behind the landing page's voice orb.
+        borderColor: 'rgba(129,140,248,0.45)',
+        backgroundColor: COLORS.inkRaised,
+        // Violet glow in the lighter stop of the web CTA gradient. Not
+        // COLORS.primary: that is the deeper CTA fill and would dim the glow.
+        shadowColor: '#8B5CF6',
         shadowOffset: { width: 0, height: 24 },
         shadowOpacity: 0.24,
         shadowRadius: 40,
@@ -695,7 +701,7 @@ const styles = StyleSheet.create({
     },
     voiceStatus: {
         marginTop: 6,
-        color: 'rgba(255,255,255,0.42)',
+        color: 'rgba(255,255,255,0.5)',
         fontFamily: FONT.medium,
         fontSize: 11.5,
     },
@@ -709,7 +715,7 @@ const styles = StyleSheet.create({
         borderRadius: 14,
         borderWidth: 1,
         borderColor: 'rgba(255,255,255,0.2)',
-        backgroundColor: '#020806',
+        backgroundColor: COLORS.ink,
         elevation: 8,
     },
     localPreview: {
@@ -721,8 +727,8 @@ const styles = StyleSheet.create({
         overflow: 'hidden',
         borderRadius: 12,
         borderWidth: 1,
-        borderColor: 'rgba(215,249,91,0.65)',
-        backgroundColor: '#020806',
+        borderColor: 'rgba(196,181,253,0.65)',
+        backgroundColor: COLORS.ink,
         elevation: 8,
     },
     previewTrack: {
@@ -734,7 +740,7 @@ const styles = StyleSheet.create({
         top: 16,
         left: 16,
         borderRadius: 12,
-        backgroundColor: 'rgba(7,23,19,0.84)',
+        backgroundColor: 'rgba(15,10,46,0.84)',
         paddingHorizontal: 12,
         paddingVertical: 8,
         borderWidth: 1,
@@ -745,7 +751,7 @@ const styles = StyleSheet.create({
         left: 16,
         top: 58,
         borderRadius: 12,
-        backgroundColor: COLORS.tealDark,
+        backgroundColor: COLORS.primary,
         paddingHorizontal: 12,
         paddingVertical: 8,
     },
@@ -760,14 +766,14 @@ const styles = StyleSheet.create({
         alignItems: 'center',
         justifyContent: 'center',
         paddingHorizontal: 22,
-        backgroundColor: 'rgba(0,0,0,0.72)',
+        backgroundColor: 'rgba(5,3,20,0.72)',
     },
     shareConsentCard: {
         width: '100%',
         maxWidth: 380,
         borderRadius: 24,
         padding: 22,
-        backgroundColor: COLORS.inkSoft,
+        backgroundColor: COLORS.surface,
         borderWidth: 1,
         borderColor: 'rgba(255,255,255,0.1)',
         elevation: 18,
@@ -808,10 +814,10 @@ const styles = StyleSheet.create({
         justifyContent: 'center',
         paddingHorizontal: 18,
         borderRadius: 13,
-        backgroundColor: COLORS.lime,
+        backgroundColor: COLORS.primary,
     },
     consentShareText: {
-        color: COLORS.ink,
+        color: COLORS.white,
         fontFamily: FONT.bold,
         fontSize: 13.5,
     },
@@ -821,6 +827,6 @@ const styles = StyleSheet.create({
         paddingHorizontal: 20,
         borderTopWidth: 1,
         borderTopColor: 'rgba(255,255,255,0.08)',
-        backgroundColor: 'rgba(8,12,20,0.98)',
+        backgroundColor: 'rgba(15,10,46,0.98)',
     },
 });

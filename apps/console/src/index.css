@@ -3,40 +3,82 @@
 
 :root {
     color-scheme: light;
-    --color-brand: #2563eb;
-    --color-brand-light: #3b82f6;
-    --color-brand-dark: #1d4ed8;
-    --color-bg: #eef2fb;
+    /* Palette: the landing page's violet on indigo ink (see .lp-* below and
+       the product film), applied to every console surface. */
+    --color-brand: #7c3aed;
+    --color-brand-light: #8b5cf6;
+    --color-brand-dark: #6d28d9;
+    --color-brand-hover: #6d28d9;
+    --color-on-brand: #ffffff;
+    --color-bg: #f4f1fd;
     --color-surface: #ffffff;
-    --color-surface-raised: #e6edfa;
-    --color-border: #d3def1;
-    --color-text: #0c1a33;
-    --color-text-muted: #5a6b88;
-    --color-shell: #071426;
-    --color-accent: #38bdf8;
-    --color-accent-hover: #0ea5e9;
-    --color-brand-glow: rgb(37 99 235 / 9%);
-    --color-auth-gradient: radial-gradient(520px circle at 15% 10%, rgba(37,99,235,0.22), transparent 64%), radial-gradient(500px circle at 90% 85%, rgba(56,189,248,0.12), transparent 60%);
-    --color-overview-dots: radial-gradient(circle, #38bdf8 1.2px, transparent 1.2px);
+    --color-surface-raised: #efeafc;
+    --color-border: #ddd6f6;
+    --color-text: #1e1b4b;
+    --color-text-muted: #6b6790;
+    --color-shell: #0f0a2e;
+    --color-night: #0b0726;
+    --color-night-card: #140d38;
+    --color-accent: #c4b5fd;
+    --color-accent-hover: #ddd6fe;
+    --color-pink: #f472b6;
+    --color-brand-glow: rgb(124 58 237 / 10%);
+    --color-scrim: rgb(11 7 38 / 62%);
+    --color-overview-dots: radial-gradient(circle, #c4b5fd 1.2px, transparent 1.2px);
+    /* On light surfaces the violet → pink sweep needs its deep stops; the
+       pastel stops from the shared default are for dark surfaces. */
+    --gradient-brand: linear-gradient(90deg, #7c3aed 0%, #db2777 100%);
+    --chart-bar-from: #7c3aed;
+    --chart-bar-to: #db2777;
+    --shadow-card-hover: 0 22px 48px -30px rgb(30 27 75 / 38%);
+    --shadow-float: 0 32px 100px -35px rgb(30 27 75 / 55%);
+    --shadow-popover: 0 18px 40px -24px rgb(30 27 75 / 40%);
     --radius-card: 20px;
     --radius-input: 12px;
+    --radius-button: 12px;
 }
 
 :root[data-theme='dark'] {
     color-scheme: dark;
-    --color-brand: #67e8f9;
-    --color-brand-light: #93effb;
-    --color-brand-dark: #4d7cff;
-    --color-bg: #050c18;
-    --color-surface: #0b1830;
-    --color-surface-raised: #10284b;
-    --color-border: #25466f;
-    --color-text: #f3f6ff;
-    --color-text-muted: #94a8c5;
-    --color-shell: #071426;
-    --color-accent: #67e8f9;
-    --color-accent-hover: #8ceefa;
-    --color-brand-glow: rgb(77 124 255 / 14%);
+    --color-brand: #a78bfa;
+    --color-brand-light: #c4b5fd;
+    --color-brand-dark: #8b5cf6;
+    --color-brand-hover: #c4b5fd;
+    --color-on-brand: #1a1145;
+    --color-bg: #0b0726;
+    --color-surface: #140d38;
+    --color-surface-raised: #1d1458;
+    --color-border: #3b3180;
+    --color-text: #f5f3ff;
+    --color-text-muted: #a8a3c7;
+    --color-shell: #0f0a2e;
+    --color-accent: #c4b5fd;
+    --color-accent-hover: #ddd6fe;
+    --color-brand-glow: rgb(139 92 246 / 18%);
+    --color-scrim: rgb(5 3 20 / 72%);
+    --gradient-brand: linear-gradient(90deg, #a78bfa 0%, #f472b6 100%);
+    --chart-bar-from: #a78bfa;
+    --chart-bar-to: #f472b6;
+    --shadow-card-hover: 0 22px 48px -28px rgb(0 0 0 / 85%);
+    --shadow-float: 0 32px 100px -35px rgb(0 0 0 / 90%);
+    --shadow-popover: 0 18px 40px -24px rgb(0 0 0 / 60%);
+}
+
+/* Status colours in page code use the 300/400 shades, which are tuned for dark
+   surfaces. On the light theme map them to the product film's light-surface
+   status inks so badges, hints and errors stay readable on white. */
+:root:not([data-theme='dark']) {
+    --color-emerald-300: #166534;
+    --color-emerald-400: #166534;
+    --color-amber-300: #92400e;
+    --color-amber-400: #92400e;
+    --color-red-300: #b91c1c;
+    --color-red-400: #b91c1c;
+}
+
+:root {
+    /* Native checkboxes, radios and range inputs follow the brand. */
+    accent-color: var(--color-brand);
 }
 
 * {
@@ -54,7 +96,7 @@ body {
     margin: 0;
     background:
         radial-gradient(circle at 76% -12%, var(--color-brand-glow), transparent 28rem),
-        linear-gradient(180deg, #f6f8fe 0%, var(--color-bg) 32rem);
+        linear-gradient(180deg, #fbfaff 0%, var(--color-bg) 32rem);
     color: var(--color-text);
     font-family: 'Manrope', sans-serif;
 }
@@ -85,7 +127,7 @@ a {
 }
 
 ::selection {
-    background: rgb(56 189 248 / 26%);
+    background: rgb(167 139 250 / 32%);
 }
 
 :focus-visible {
@@ -95,16 +137,14 @@ a {
 
 .console-grid {
     background-image:
-        linear-gradient(rgb(37 99 235 / 4%) 1px, transparent 1px),
-        linear-gradient(90deg, rgb(37 99 235 / 4%) 1px, transparent 1px);
-    background-size: 28px 28px;
+        radial-gradient(circle, rgb(124 58 237 / 11%) 1px, transparent 1.3px);
+    background-size: 22px 22px;
     mask-image: linear-gradient(to bottom, black, transparent 82%);
 }
 
 :root[data-theme='dark'] .console-grid {
     background-image:
-        linear-gradient(rgb(103 232 249 / 6%) 1px, transparent 1px),
-        linear-gradient(90deg, rgb(103 232 249 / 6%) 1px, transparent 1px);
+        radial-gradient(circle, rgb(196 181 253 / 9%) 1px, transparent 1.3px);
 }
 
 .sidebar-glow::after {
@@ -115,8 +155,21 @@ a {
     height: 15rem;
     content: '';
     border-radius: 999px;
-    background: rgb(77 124 255 / 16%);
+    background: rgb(139 92 246 / 26%);
     filter: blur(56px);
+    pointer-events: none;
+}
+
+.sidebar-glow::before {
+    position: absolute;
+    left: -6rem;
+    top: -5rem;
+    width: 14rem;
+    height: 14rem;
+    content: '';
+    border-radius: 999px;
+    background: rgb(236 72 153 / 12%);
+    filter: blur(60px);
     pointer-events: none;
 }
 
@@ -125,6 +178,49 @@ a {
        containing block that traps position:fixed descendants such as
        full-screen modals inside the page container. */
     animation: page-enter 420ms cubic-bezier(0.2, 0.75, 0.25, 1) backwards;
+}
+
+/* ── Console surfaces in the landing language ────────────────────── */
+/* Aurora wash for dark indigo panels (page heroes, auth panel, sidebar).
+   Use as an absolutely positioned decorative child; sized in percentages so
+   it reads the same on a banner as on a full-height panel. */
+.app-aurora {
+    background:
+        radial-gradient(70% 130% at 86% 4%, rgb(109 40 217 / 46%), transparent 62%),
+        radial-gradient(42% 90% at 100% 100%, rgb(236 72 153 / 18%), transparent 60%),
+        radial-gradient(52% 110% at 0% 0%, rgb(79 70 229 / 30%), transparent 60%);
+    pointer-events: none;
+}
+
+/* Violet → pink sweep for progress bars, meters and score fills. */
+.brand-gradient {
+    background-image: var(--gradient-brand);
+}
+
+/* Upright variant of the sweep for column charts. */
+.chart-bar {
+    background-image: linear-gradient(to top, var(--chart-bar-from), var(--chart-bar-to));
+}
+
+/* Gradient headline accent on light and dark app surfaces. On the indigo
+   night panels use .lp-gradient-text instead. */
+.app-gradient-text {
+    background: linear-gradient(92deg, #7c3aed 0%, #a855f7 50%, #db2777 100%);
+    -webkit-background-clip: text;
+    background-clip: text;
+    color: transparent;
+}
+
+:root[data-theme='dark'] .app-gradient-text {
+    background: linear-gradient(92deg, #ffffff 0%, #ddd6fe 40%, #c4b5fd 65%, #f9a8d4 100%);
+    -webkit-background-clip: text;
+    background-clip: text;
+}
+
+/* Backdrop behind modals and drawers. */
+.app-scrim {
+    background: var(--color-scrim);
+    backdrop-filter: blur(6px);
 }
 
 /* ── Landing ─────────────────────────────────────────────────────── */
@@ -154,6 +250,13 @@ a {
         radial-gradient(40rem 30rem at 92% 75%, rgb(236 72 153 / 14%), transparent 60%),
         radial-gradient(46rem 32rem at 8% 0%, rgb(79 70 229 / 22%), transparent 60%);
     animation: lp-aurora 14s ease-in-out infinite alternate;
+    pointer-events: none;
+}
+
+/* In the dark theme the CTA sits between sections of the same base colour, so
+   fade its aurora out towards the top and bottom edges instead of cutting it. */
+:root[data-theme='dark'] .lp-cta .lp-aurora {
+    mask-image: linear-gradient(to bottom, transparent, #000 20%, #000 85%, transparent);
 }
 
 /* Faint starfield for the dark indigo sections. */
@@ -184,7 +287,7 @@ a {
 
 /* Fine dotted texture for the light sections. */
 .lp-dots {
-    background-image: radial-gradient(circle, rgb(37 99 235 / 16%) 1px, transparent 1.3px);
+    background-image: radial-gradient(circle, rgb(124 58 237 / 16%) 1px, transparent 1.3px);
     background-size: 22px 22px;
     mask-image: radial-gradient(ellipse 80% 70% at 50% 30%, black, transparent 80%);
     pointer-events: none;
@@ -245,7 +348,7 @@ a {
 
 .lp-card:hover {
     transform: translateY(-4px);
-    box-shadow: 0 30px 60px -40px rgb(12 26 51 / 45%);
+    box-shadow: 0 30px 60px -40px rgb(30 27 75 / 45%);
 }
 
 :root[data-theme='dark'] .lp-card:hover {
@@ -253,7 +356,7 @@ a {
 }
 
 .lp-card-glow {
-    background: radial-gradient(circle, rgb(103 232 249 / 22%), rgb(37 99 235 / 10%) 45%, transparent 70%);
+    background: radial-gradient(circle, rgb(196 181 253 / 26%), rgb(236 72 153 / 10%) 45%, transparent 70%);
     filter: blur(20px);
     pointer-events: none;
 }
@@ -486,7 +589,7 @@ a {
 
 .wow-stage-grid {
     background:
-        radial-gradient(circle at 50% 40%, rgb(103 232 249 / 10%), transparent 33%),
+        radial-gradient(circle at 50% 40%, rgb(196 181 253 / 10%), transparent 33%),
         linear-gradient(rgb(255 255 255 / 3%) 1px, transparent 1px),
         linear-gradient(90deg, rgb(255 255 255 / 3%) 1px, transparent 1px);
     background-size: auto, 34px 34px, 34px 34px;
@@ -503,11 +606,7 @@ a {
 
 .card-lift:hover {
     transform: translateY(-2px);
-    box-shadow: 0 18px 44px -30px rgb(13 45 38 / 42%);
-}
-
-:root[data-theme='dark'] .card-lift:hover {
-    box-shadow: 0 18px 44px -30px rgb(0 0 0 / 85%);
+    box-shadow: var(--shadow-card-hover);
 }
 
 /* Keep the route-level animation opacity-only so fixed descendants always use
@@ -568,10 +667,10 @@ a {
 @keyframes wow-listening {
     0%,
     100% {
-        box-shadow: 0 18px 50px -30px rgb(103 232 249 / 20%);
+        box-shadow: 0 18px 50px -30px rgb(196 181 253 / 20%);
     }
     50% {
-        box-shadow: 0 18px 65px -24px rgb(103 232 249 / 45%);
+        box-shadow: 0 18px 65px -24px rgb(196 181 253 / 45%);
     }
 }
 

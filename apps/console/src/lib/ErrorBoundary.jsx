@@ -25,7 +25,7 @@ export class ErrorBoundary extends Component {
                     </div>
                     <button
                         onClick={() => window.location.reload()}
-                        className="rounded-[var(--radius-input)] bg-brand px-4 py-2 text-sm font-semibold text-white hover:bg-brand-dark"
+                        className="rounded-[var(--radius-input)] bg-[image:var(--gradient-primary)] px-4 py-2 text-sm font-semibold text-white shadow-(--shadow-primary) hover:bg-[image:var(--gradient-primary-hover)]"
                     >
                         Sayfayı yenile
                     </button>

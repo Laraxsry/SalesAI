@@ -32,8 +32,8 @@ function NewProductModal({ onClose, onCreated }) {
     }
 
     return (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-[#071713]/65 p-4 backdrop-blur-sm">
-            <div className="w-full max-w-lg rounded-[24px] border border-border bg-surface p-7 shadow-[0_32px_100px_-35px_rgba(7,23,19,0.6)]">
+        <div className="app-scrim fixed inset-0 z-50 flex items-center justify-center p-4">
+            <div className="w-full max-w-lg rounded-[24px] border border-border bg-surface p-7 shadow-(--shadow-float)">
                 <div className="mb-6 flex items-center justify-between">
                     <div>
                         <p className="mb-1 text-[10px] font-bold uppercase tracking-[0.18em] text-brand">Yeni çalışma alanı</p>
@@ -107,7 +107,9 @@ export function Overview() {
 
     return (
         <div>
-            <section className="relative mb-7 overflow-hidden rounded-[28px] bg-[var(--color-shell)] px-6 py-7 text-white shadow-[0_24px_70px_-42px_rgba(7,23,19,0.65)] sm:px-8 sm:py-9">
+            <section className="relative mb-7 overflow-hidden rounded-[28px] bg-[var(--color-shell)] px-6 py-7 text-white shadow-[0_24px_70px_-42px_rgba(30,27,75,0.65)] ring-1 ring-white/10 sm:px-8 sm:py-9">
+                <div className="app-aurora absolute inset-0" aria-hidden="true" />
+                <div className="lp-stars absolute inset-0" aria-hidden="true" />
                 <div className="pointer-events-none absolute -right-20 -top-28 h-72 w-72 rounded-full border-[48px] border-[color-mix(in_srgb,var(--color-accent)_7%,transparent)]" />
                 <div className="pointer-events-none absolute bottom-0 right-24 h-28 w-44 bg-[image:var(--color-overview-dots)] bg-[size:13px_13px] opacity-15" />
                 <div className="relative flex flex-col justify-between gap-7 md:flex-row md:items-end">
@@ -115,12 +117,12 @@ export function Overview() {
                         <span className="mb-4 inline-flex items-center gap-2 rounded-full border border-white/10 bg-white/[0.06] px-3 py-1.5 text-[11px] font-bold text-[var(--color-accent)]">
                             <Activity size={13} /> Satış operasyon merkezi
                         </span>
-                        <h1 className="text-3xl font-semibold tracking-[-0.035em] text-white sm:text-4xl">Ürünlerinizi satışa hazırlayın.</h1>
+                        <h1 className="lp-gradient-text text-3xl font-semibold tracking-[-0.035em] sm:text-4xl">Ürünlerinizi satışa hazırlayın.</h1>
                         <p className="mt-3 max-w-xl text-sm leading-6 text-white/55">
                             Bilgi kaynaklarını, AI temsilcileri ve görüşme performansını her ürün için tek yerden yönetin.
                         </p>
                     </div>
-                    <Button onClick={() => setShowModal(true)} className="shrink-0 !bg-[var(--color-accent)] !text-[var(--color-shell)] !shadow-none hover:!bg-[var(--color-accent-hover)]">
+                    <Button onClick={() => setShowModal(true)} className="shrink-0">
                         <Plus size={16} />
                         Yeni ürün
                     </Button>
@@ -145,7 +147,7 @@ export function Overview() {
                 <div className="rounded-2xl border border-border/80 bg-surface/75 p-4 shadow-sm backdrop-blur">
                     <div className="flex items-center justify-between">
                         <span className="text-xs font-semibold text-text-muted">Veri güvenliği</span>
-                        <ShieldCheck size={16} className="text-amber-600" />
+                        <ShieldCheck size={16} className="text-[#ec4899]" />
                     </div>
                     <p className="mt-3 text-sm font-bold text-text">Çalışma alanına özel</p>
                 </div>
@@ -163,7 +165,7 @@ export function Overview() {
                     {[0, 1, 2].map((item) => <div key={item} className="h-48 animate-pulse rounded-[22px] border border-border bg-surface/70" />)}
                 </div>
             )}
-            {error && <div className="rounded-2xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">{error.message}</div>}
+            {error && <div className="rounded-2xl border border-red-500/30 bg-red-500/10 px-4 py-3 text-sm text-red-400">{error.message}</div>}
 
             {products?.length === 0 && (
                 <div className="flex flex-col items-center justify-center rounded-[24px] border border-dashed border-brand/30 bg-surface/60 px-6 py-16 text-center">
@@ -185,7 +187,7 @@ export function Overview() {
                             className="card-lift group relative overflow-hidden rounded-[22px] border border-border/90 bg-surface p-5 hover:border-brand/35"
                         >
                             <div className="absolute right-5 top-5 text-[11px] font-bold tracking-[0.16em] text-text-muted/45">{String(index + 1).padStart(2, '0')}</div>
-                            <div className="mb-8 flex h-11 w-11 items-center justify-center rounded-2xl bg-[var(--color-shell)] text-[var(--color-accent)] shadow-[0_10px_25px_-14px_rgba(13,41,35,0.7)]">
+                            <div className="mb-8 flex h-11 w-11 items-center justify-center rounded-2xl bg-[image:var(--gradient-primary)] text-white shadow-[0_10px_25px_-14px_#7c3aed]">
                                 <Package size={18} />
                             </div>
                             <h3 className="text-lg font-semibold text-text transition-colors group-hover:text-brand">{p.name}</h3>

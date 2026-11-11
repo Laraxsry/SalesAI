@@ -23,13 +23,12 @@ export function AuthLayout({ children }) {
             >
                 {isDark ? <Sun size={18} aria-hidden="true" /> : <Moon size={18} aria-hidden="true" />}
             </button>
-            <div className="relative hidden flex-col justify-between overflow-hidden bg-[var(--color-shell)] p-10 text-white lg:flex xl:p-14">
-                <div
-                    className="pointer-events-none absolute inset-0"
-                    style={{
-                        background: 'var(--color-auth-gradient)'
-                    }}
-                />
+            <div className="relative isolate hidden flex-col justify-between overflow-hidden bg-[var(--color-night)] p-10 text-white shadow-[1px_0_0_rgb(255_255_255/0.08)] lg:flex xl:p-14">
+                {/* Same night sky as the landing hero: aurora, stars and grain. The 1px
+                    shadow is a hairline on the right edge, where the aurora is clipped. */}
+                <div className="lp-aurora pointer-events-none absolute inset-0" aria-hidden="true" />
+                <div className="lp-stars absolute inset-0" aria-hidden="true" />
+                <div className="wow-hero-noise absolute inset-0 opacity-30" aria-hidden="true" />
 
                 <div className="relative z-10 flex items-center gap-3">
                     <Logo className="[&_span]:text-white [&_span_span]:text-[var(--color-accent)]" />
@@ -37,11 +36,12 @@ export function AuthLayout({ children }) {
 
                 <div className="relative z-10 max-w-xl">
                     <span className="mb-6 inline-flex items-center gap-2 rounded-full border border-white/10 bg-white/[0.06] px-3 py-1.5 text-xs font-bold text-[var(--color-accent)] backdrop-blur">
-                        <Sparkles size={12} />
+                        <Sparkles size={12} className="text-[#f6c85f]" />
                         Yapay zeka destekli satış operasyonu
                     </span>
                     <h2 className="max-w-lg text-4xl font-semibold leading-[1.08] tracking-[-0.035em] text-white xl:text-5xl">
-                        Her görüşmeyi ölçülebilir bir satış fırsatına dönüştürün.
+                        Her görüşmeyi{' '}
+                        <span className="lp-gradient-text">ölçülebilir bir satış fırsatına dönüştürün.</span>
                     </h2>
                     <p className="mt-5 max-w-lg text-[15px] leading-7 text-white/55">
                         Müşterinizle konuşan, ürünü canlı gösteren ve satış sinyallerini ekibiniz için anlaşılır hale getiren tek çalışma alanı.
@@ -66,8 +66,10 @@ export function AuthLayout({ children }) {
             </div>
 
             <div className="relative flex items-center justify-center overflow-hidden p-6 sm:p-12">
+                <div className="lp-dots absolute inset-0" aria-hidden="true" />
                 <div className="pointer-events-none absolute -right-24 -top-24 h-72 w-72 rounded-full bg-brand/8 blur-3xl" />
-                <div className="relative w-full max-w-[420px] rounded-[28px] border border-border bg-surface/80 p-7 shadow-[0_30px_90px_-45px_rgba(13,45,38,0.38)] backdrop-blur sm:p-9">
+                <div className="pointer-events-none absolute -bottom-24 -left-24 h-72 w-72 rounded-full bg-[var(--color-pink)]/8 blur-3xl" aria-hidden="true" />
+                <div className="relative w-full max-w-[420px] rounded-[28px] border border-border bg-surface/80 p-7 shadow-(--shadow-float) backdrop-blur sm:p-9">
                     <span className="absolute right-7 top-7 hidden h-9 w-9 items-center justify-center rounded-xl bg-surface-raised text-brand sm:flex"><ArrowUpRight size={16} /></span>
                     {children}
                 </div>

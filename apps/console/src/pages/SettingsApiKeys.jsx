@@ -109,7 +109,7 @@ export function SettingsApiKeys() {
                     {keys.map((k) => (
                         <div key={k.id} className="flex items-center justify-between gap-3 px-5 py-3.5">
                             <div className="flex items-center gap-3">
-                                <span className="flex h-9 w-9 items-center justify-center rounded-full bg-surface-raised text-text-muted">
+                                <span className="flex h-9 w-9 items-center justify-center rounded-full bg-brand/15 text-brand">
                                     <Key size={15} />
                                 </span>
                                 <div>

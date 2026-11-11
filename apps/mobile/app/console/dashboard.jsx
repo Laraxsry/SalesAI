@@ -4,7 +4,7 @@ import { StatusBar } from 'expo-status-bar';
 import { useRouter } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import { useAuth } from './_layout';
-import { FONT } from '../../src/theme';
+import { DARK_COLORS, FONT, inputTint } from '../../src/theme';
 import { useAppTheme } from '../../src/theme-context';
 
 const SESSION_STATUS_LABELS = {
@@ -49,6 +49,9 @@ export default function DashboardScreen() {
     const { token, user, logout, apiFetch } = useAuth();
     const { colors, isDark, toggleTheme } = useAppTheme();
     const styles = createStyles(colors, isDark);
+    // Brand tint for spinners and icons: the light violet reads on the night
+    // surfaces of the dark theme, the brand violet on the light ones.
+    const tint = isDark ? colors.accent : colors.primary;
 
     const [activeTab, setActiveTab] = useState('home'); // home, sessions, leads, agents, settings
     const [loading, setLoading] = useState(true);
@@ -259,7 +262,7 @@ export default function DashboardScreen() {
     if (loading) {
         return (
             <View style={styles.centerContainer}>
-                <ActivityIndicator size="large" color={colors.lime} />
+                <ActivityIndicator size="large" color={tint} />
                 <Text style={styles.loadingText}>Çalışma alanları yükleniyor…</Text>
             </View>
         );
@@ -285,7 +288,7 @@ export default function DashboardScreen() {
                     </View>
                 </View>
                 <TouchableOpacity style={styles.logoutButton} onPress={handleLogout} activeOpacity={0.7}>
-                    <Ionicons name="log-out-outline" size={18} color="#FF9B91" />
+                    <Ionicons name="log-out-outline" size={18} color={DARK_COLORS.danger} />
                 </TouchableOpacity>
             </View>
 
@@ -293,7 +296,7 @@ export default function DashboardScreen() {
             <View style={styles.contentContainer}>
                 {activeTab === 'home' && (
                     <ScrollView 
-                        refreshControl={<RefreshControl refreshing={refreshing} onRefresh={handleRefresh} tintColor={colors.teal} />}
+                        refreshControl={<RefreshControl refreshing={refreshing} onRefresh={handleRefresh} tintColor={tint} colors={[tint]} progressBackgroundColor={colors.surface} />}
                         contentContainerStyle={styles.tabContent}
                     >
                         {/* KPI Cards */}
@@ -354,6 +357,7 @@ export default function DashboardScreen() {
                             style={styles.searchBar}
                             placeholder="Görüşme veya temsilci ara…"
                             placeholderTextColor={colors.soft}
+                            {...inputTint(colors, isDark)}
                             value={searchQuery}
                             onChangeText={handleSearch}
                             autoCapitalize="none"
@@ -362,7 +366,7 @@ export default function DashboardScreen() {
                         <FlatList
                             data={filteredSessions}
                             keyExtractor={(item) => item._id}
-                            refreshControl={<RefreshControl refreshing={refreshing} onRefresh={handleRefresh} tintColor={colors.teal} />}
+                            refreshControl={<RefreshControl refreshing={refreshing} onRefresh={handleRefresh} tintColor={tint} colors={[tint]} progressBackgroundColor={colors.surface} />}
                             contentContainerStyle={styles.listContent}
                             renderItem={({ item }) => (
                                 <TouchableOpacity
@@ -397,7 +401,7 @@ export default function DashboardScreen() {
                     <FlatList
                         data={leads}
                         keyExtractor={(item) => item._id}
-                        refreshControl={<RefreshControl refreshing={refreshing} onRefresh={handleRefresh} tintColor={colors.teal} />}
+                        refreshControl={<RefreshControl refreshing={refreshing} onRefresh={handleRefresh} tintColor={tint} colors={[tint]} progressBackgroundColor={colors.surface} />}
                         contentContainerStyle={styles.listContent}
                         renderItem={({ item }) => (
                             <View style={styles.leadCard}>
@@ -461,7 +465,7 @@ export default function DashboardScreen() {
                     <FlatList
                         data={agents}
                         keyExtractor={(item) => item._id}
-                        refreshControl={<RefreshControl refreshing={refreshing} onRefresh={handleRefresh} tintColor={colors.teal} />}
+                        refreshControl={<RefreshControl refreshing={refreshing} onRefresh={handleRefresh} tintColor={tint} colors={[tint]} progressBackgroundColor={colors.surface} />}
                         contentContainerStyle={styles.listContent}
                         renderItem={({ item }) => (
                             <View style={styles.agentItem}>
@@ -478,7 +482,7 @@ export default function DashboardScreen() {
                                         value={item.status === 'active'}
                                         onValueChange={() => toggleAgentStatus(item)}
                                         disabled={isViewer}
-                                        trackColor={{ false: colors.line, true: colors.tealDark }}
+                                        trackColor={{ false: colors.line, true: colors.primary }}
                                         thumbColor="#ffffff"
                                     />
                                 </View>
@@ -498,7 +502,7 @@ export default function DashboardScreen() {
                         <View style={styles.settingsCard}>
                             <View style={styles.themeSettingRow}>
                                 <View style={styles.themeSettingIcon}>
-                                    <Ionicons name={isDark ? 'moon' : 'sunny'} size={18} color={colors.teal} />
+                                    <Ionicons name={isDark ? 'moon' : 'sunny'} size={18} color={tint} />
                                 </View>
                                 <View style={styles.themeSettingCopy}>
                                     <Text style={styles.settingsValueCompact}>Koyu tema</Text>
@@ -507,7 +511,7 @@ export default function DashboardScreen() {
                                 <Switch
                                     value={isDark}
                                     onValueChange={toggleTheme}
-                                    trackColor={{ false: colors.line, true: colors.tealDark }}
+                                    trackColor={{ false: colors.line, true: colors.primary }}
                                     thumbColor={colors.white}
                                 />
                             </View>
@@ -599,7 +603,7 @@ const createStyles = (colors, isDark) => StyleSheet.create({
         padding: 24,
     },
     loadingText: {
-        color: 'rgba(255,255,255,0.55)',
+        color: colors.muted,
         fontFamily: FONT.medium,
         fontSize: 15,
         marginTop: 16,
@@ -623,7 +627,7 @@ const createStyles = (colors, isDark) => StyleSheet.create({
         fontSize: 17,
     },
     workspaceSubtitle: {
-        color: 'rgba(255,255,255,0.45)',
+        color: 'rgba(255,255,255,0.5)',
         fontFamily: FONT.medium,
         fontSize: 10.5,
         marginTop: 1,
@@ -662,11 +666,13 @@ const createStyles = (colors, isDark) => StyleSheet.create({
         marginTop: 32,
         marginBottom: 16,
     },
+    // Live pulse in the landing's pink; the deeper pink keeps the dot visible
+    // on the light canvas.
     pulseDotLive: {
         width: 8,
         height: 8,
         borderRadius: 4,
-        backgroundColor: colors.lime,
+        backgroundColor: isDark ? colors.pink : '#DB2777',
         marginLeft: 8,
     },
     kpiGrid: {
@@ -684,7 +690,7 @@ const createStyles = (colors, isDark) => StyleSheet.create({
         borderColor: colors.line,
     },
     kpiValue: {
-        color: isDark ? colors.lime : colors.tealDark,
+        color: isDark ? colors.accent : colors.primaryDark,
         fontFamily: FONT.bold,
         fontSize: 24,
     },
@@ -721,18 +727,20 @@ const createStyles = (colors, isDark) => StyleSheet.create({
         marginBottom: 8,
     },
     sessionTime: {
-        color: colors.soft,
+        color: colors.muted,
         fontFamily: FONT.medium,
         fontSize: 12,
     },
+    // "Live" is the semantic online green, as on the web console's session
+    // chips; the tint is the landing film's success surface.
     liveTag: {
-        backgroundColor: 'rgba(16, 185, 129, 0.15)',
+        backgroundColor: isDark ? 'rgba(52, 211, 153, 0.15)' : '#ECFDF5',
         paddingVertical: 2,
         paddingHorizontal: 8,
         borderRadius: 10,
     },
     liveTagText: {
-        color: colors.teal,
+        color: colors.success,
         fontSize: 10,
         fontWeight: '800',
     },
@@ -742,17 +750,19 @@ const createStyles = (colors, isDark) => StyleSheet.create({
         borderRadius: 10,
     },
     badgeLive: {
-        backgroundColor: 'rgba(16, 185, 129, 0.15)',
+        backgroundColor: isDark ? 'rgba(52, 211, 153, 0.15)' : '#ECFDF5',
     },
+    // "Ended" is neutral: muted text on the raised surface, as on the web
+    // console's session chips.
     badgeEnded: {
-        backgroundColor: 'rgba(108, 114, 127, 0.15)',
+        backgroundColor: colors.surfaceMuted,
     },
     badgeText: {
         fontSize: 10,
         fontWeight: '800',
     },
     badgeLiveText: {
-        color: colors.teal,
+        color: colors.success,
     },
     badgeEndedText: {
         color: colors.muted,
@@ -815,10 +825,11 @@ const createStyles = (colors, isDark) => StyleSheet.create({
         fontWeight: '800',
     },
     indicatorActive: {
-        color: colors.teal,
+        color: colors.success,
     },
+    // "Paused" is amber, as on the web console's agent chips.
     indicatorPaused: {
-        color: '#f87171',
+        color: colors.amber,
     },
     leadCard: {
         backgroundColor: colors.surface,
@@ -841,13 +852,13 @@ const createStyles = (colors, isDark) => StyleSheet.create({
         fontWeight: '700',
     },
     scoreBadge: {
-        backgroundColor: 'rgba(215,249,91,0.1)',
+        backgroundColor: isDark ? 'rgba(196, 181, 253, 0.12)' : 'rgba(124, 58, 237, 0.1)',
         paddingVertical: 2,
         paddingHorizontal: 8,
         borderRadius: 10,
     },
     scoreText: {
-        color: isDark ? colors.lime : colors.tealDark,
+        color: isDark ? colors.accent : colors.primaryDark,
         fontFamily: FONT.bold,
         fontSize: 11,
         fontWeight: '700',
@@ -871,9 +882,11 @@ const createStyles = (colors, isDark) => StyleSheet.create({
         borderColor: colors.line,
         alignItems: 'center',
     },
+    // Selected chip: brand violet with white text on the light theme, light
+    // violet with dark ink on the dark theme (the web console's brand/on-brand).
     leadStatusBtnActive: {
-        backgroundColor: colors.lime,
-        borderColor: colors.lime,
+        backgroundColor: isDark ? colors.accent : colors.primary,
+        borderColor: isDark ? colors.accent : colors.primary,
     },
     leadStatusBtnText: {
         color: colors.muted,
@@ -881,7 +894,7 @@ const createStyles = (colors, isDark) => StyleSheet.create({
         fontWeight: '600',
     },
     leadStatusBtnActiveText: {
-        color: colors.ink,
+        color: isDark ? colors.ink : colors.white,
     },
     leadStatusBtnDisabled: {
         opacity: 0.4,
@@ -896,7 +909,7 @@ const createStyles = (colors, isDark) => StyleSheet.create({
         alignSelf: 'flex-start',
     },
     contactBtnText: {
-        color: colors.teal,
+        color: isDark ? colors.accent : colors.primary,
         fontSize: 13,
         fontWeight: '600',
     },
@@ -908,7 +921,7 @@ const createStyles = (colors, isDark) => StyleSheet.create({
         borderColor: colors.line,
     },
     settingsLabel: {
-        color: colors.soft,
+        color: colors.muted,
         fontSize: 12,
         marginBottom: 4,
     },
@@ -935,11 +948,11 @@ const createStyles = (colors, isDark) => StyleSheet.create({
         fontSize: 15,
     },
     workspaceTextActive: {
-        color: isDark ? colors.lime : colors.tealDark,
+        color: isDark ? colors.accent : colors.primaryDark,
         fontWeight: '700',
     },
     activeIndicatorText: {
-        color: colors.teal,
+        color: isDark ? colors.accent : colors.primary,
         fontSize: 12,
         fontWeight: '700',
     },
@@ -1009,16 +1022,16 @@ const createStyles = (colors, isDark) => StyleSheet.create({
         marginBottom: 4,
     },
     iconWrapperActive: {
-        backgroundColor: colors.lime,
+        backgroundColor: colors.accent,
     },
     tabItemText: {
-        color: 'rgba(255,255,255,0.38)',
+        color: 'rgba(255,255,255,0.5)',
         fontFamily: FONT.medium,
         fontSize: 10,
         fontWeight: '600',
     },
     tabItemTextActive: {
-        color: colors.lime,
+        color: colors.accent,
         fontFamily: FONT.bold,
     },
 });

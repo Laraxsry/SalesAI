@@ -29,7 +29,7 @@ const TABS = [
 const FINDING_META = {
     inconsistency: { label: 'Tutarsızlık', icon: AlertTriangle, className: 'bg-red-500/10 text-red-400' },
     thin: { label: 'Yetersiz detay', icon: FileQuestion, className: 'bg-amber-500/10 text-amber-400' },
-    missing: { label: 'Eksik konu', icon: PlusCircle, className: 'bg-blue-500/10 text-blue-400' }
+    missing: { label: 'Eksik konu', icon: PlusCircle, className: 'bg-brand/10 text-brand' }
 };
 
 const REPORT_STATUS_LABEL = {
@@ -284,7 +284,7 @@ function ContentAnalysisTab({ productId, productName }) {
                     onClick={() => triggerMutation.mutate()}
                     disabled={!canRequestNow || triggerMutation.isPending}
                     title={!canRequestNow ? 'Günlük analiz hakkınız doldu' : undefined}
-                    className="inline-flex shrink-0 items-center gap-1.5 rounded-[var(--radius-input)] bg-brand px-3.5 py-2 text-sm font-medium text-white disabled:cursor-not-allowed disabled:opacity-40"
+                    className="inline-flex shrink-0 items-center gap-1.5 rounded-[var(--radius-input)] bg-[image:var(--gradient-primary)] px-3.5 py-2 text-sm font-medium text-white shadow-(--shadow-primary) enabled:hover:bg-[image:var(--gradient-primary-hover)] disabled:cursor-not-allowed disabled:opacity-40"
                 >
                     {triggerMutation.isPending ? <Loader2 size={14} className="animate-spin" /> : <Sparkles size={14} />}
                     Analiz Et
@@ -409,7 +409,7 @@ function TopicNode({ topic, childrenByParent, depth, expandedIds, onToggle, onJu
                                 <button
                                     onClick={handleSave}
                                     disabled={saving}
-                                    className="rounded-[var(--radius-input)] bg-brand px-3 py-1.5 text-xs font-medium text-white disabled:opacity-50"
+                                    className="rounded-[var(--radius-input)] bg-[image:var(--gradient-primary)] px-3 py-1.5 text-xs font-medium text-white shadow-(--shadow-primary) enabled:hover:bg-[image:var(--gradient-primary-hover)] disabled:opacity-50"
                                 >
                                     {saving ? 'Kaydediliyor…' : 'Kaydet'}
                                 </button>

@@ -45,11 +45,11 @@ function TranscriptPanel({ sessionId }) {
         <div className="flex flex-col gap-4">
             {summary && (
                 <div className="rounded-[var(--radius-card)] border border-brand/30 bg-brand/5 p-4">
-                    <h4 className="mb-2 text-xs font-semibold uppercase text-brand-light">Özet</h4>
+                    <h4 className="mb-2 text-xs font-semibold uppercase text-brand">Özet</h4>
                     {summary.tldr && <p className="mb-2 text-sm text-text">{summary.tldr}</p>}
                     <div className="flex flex-wrap gap-1.5">
                         {summary.topics?.map((t) => (
-                            <span key={t} className="rounded-full bg-surface-raised px-2 py-0.5 text-xs text-text-muted">{t}</span>
+                            <span key={t} className="rounded-full bg-surface px-2 py-0.5 text-xs text-text-muted in-data-[theme=dark]:bg-surface-raised">{t}</span>
                         ))}
                     </div>
                     {summary.nextStep && (
@@ -68,10 +68,14 @@ function TranscriptPanel({ sessionId }) {
                     <div
                         key={m._id}
                         className={`flex items-start gap-2 rounded-[var(--radius-input)] border border-border p-3 ${
-                            m.role === 'assistant' ? 'bg-brand/5' : 'bg-surface'
+                            m.role === 'assistant' ? 'bg-brand/5 in-data-[theme=dark]:bg-brand/12' : 'bg-surface'
                         }`}
                     >
-                        <span className="mt-0.5 flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-surface-raised text-text-muted">
+                        <span
+                            className={`mt-0.5 flex h-6 w-6 shrink-0 items-center justify-center rounded-full ${
+                                m.role === 'assistant' ? 'bg-brand/15 text-brand' : 'bg-surface-raised text-text-muted'
+                            }`}
+                        >
                             {m.role === 'assistant' ? <BotIcon size={12} /> : <User size={12} />}
                         </span>
                         <div className="min-w-0 flex-1">
@@ -118,7 +122,7 @@ function SessionDetail({ sessionId }) {
                                 role="tab"
                                 aria-selected={active}
                                 onClick={() => setActiveTab(tab.id)}
-                                className={`inline-flex items-center gap-1.5 border-b-2 px-3 py-2.5 text-xs font-medium transition-colors ${active ? 'border-brand text-brand-light' : 'border-transparent text-text-muted hover:text-text'}`}
+                                className={`inline-flex items-center gap-1.5 border-b-2 px-3 py-2.5 text-xs font-medium transition-colors ${active ? 'border-brand text-brand' : 'border-transparent text-text-muted hover:text-text'}`}
                             >
                                 <Icon size={14} /> {tab.label}
                             </button>

@@ -244,7 +244,7 @@ export function KnowledgeAudit() {
              * sidebar and match <main>'s padding.
              */}
             {(approvedCount > 0 || rejectedCount > 0) && (
-                <div className="fixed bottom-4 left-4 right-4 z-20 flex flex-wrap items-center justify-between gap-3 rounded-[var(--radius-card)] border border-border bg-surface-raised px-4 py-3 shadow-[0_10px_25px_-10px_var(--color-scrim)] md:left-[calc(16rem+2rem)] md:right-8">
+                <div className="fixed bottom-4 left-4 right-4 z-20 flex flex-wrap items-center justify-between gap-3 rounded-[var(--radius-card)] border border-border bg-surface-raised px-4 py-3 shadow-[0_10px_25px_-10px_var(--color-scrim)] md:left-[calc(320px+2rem)] md:right-8">
                     <p className="text-sm text-text">
                         {approvedCount} onay · {rejectedCount} ret
                         {approvedCount > 0 && (
@@ -373,7 +373,7 @@ function FindingCard({ finding, decision, onDecide, readOnly }) {
                                 kept ? 'border-emerald-500/40 bg-emerald-500/5' : 'border-border bg-surface-raised'
                             }`}
                         >
-                            <p className="mb-1 text-[11px] uppercase tracking-wide text-text-muted">
+                            <p className="mb-1 text-[13px] uppercase tracking-wide text-text-muted">
                                 {chunk.sourceTitle || 'kaynak yok'}
                                 {kept && <span className="ml-2 text-emerald-400">tutulacak</span>}
                                 {!kept && finding.type !== 'junk' && (
@@ -391,7 +391,7 @@ function FindingCard({ finding, decision, onDecide, readOnly }) {
 
             {finding.canonicalText && (
                 <div className="mt-3 rounded-[var(--radius-input)] border border-brand/40 bg-brand/5 px-3 py-2">
-                    <p className="mb-1 text-[11px] uppercase tracking-wide text-brand">Yerine yazılacak metin</p>
+                    <p className="mb-1 text-[13px] uppercase tracking-wide text-brand">Yerine yazılacak metin</p>
                     <p className="text-xs leading-relaxed text-text">{finding.canonicalText}</p>
                 </div>
             )}

@@ -31,7 +31,7 @@ export function AuthLayout({ children }) {
                 <div className="wow-hero-noise absolute inset-0 opacity-30" aria-hidden="true" />
 
                 <div className="relative z-10 flex items-center gap-3">
-                    <Logo className="[&_span]:text-white [&_span_span]:text-[var(--color-accent)]" />
+                    <Logo className="[&>span]:text-[20px] [&_span]:text-white [&_span_span]:text-[var(--color-accent)]" />
                 </div>
 
                 <div className="relative z-10 max-w-xl">
@@ -43,7 +43,7 @@ export function AuthLayout({ children }) {
                         Her görüşmeyi{' '}
                         <span className="lp-gradient-text">ölçülebilir bir satış fırsatına dönüştürün.</span>
                     </h2>
-                    <p className="mt-5 max-w-lg text-[15px] leading-7 text-white/55">
+                    <p className="mt-5 max-w-lg text-[17px] leading-7 text-white/55">
                         Müşterinizle konuşan, ürünü canlı gösteren ve satış sinyallerini ekibiniz için anlaşılır hale getiren tek çalışma alanı.
                     </p>
 

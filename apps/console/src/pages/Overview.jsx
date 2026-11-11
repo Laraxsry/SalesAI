@@ -36,7 +36,7 @@ function NewProductModal({ onClose, onCreated }) {
             <div className="w-full max-w-lg rounded-[24px] border border-border bg-surface p-7 shadow-(--shadow-float)">
                 <div className="mb-6 flex items-center justify-between">
                     <div>
-                        <p className="mb-1 text-[10px] font-bold uppercase tracking-[0.18em] text-brand">Yeni çalışma alanı</p>
+                        <p className="mb-1 text-[12px] font-bold uppercase tracking-[0.18em] text-brand">Yeni çalışma alanı</p>
                         <h2 className="text-xl font-semibold text-text">Ürününü SalesAI'a tanıt</h2>
                     </div>
                     <button onClick={onClose} aria-label="Kapat" className="flex h-9 w-9 items-center justify-center rounded-xl bg-surface-raised text-text-muted hover:text-text">
@@ -114,7 +114,7 @@ export function Overview() {
                 <div className="pointer-events-none absolute bottom-0 right-24 h-28 w-44 bg-[image:var(--color-overview-dots)] bg-[size:13px_13px] opacity-15" />
                 <div className="relative flex flex-col justify-between gap-7 md:flex-row md:items-end">
                     <div className="max-w-2xl">
-                        <span className="mb-4 inline-flex items-center gap-2 rounded-full border border-white/10 bg-white/[0.06] px-3 py-1.5 text-[11px] font-bold text-[var(--color-accent)]">
+                        <span className="mb-4 inline-flex items-center gap-2 rounded-full border border-white/10 bg-white/[0.06] px-3 py-1.5 text-[13px] font-bold text-[var(--color-accent)]">
                             <Activity size={13} /> Satış operasyon merkezi
                         </span>
                         <h1 className="lp-gradient-text text-3xl font-semibold tracking-[-0.035em] sm:text-4xl">Ürünlerinizi satışa hazırlayın.</h1>
@@ -186,7 +186,7 @@ export function Overview() {
                             to={`/products/${p.id}`}
                             className="card-lift group relative overflow-hidden rounded-[22px] border border-border/90 bg-surface p-5 hover:border-brand/35"
                         >
-                            <div className="absolute right-5 top-5 text-[11px] font-bold tracking-[0.16em] text-text-muted/45">{String(index + 1).padStart(2, '0')}</div>
+                            <div className="absolute right-5 top-5 text-[13px] font-bold tracking-[0.16em] text-text-muted/45">{String(index + 1).padStart(2, '0')}</div>
                             <div className="mb-8 flex h-11 w-11 items-center justify-center rounded-2xl bg-[image:var(--gradient-primary)] text-white shadow-[0_10px_25px_-14px_#7c3aed]">
                                 <Package size={18} />
                             </div>
@@ -195,7 +195,7 @@ export function Overview() {
                                 <p className="mt-1.5 line-clamp-2 min-h-10 text-sm leading-5 text-text-muted">{p.description}</p>
                             )}
                             <div className="mt-5 flex items-center justify-between border-t border-border/70 pt-4">
-                                <p className="flex min-w-0 items-center gap-1.5 truncate text-[11px] font-semibold text-text-muted">
+                                <p className="flex min-w-0 items-center gap-1.5 truncate text-[13px] font-semibold text-text-muted">
                                     <ExternalLink size={12} />
                                     {p.websiteUrl ? p.websiteUrl.replace(/^https?:\/\//, '') : 'Web sitesi eklenmedi'}
                                 </p>

@@ -49,7 +49,7 @@ function SessionsChart({ dailyActivity }) {
                 <span>En yüksek: {max}</span>
             </div>
             <div className="relative h-52 border-b border-border/80">
-                <div className="pointer-events-none absolute inset-0 flex flex-col justify-between text-[10px] text-text-muted/60">
+                <div className="pointer-events-none absolute inset-0 flex flex-col justify-between text-[12px] text-text-muted/60">
                     <div className="border-t border-dashed border-border/60"><span className="relative -top-2 bg-surface pr-2">{max}</span></div>
                     <div className="border-t border-dashed border-border/40"><span className="relative -top-2 bg-surface pr-2">{Math.ceil(max / 2)}</span></div>
                     <div className="border-t border-border/60"><span className="relative -top-2 bg-surface pr-2">0</span></div>
@@ -75,14 +75,14 @@ function SessionsChart({ dailyActivity }) {
                                         <span>Tamamlanma</span><span className="text-right text-text">%{Math.round(point.metrics.completionRate * 100)}</span>
                                         <span>Cevapsız</span><span className="text-right text-text">%{Math.round(point.metrics.unansweredRate * 100)}</span>
                                     </div>
-                                    {point.sessions.length > 0 && <div className="mt-3 border-t border-border pt-2"><p className="mb-1 text-[10px] font-semibold uppercase tracking-wider text-text-muted">Oturumlar</p>{point.sessions.slice(0, 4).map((session) => <p key={session.id} className="truncate text-xs text-text">{new Date(session.startedAt).toLocaleTimeString('tr-TR', { hour: '2-digit', minute: '2-digit' })} · {session.name} · {formatDuration(session.durationSec)}</p>)}{point.sessions.length > 4 && <p className="mt-1 text-xs text-brand">+{point.sessions.length - 4} oturum daha</p>}</div>}
+                                    {point.sessions.length > 0 && <div className="mt-3 border-t border-border pt-2"><p className="mb-1 text-[12px] font-semibold uppercase tracking-wider text-text-muted">Oturumlar</p>{point.sessions.slice(0, 4).map((session) => <p key={session.id} className="truncate text-xs text-text">{new Date(session.startedAt).toLocaleTimeString('tr-TR', { hour: '2-digit', minute: '2-digit' })} · {session.name} · {formatDuration(session.durationSec)}</p>)}{point.sessions.length > 4 && <p className="mt-1 text-xs text-brand">+{point.sessions.length - 4} oturum daha</p>}</div>}
                                 </div>
                             </div>
                         );
                     })}
                 </div>
             </div>
-            <div className="mt-2 flex justify-between px-7 text-[10px] text-text-muted">
+            <div className="mt-2 flex justify-between px-7 text-[12px] text-text-muted">
                 <span>{new Date(`${points[0].date}T12:00:00Z`).toLocaleDateString('tr-TR', { day: 'numeric', month: 'short' })}</span>
                 <span>{new Date(`${points[14].date}T12:00:00Z`).toLocaleDateString('tr-TR', { day: 'numeric', month: 'short' })}</span>
                 <span>Bugün</span>

@@ -187,7 +187,7 @@ function NewAgentModal({ productId, onClose, onCreated }) {
                         <span className="mb-1.5 block font-medium text-text-muted">Dil</span>
                         <select
                             {...register('language')}
-                            className="h-10 w-full rounded-[var(--radius-input)] border border-border bg-bg px-3 text-[13.5px] text-text outline-none focus:border-brand"
+                            className="h-10 w-full rounded-[var(--radius-input)] border border-border bg-bg px-3 text-sm text-text outline-none focus:border-brand"
                         >
                             {LANGUAGES.map((l) => (
                                 <option key={l.value} value={l.value}>
@@ -218,7 +218,7 @@ function NewAgentModal({ productId, onClose, onCreated }) {
                         <span className="mb-1.5 block font-medium text-text-muted">Avatar sağlayıcı</span>
                         <select
                             {...register('avatarProvider')}
-                            className="h-10 w-full rounded-[var(--radius-input)] border border-border bg-bg px-3 text-[13.5px] text-text outline-none focus:border-brand"
+                            className="h-10 w-full rounded-[var(--radius-input)] border border-border bg-bg px-3 text-sm text-text outline-none focus:border-brand"
                         >
                             {AVATAR_PROVIDERS.map((p) => (
                                 <option key={p.value} value={p.value}>
@@ -232,7 +232,7 @@ function NewAgentModal({ productId, onClose, onCreated }) {
                         <span className="mb-1.5 block font-medium text-text-muted">Ses (Realtime Voice)</span>
                         <select
                             {...register('voice')}
-                            className="h-10 w-full rounded-[var(--radius-input)] border border-border bg-bg px-3 text-[13.5px] text-text outline-none focus:border-brand"
+                            className="h-10 w-full rounded-[var(--radius-input)] border border-border bg-bg px-3 text-sm text-text outline-none focus:border-brand"
                         >
                             {REALTIME_VOICES.map((v) => (
                                 <option key={v.id} value={v.id}>

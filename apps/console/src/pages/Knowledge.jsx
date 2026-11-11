@@ -161,7 +161,7 @@ function SourceRow({ source: s, progress, icon, isGroup, expanded, onToggle, chi
                               : typeInfo.label}
                     </p>
                     {(s.type === 'url' || s.type === 'api') && savedPageCount > 0 && (
-                        <p className="mt-0.5 text-[11px] text-text-muted">
+                        <p className="mt-0.5 text-[13px] text-text-muted">
                             {savedPageCount} sayfa kaydedildi
                             {crawlStats?.attempted > 0
                                 ? ` · Son tur başarı: %${crawlStats.successRate} (${crawlStats.succeeded}/${crawlStats.attempted})`
@@ -169,7 +169,7 @@ function SourceRow({ source: s, progress, icon, isGroup, expanded, onToggle, chi
                         </p>
                     )}
                     {isInProgress && persistedProgress?.stage && (
-                        <p className="mt-0.5 text-[11px] text-brand">
+                        <p className="mt-0.5 text-[13px] text-brand">
                             {persistedProgress.stage}
                             {persistedProgress.attemptCurrent != null
                                 ? ` · Bu deneme: ${persistedProgress.attemptCurrent}/${persistedProgress.attemptMax}`
@@ -259,7 +259,7 @@ function TopicPreviewModal({ topic, productId, onClose }) {
                 </div>
 
                 <div className="min-h-0 flex-1 overflow-y-auto pr-1">
-                    <span className="mb-4 inline-block rounded bg-brand/15 px-1.5 py-0.5 text-[10px] font-medium text-brand">
+                    <span className="mb-4 inline-block rounded bg-brand/15 px-1.5 py-0.5 text-[12px] font-medium text-brand">
                         Otomatik oluşturuldu
                     </span>
 
@@ -268,7 +268,7 @@ function TopicPreviewModal({ topic, productId, onClose }) {
                             {topic.sourcePages.map((sp, i) => (
                                 <span
                                     key={i}
-                                    className="truncate rounded-full bg-surface-raised px-2 py-1 text-[11px] text-text-muted"
+                                    className="truncate rounded-full bg-surface-raised px-2 py-1 text-[13px] text-text-muted"
                                     title={sp.pageUrl}
                                 >
                                     {sp.pageUrl}
@@ -398,7 +398,7 @@ function AddSourceModal({ productId, onClose, onCreated }) {
                             <textarea
                                 rows={5}
                                 placeholder="Ürününüz hakkında metin, SSS, satış argümanları…"
-                                className="w-full resize-none rounded-[var(--radius-input)] border border-border bg-bg px-3 py-2 text-[13.5px] text-text outline-none focus:border-brand focus:ring-2 focus:ring-brand/20"
+                                className="w-full resize-none rounded-[var(--radius-input)] border border-border bg-bg px-3 py-2 text-sm text-text outline-none focus:border-brand focus:ring-2 focus:ring-brand/20"
                                 {...register('content')}
                             />
                             {errors.content && <p className="mt-1.5 text-xs text-red-400">{errors.content.message}</p>}
@@ -705,7 +705,7 @@ function KnowledgeDetailModal({ source: s, onClose, onSaved }) {
                                 value={needsContentFetch && !bodyHydrated ? 'Yükleniyor…' : body}
                                 disabled={needsContentFetch && !bodyHydrated}
                                 onChange={(e) => setBody(e.target.value)}
-                                className="w-full resize-y rounded-[var(--radius-input)] border border-border bg-bg px-3 py-2 text-[13.5px] text-text outline-none focus:border-brand focus:ring-2 focus:ring-brand/20 disabled:opacity-60"
+                                className="w-full resize-y rounded-[var(--radius-input)] border border-border bg-bg px-3 py-2 text-sm text-text outline-none focus:border-brand focus:ring-2 focus:ring-brand/20 disabled:opacity-60"
                             />
                         </label>
                     )}
@@ -719,7 +719,7 @@ function KnowledgeDetailModal({ source: s, onClose, onSaved }) {
                                 rows={8}
                                 readOnly
                                 value={contentLoading ? 'Yükleniyor…' : fetchedContent?.extractedText || 'Henüz içerik yok.'}
-                                className="w-full resize-y rounded-[var(--radius-input)] border border-border bg-surface-raised px-3 py-2 text-[13.5px] text-text-muted outline-none"
+                                className="w-full resize-y rounded-[var(--radius-input)] border border-border bg-surface-raised px-3 py-2 text-sm text-text-muted outline-none"
                             />
                         </label>
                     )}
@@ -744,7 +744,7 @@ function KnowledgeDetailModal({ source: s, onClose, onSaved }) {
                             )}
                             {overviewChunk && (
                                 <div className="mb-3 rounded-[var(--radius-input)] border border-brand/30 bg-brand/5 p-3">
-                                    <span className="mb-1.5 inline-block rounded bg-brand/15 px-1.5 py-0.5 text-[10px] font-medium text-brand">
+                                    <span className="mb-1.5 inline-block rounded bg-brand/15 px-1.5 py-0.5 text-[12px] font-medium text-brand">
                                         genel özet
                                     </span>
                                     <p className="whitespace-pre-wrap text-xs text-text">{overviewChunk.text}</p>
@@ -773,7 +773,7 @@ function KnowledgeDetailModal({ source: s, onClose, onSaved }) {
                                                     }`}
                                                 >
                                                     <span
-                                                        className={`mb-1 mr-1 inline-block rounded px-1.5 py-0.5 text-[10px] font-medium ${
+                                                        className={`mb-1 mr-1 inline-block rounded px-1.5 py-0.5 text-[12px] font-medium ${
                                                             c.audience === 'technical'
                                                                 ? 'bg-brand/15 text-brand'
                                                                 : 'bg-surface text-text-muted'
@@ -782,7 +782,7 @@ function KnowledgeDetailModal({ source: s, onClose, onSaved }) {
                                                         {c.audience === 'technical' ? 'teknik' : 'genel'}
                                                     </span>
                                                     {c.synthesized && (
-                                                        <span className="mb-1 inline-block rounded bg-brand/15 px-1.5 py-0.5 text-[10px] font-medium text-brand">
+                                                        <span className="mb-1 inline-block rounded bg-brand/15 px-1.5 py-0.5 text-[12px] font-medium text-brand">
                                                             yorumlanmış özet
                                                         </span>
                                                     )}

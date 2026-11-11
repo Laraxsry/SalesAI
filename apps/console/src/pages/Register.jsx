@@ -36,10 +36,10 @@ export function Register() {
     return (
         <AuthLayout>
             <div className="mb-8 flex items-center gap-3 lg:hidden">
-                <Logo />
+                <Logo className="[&>span]:text-[20px]" />
             </div>
 
-            <p className="mb-2 text-[10px] font-bold uppercase tracking-[0.18em] text-brand">Yeni çalışma alanı</p>
+            <p className="mb-2 text-[12px] font-bold uppercase tracking-[0.18em] text-brand">Yeni çalışma alanı</p>
             <h1 className="text-3xl font-semibold tracking-[-0.035em] text-text">{t('auth.registerTitle')}</h1>
             <p className="mt-2 text-sm leading-6 text-text-muted">{t('auth.registerSubtitle')}</p>
 

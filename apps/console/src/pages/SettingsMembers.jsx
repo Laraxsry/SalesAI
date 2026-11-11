@@ -45,7 +45,7 @@ function InviteForm({ workspaceId, onInvited }) {
                 <span className="mb-1.5 block font-medium text-text-muted">Rol</span>
                 <select
                     {...register('role')}
-                    className="h-10 rounded-[var(--radius-input)] border border-border bg-bg px-3 text-[13.5px] text-text outline-none focus:border-brand"
+                    className="h-10 rounded-[var(--radius-input)] border border-border bg-bg px-3 text-sm text-text outline-none focus:border-brand"
                 >
                     {ROLES.map((r) => (
                         <option key={r} value={r}>

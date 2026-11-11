@@ -35,7 +35,7 @@ export function Input({
                     id={id}
                     type={isPassword && revealed ? 'text' : type}
                     className={cn(
-                        'h-10 w-full rounded-[var(--radius-input)] border border-border bg-bg pl-3 pr-3 text-[13.5px] text-text',
+                        'h-10 w-full rounded-[var(--radius-input)] border border-border bg-bg pl-3 pr-3 text-sm text-text',
                         'outline-none transition-colors placeholder:text-text-muted/60',
                         'focus:border-brand focus:ring-2 focus:ring-brand/20',
                         Icon && 'pl-9',

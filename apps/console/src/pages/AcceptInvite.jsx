@@ -44,7 +44,7 @@ export function AcceptInvite() {
             <div className="lp-dots absolute inset-0" aria-hidden="true" />
             <div className="relative w-full max-w-sm rounded-[var(--radius-card)] border border-border bg-surface p-8 text-center shadow-(--shadow-float)">
                 <div className="mb-6 flex justify-center">
-                    <Logo />
+                    <Logo className="[&>span]:text-[20px]" />
                 </div>
 
                 {!accessToken && (

@@ -107,7 +107,7 @@ export function Leads() {
 
             {visibleLeads.length > 0 && (
                 <div className="overflow-hidden rounded-[var(--radius-card)] border border-border bg-surface">
-                    <div className="hidden grid-cols-[minmax(180px,1.4fr)_minmax(220px,2fr)_90px_120px_24px] gap-4 border-b border-border px-5 py-3 text-[11px] font-semibold uppercase tracking-wider text-text-muted md:grid">
+                    <div className="hidden grid-cols-[minmax(180px,1.4fr)_minmax(220px,2fr)_90px_120px_24px] gap-4 border-b border-border px-5 py-3 text-[13px] font-semibold uppercase tracking-wider text-text-muted md:grid">
                         <span>Müşteri</span><span>Görüşme</span><span>Skor</span><span>Durum</span><span />
                     </div>
                     {visibleLeads.map((lead) => (

@@ -36,10 +36,10 @@ export function Login() {
     return (
         <AuthLayout>
             <div className="mb-8 flex items-center gap-3 lg:hidden">
-                <Logo />
+                <Logo className="[&>span]:text-[20px]" />
             </div>
 
-            <p className="mb-2 text-[10px] font-bold uppercase tracking-[0.18em] text-brand">Güvenli konsol erişimi</p>
+            <p className="mb-2 text-[12px] font-bold uppercase tracking-[0.18em] text-brand">Güvenli konsol erişimi</p>
             <h1 className="text-3xl font-semibold tracking-[-0.035em] text-text">{t('auth.loginTitle')}</h1>
             <p className="mt-2 text-sm leading-6 text-text-muted">{t('auth.loginSubtitle')}</p>
 

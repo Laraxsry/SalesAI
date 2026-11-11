@@ -59,7 +59,7 @@ function DomainList({ domains, onChange }) {
                         }
                     }}
                     placeholder="acme.com veya *.acme.com"
-                    className="h-10 flex-1 rounded-[var(--radius-input)] border border-border bg-bg px-3 text-[13.5px] text-text outline-none focus:border-brand"
+                    className="h-10 flex-1 rounded-[var(--radius-input)] border border-border bg-bg px-3 text-sm text-text outline-none focus:border-brand"
                 />
                 <Button type="button" variant="secondary" onClick={addDomain}>
                     <Plus size={15} />
@@ -186,7 +186,7 @@ export function EmbedStudio() {
                                 <input type="color" {...register('theme.primaryColor')} className="h-10 w-14 rounded-[var(--radius-input)] border border-border bg-bg" />
                                 <input
                                     {...register('theme.primaryColor')}
-                                    className="h-10 flex-1 rounded-[var(--radius-input)] border border-border bg-bg px-3 text-[13.5px] text-text outline-none focus:border-brand"
+                                    className="h-10 flex-1 rounded-[var(--radius-input)] border border-border bg-bg px-3 text-sm text-text outline-none focus:border-brand"
                                 />
                             </div>
                             {errors.theme?.primaryColor && <p className="mt-1.5 text-xs text-red-400">{errors.theme.primaryColor.message}</p>}
@@ -196,7 +196,7 @@ export function EmbedStudio() {
                             <span className="mb-1.5 block font-medium text-text-muted">Görünüm modu</span>
                             <select
                                 {...register('theme.mode')}
-                                className="h-10 w-full rounded-[var(--radius-input)] border border-border bg-bg px-3 text-[13.5px] text-text outline-none focus:border-brand"
+                                className="h-10 w-full rounded-[var(--radius-input)] border border-border bg-bg px-3 text-sm text-text outline-none focus:border-brand"
                             >
                                 <option value="auto">Otomatik</option>
                                 <option value="light">Açık</option>
@@ -211,7 +211,7 @@ export function EmbedStudio() {
                             <span className="mb-1.5 block font-medium text-text-muted">Konum</span>
                             <select
                                 {...register('launcher.position')}
-                                className="h-10 w-full rounded-[var(--radius-input)] border border-border bg-bg px-3 text-[13.5px] text-text outline-none focus:border-brand"
+                                className="h-10 w-full rounded-[var(--radius-input)] border border-border bg-bg px-3 text-sm text-text outline-none focus:border-brand"
                             >
                                 <option value="bottom-right">Sağ alt</option>
                                 <option value="bottom-left">Sol alt</option>
@@ -228,7 +228,7 @@ export function EmbedStudio() {
                             <textarea
                                 rows={2}
                                 {...register('greeting')}
-                                className="w-full resize-none rounded-[var(--radius-input)] border border-border bg-bg px-3 py-2 text-[13.5px] text-text outline-none focus:border-brand"
+                                className="w-full resize-none rounded-[var(--radius-input)] border border-border bg-bg px-3 py-2 text-sm text-text outline-none focus:border-brand"
                             />
                             {errors.greeting && <p className="mt-1.5 text-xs text-red-400">{errors.greeting.message}</p>}
                         </label>

@@ -252,7 +252,7 @@ export function AgentDetail() {
                                         </button>
                                     )}
                                 </div>
-                                <span className="text-[11px] text-text-muted">
+                                <span className="text-[13px] text-text-muted">
                                     {currentMaxP > 1
                                         ? 'Grup toplantısı — agent bu sayıya dahil değil'
                                         : '1 = birebir görüşme'}
@@ -275,7 +275,7 @@ export function AgentDetail() {
                                     >
                                         {agent.preCallSurveyEnabled ? 'Açık' : 'Kapalı'}
                                     </button>
-                                    <span className="text-[11px] text-text-muted">
+                                    <span className="text-[13px] text-text-muted">
                                         Birebir görüşmede ziyaretçi kısa anket doldurur
                                     </span>
                                 </dd>

@@ -37,7 +37,7 @@ function StatusBadge({ status }) {
     const config = NODE_STATUS[status] || NODE_STATUS.pending;
     const Icon = config.icon;
     return (
-        <span className={`inline-flex items-center gap-1 rounded-full px-2 py-1 text-[11px] font-medium ${config.style}`}>
+        <span className={`inline-flex items-center gap-1 rounded-full px-2 py-1 text-[13px] font-medium ${config.style}`}>
             <Icon size={11} /> {config.label}
         </span>
     );
@@ -50,7 +50,7 @@ function CohortBadge({ cohort }) {
         control: 'border-border bg-surface-raised text-text-muted'
     };
     return (
-        <span className={`rounded-full border px-2.5 py-1 text-[11px] font-semibold uppercase tracking-wider ${styles[cohort] || styles.control}`}>
+        <span className={`rounded-full border px-2.5 py-1 text-[13px] font-semibold uppercase tracking-wider ${styles[cohort] || styles.control}`}>
             {cohort}
         </span>
     );
@@ -125,7 +125,7 @@ export function RouteExplorer({ trace, selectedRevision, onRevisionChange }) {
             </div>
 
             {revision.revision > 0 && (
-                <div className="flex flex-wrap gap-2 text-[11px]">
+                <div className="flex flex-wrap gap-2 text-[13px]">
                     <span className="rounded-full bg-fuchsia-500/10 px-2 py-1 text-fuchsia-700 in-data-[theme=dark]:text-fuchsia-400">+{diff.added.length} eklendi</span>
                     <span className="rounded-full bg-emerald-500/10 px-2 py-1 text-emerald-300">{diff.retained.length} korundu</span>
                     <span className="rounded-full bg-red-500/10 px-2 py-1 text-red-300">−{diff.removed.length} kaldırıldı</span>
@@ -146,12 +146,12 @@ export function RouteExplorer({ trace, selectedRevision, onRevisionChange }) {
                             <div className="flex flex-wrap items-start justify-between gap-3">
                                 <div className="min-w-0 flex-1">
                                     <div className="flex flex-wrap items-center gap-2">
-                                        <span className="text-[11px] font-semibold uppercase tracking-wider text-brand">
+                                        <span className="text-[13px] font-semibold uppercase tracking-wider text-brand">
                                             {NODE_TYPE_LABEL[node.type] || node.type}
                                         </span>
-                                        {added && <span className="text-[10px] font-medium text-fuchsia-700 in-data-[theme=dark]:text-fuchsia-400">YENİ</span>}
+                                        {added && <span className="text-[12px] font-medium text-fuchsia-700 in-data-[theme=dark]:text-fuchsia-400">YENİ</span>}
                                         {node.requirement === 'required_before_close' && (
-                                            <span className="inline-flex items-center gap-1 text-[10px] text-amber-300">
+                                            <span className="inline-flex items-center gap-1 text-[12px] text-amber-300">
                                                 <ShieldCheck size={11} /> Kapanış yükümlülüğü
                                             </span>
                                         )}
@@ -159,13 +159,13 @@ export function RouteExplorer({ trace, selectedRevision, onRevisionChange }) {
                                     <p className="mt-1 text-sm leading-6 text-text">
                                         {node.objective || 'Bu eski kayıtta node açıklaması bulunmuyor.'}
                                     </p>
-                                    <div className="mt-3 flex flex-wrap gap-x-4 gap-y-1 text-[11px] text-text-muted">
+                                    <div className="mt-3 flex flex-wrap gap-x-4 gap-y-1 text-[13px] text-text-muted">
                                         {node.evidenceCount > 0 && <span>{node.evidenceCount} doğrulanmış kaynak</span>}
                                         {node.page && <span className="inline-flex items-center gap-1"><MonitorPlay size={11} /> {node.page}</span>}
                                         {node.demoStatus && <span>Demo: {node.demoStatus}</span>}
                                     </div>
                                     {node.evidenceRefs?.length > 0 && (
-                                        <details className="mt-2 text-[11px] text-text-muted">
+                                        <details className="mt-2 text-[13px] text-text-muted">
                                             <summary className="cursor-pointer hover:text-text">Kaynak referanslarını göster</summary>
                                             <div className="mt-1 flex flex-wrap gap-1">
                                                 {node.evidenceRefs.map((reference) => (
@@ -204,7 +204,7 @@ export function RouteExplorer({ trace, selectedRevision, onRevisionChange }) {
                         {revision.reviews.map((review) => (
                             <div key={`${review.seq}-${review.reviewerId}`} className="flex items-center justify-between rounded-xl bg-bg p-3">
                                 <span className="text-xs text-text">{REVIEWER_LABEL[review.reviewerId] || review.reviewerId}</span>
-                                <span className={`text-[11px] font-medium ${review.status === 'passed' ? 'text-emerald-300' : 'text-amber-300'}`}>
+                                <span className={`text-[13px] font-medium ${review.status === 'passed' ? 'text-emerald-300' : 'text-amber-300'}`}>
                                     {review.status === 'accepted' ? 'kabul edildi' : review.status}
                                 </span>
                             </div>
@@ -221,11 +221,11 @@ export function RouteExplorer({ trace, selectedRevision, onRevisionChange }) {
                             <div key={decision.seq} className="flex flex-wrap items-center justify-between gap-2 rounded-xl bg-bg p-3">
                                 <div>
                                     <p className="text-xs font-medium text-text">{decision.reason}</p>
-                                    <p className="mt-0.5 text-[11px] text-text-muted">
+                                    <p className="mt-0.5 text-[13px] text-text-muted">
                                         Revision {decision.baseRevision ?? '—'} → {decision.resultingRevision ?? 'değişmedi'} · {decision.proposedNodeCount} aday node
                                     </p>
                                 </div>
-                                <span className={`rounded-full px-2 py-1 text-[11px] font-medium ${decision.status === 'accepted' ? 'bg-emerald-500/10 text-emerald-300' : 'bg-amber-500/10 text-amber-300'}`}>
+                                <span className={`rounded-full px-2 py-1 text-[13px] font-medium ${decision.status === 'accepted' ? 'bg-emerald-500/10 text-emerald-300' : 'bg-amber-500/10 text-amber-300'}`}>
                                     {decision.status === 'accepted' ? 'Kabul edildi' : decision.status === 'rejected' ? 'Reddedildi' : 'Yok sayıldı'}
                                 </span>
                             </div>
@@ -260,7 +260,7 @@ export function AnalystExplorer({ trace }) {
                         <p className="text-sm font-medium text-text">{ANALYST_LABEL[analyst.analystId] || analyst.analystId}</p>
                         <p className="mt-0.5 text-xs text-text-muted">{analyst.proposalType || 'Analiz'}{analyst.reason ? ` · ${analyst.reason}` : ''}</p>
                     </div>
-                    <span className={`rounded-full px-2 py-1 text-[11px] font-medium ${analyst.status === 'accepted' ? 'bg-emerald-500/10 text-emerald-300' : 'bg-surface-raised text-text-muted'}`}>{analyst.status}</span>
+                    <span className={`rounded-full px-2 py-1 text-[13px] font-medium ${analyst.status === 'accepted' ? 'bg-emerald-500/10 text-emerald-300' : 'bg-surface-raised text-text-muted'}`}>{analyst.status}</span>
                 </div>
             ))}
         </div>
@@ -280,7 +280,7 @@ export function TechnicalTimeline({ trace }) {
                     <span className="mt-0.5 flex h-6 w-6 shrink-0 items-center justify-center rounded-lg bg-surface-raised text-text-muted"><Clock3 size={12} /></span>
                     <div className="min-w-0 flex-1">
                         <p className="break-all text-xs font-medium text-text">{event.type}</p>
-                        <div className="mt-1 flex flex-wrap gap-2 text-[11px] text-text-muted">
+                        <div className="mt-1 flex flex-wrap gap-2 text-[13px] text-text-muted">
                             <span>#{event.seq}</span>
                             {event.status && <span>{event.status}</span>}
                             {event.nodeId && <span>node: {event.nodeId}</span>}

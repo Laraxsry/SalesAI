@@ -80,7 +80,7 @@ function TranscriptPanel({ sessionId }) {
                         </span>
                         <div className="min-w-0 flex-1">
                             <p className="text-sm text-text">{m.text}</p>
-                            <p className="mt-1 text-[11px] text-text-muted">{new Date(m.at).toLocaleTimeString('tr-TR')}</p>
+                            <p className="mt-1 text-[13px] text-text-muted">{new Date(m.at).toLocaleTimeString('tr-TR')}</p>
                         </div>
                     </div>
                 ))}
@@ -245,7 +245,7 @@ export function AgentSessions() {
                                             {s.confirmedContact?.name || s.visitorName || s.confirmedContact?.email
                                                 || s.lead?.name || s.lead?.email || 'Anonim ziyaretçi'}
                                         </span>
-                                        <span className={`shrink-0 rounded-full px-2 py-0.5 text-[11px] font-medium ${STATUS_STYLE[s.status]}`}>
+                                        <span className={`shrink-0 rounded-full px-2 py-0.5 text-[13px] font-medium ${STATUS_STYLE[s.status]}`}>
                                             {STATUS_LABEL[s.status]}
                                         </span>
                                     </div>

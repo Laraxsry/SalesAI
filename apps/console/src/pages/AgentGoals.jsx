@@ -546,7 +546,7 @@ export function AgentGoals() {
                                     <option value="qualification">Hızlı ön görüşme</option>
                                 </select>
                             )}
-                            <p className="mt-1.5 text-[11px] text-text-muted">
+                            <p className="mt-1.5 text-[13px] text-text-muted">
                                 Taslak önce burada önizlenir; siz uygulayıp Kaydet'e basmadan canlı akış değişmez.
                             </p>
                         </div>
@@ -591,7 +591,7 @@ export function AgentGoals() {
                         <div className="flex flex-wrap items-center justify-between gap-2">
                             <div>
                                 <p className="text-sm font-medium text-text">{generatedDraft.nodes.length} adımlık taslak hazır</p>
-                                <p className="text-[11px] text-text-muted">
+                                <p className="text-[13px] text-text-muted">
                                     {generatedDraft.context?.topicCount || 0} bilgi başlığı ve {generatedDraft.context?.pageCount || 0} doğrulanmış sayfa kullanıldı.
                                 </p>
                             </div>
@@ -617,7 +617,7 @@ export function AgentGoals() {
                                 <li key={node.id || index} className="flex gap-2 text-xs text-text-muted">
                                     <span className="text-brand">{index + 1}.</span>
                                     <span className="flex-1">{node.type === 'survey' ? `Soru: ${node.survey?.question}` : node.directive}</span>
-                                    <span className="rounded-full border border-border px-2 py-0.5 text-[10px]">
+                                    <span className="rounded-full border border-border px-2 py-0.5 text-[12px]">
                                         {PLAYBOOK_IMPORTANCE_OPTIONS.find((option) =>
                                             option.value === importanceFromPlaybookNode(node))?.label}
                                     </span>
@@ -630,7 +630,7 @@ export function AgentGoals() {
 
             <div className="mb-5 flex items-start gap-2.5 rounded-[var(--radius-input)] border border-brand/30 bg-brand/5 px-3.5 py-3">
                 <Info size={15} className="mt-0.5 shrink-0 text-brand" />
-                <p className="text-[13px] leading-relaxed text-text-muted">
+                <p className="text-[15px] leading-relaxed text-text-muted">
                     Her adımda ulaşılacak amacı yazın; konuşma metni hazırlamanız gerekmez.
                     Bir adımda ekran gösterilecekse <Globe size={12} className="inline align-[-1px]" />{' '}
                     ikonuna, ekranda bir şey yapılacaksa (tıklama, seçim, yazma — birden fazla adım
@@ -647,7 +647,7 @@ export function AgentGoals() {
                             Kaydedilecek davranışın teknik terimler olmadan kısa önizlemesi.
                         </p>
                     </div>
-                    <div className="flex flex-wrap gap-1.5 text-[11px] text-text-muted">
+                    <div className="flex flex-wrap gap-1.5 text-[13px] text-text-muted">
                         <span className="rounded-full bg-surface-raised px-2.5 py-1">{authoringSummary.stepCount} hedef</span>
                         <span className="rounded-full bg-surface-raised px-2.5 py-1">{authoringSummary.screenStepCount} ekran adımı</span>
                         <span className="rounded-full bg-surface-raised px-2.5 py-1">{authoringSummary.surveyCount} soru</span>
@@ -667,11 +667,11 @@ export function AgentGoals() {
                                 <div className="min-w-0">
                                     <div className="flex flex-wrap items-center gap-2">
                                         <p className="truncate text-xs font-medium text-text">{item.objective}</p>
-                                        <span className="rounded-full border border-border px-2 py-0.5 text-[10px] text-text-muted">
+                                        <span className="rounded-full border border-border px-2 py-0.5 text-[12px] text-text-muted">
                                             {item.importanceLabel}
                                         </span>
                                     </div>
-                                    <p className="mt-1 text-[11px] leading-relaxed text-text-muted">
+                                    <p className="mt-1 text-[13px] leading-relaxed text-text-muted">
                                         {item.behavior}{item.screenBehavior ? ` Ayrıca ${item.screenBehavior}.` : ''}
                                     </p>
                                 </div>
@@ -758,7 +758,7 @@ export function AgentGoals() {
                                     placeholder={row.type === 'survey'
                                         ? 'Örn. Hangi aracı kurumu kullanıyorsunuz?'
                                         : 'Örn. Şirketi tanıt: kuruluş yılı, kaç ülkede faaliyet, müşteri sayısı'}
-                                    className="h-10 min-w-0 flex-1 rounded-[var(--radius-input)] border border-border bg-bg px-3 text-[13.5px] text-text outline-none placeholder:text-text-muted/60 focus:border-brand"
+                                    className="h-10 min-w-0 flex-1 rounded-[var(--radius-input)] border border-border bg-bg px-3 text-sm text-text outline-none placeholder:text-text-muted/60 focus:border-brand"
                                 />
 
                                 <select
@@ -820,7 +820,7 @@ export function AgentGoals() {
                                         value={row.url}
                                         onChange={(e) => updateRow(row.id, { url: e.target.value })}
                                         placeholder="https://www.cyberverse.com.tr/kvkk"
-                                        className="h-9 min-w-0 flex-1 rounded-[var(--radius-input)] border border-border bg-bg px-3 text-[13px] text-brand outline-none placeholder:text-text-muted/60 focus:border-brand"
+                                        className="h-9 min-w-0 flex-1 rounded-[var(--radius-input)] border border-border bg-bg px-3 text-[15px] text-brand outline-none placeholder:text-text-muted/60 focus:border-brand"
                                     />
                                     <span className="h-9 w-[12.5rem] shrink-0" aria-hidden="true" />
                                     <span className="h-9 w-10 shrink-0" aria-hidden="true" />
@@ -942,7 +942,7 @@ export function AgentGoals() {
                                         return (
                                             <div key={actionIndex} className="flex items-center gap-2">
                                                 <span className="h-8 w-4 shrink-0" aria-hidden="true" />
-                                                <span className="flex h-7 w-7 shrink-0 items-center justify-center text-[11px] text-text-muted/60">
+                                                <span className="flex h-7 w-7 shrink-0 items-center justify-center text-[13px] text-text-muted/60">
                                                     {actionIndex + 1}
                                                 </span>
                                                 <input
@@ -951,7 +951,7 @@ export function AgentGoals() {
                                                     placeholder={actionIndex === 0
                                                         ? 'Örn. "Category" alanına tıkla'
                                                         : 'Sıradaki adım, örn. "Staff" yaz'}
-                                                    className="h-9 min-w-0 flex-1 rounded-[var(--radius-input)] border border-border bg-bg px-3 text-[13px] text-text outline-none placeholder:text-text-muted/60 focus:border-brand"
+                                                    className="h-9 min-w-0 flex-1 rounded-[var(--radius-input)] border border-border bg-bg px-3 text-[15px] text-text outline-none placeholder:text-text-muted/60 focus:border-brand"
                                                 />
                                                 <span className="h-9 w-[12.5rem] shrink-0" aria-hidden="true" />
                                                 <span className="h-9 w-10 shrink-0" aria-hidden="true" />

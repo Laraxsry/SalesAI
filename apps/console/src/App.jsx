@@ -89,16 +89,16 @@ function Shell({ children }) {
             )}
             <aside
                 aria-label="Ana menü"
-                className={`sidebar-glow fixed inset-y-0 left-0 z-40 flex w-[280px] shrink-0 flex-col overflow-hidden border-r border-white/8 bg-[var(--color-shell)] px-4 py-5 text-white shadow-2xl shadow-black/10 transition-transform md:sticky md:top-0 md:h-screen md:translate-x-0 ${mobileNavOpen ? 'translate-x-0' : '-translate-x-full'}`}
+                className={`sidebar-glow fixed inset-y-0 left-0 z-40 flex w-[320px] shrink-0 flex-col overflow-hidden border-r border-white/8 bg-[var(--color-shell)] px-4 py-5 text-white shadow-2xl shadow-black/10 transition-transform md:sticky md:top-0 md:h-screen md:translate-x-0 ${mobileNavOpen ? 'translate-x-0' : '-translate-x-full'}`}
             >
                 {/* Landing night sky behind the menu; the content wrappers stack above it.
                     The star tile is nudged so no star lands on the eyebrow or a nav label. */}
                 <div className="app-aurora absolute inset-0 opacity-70" aria-hidden="true" />
                 <div className="lp-stars absolute inset-0 [background-position:14px_-16px]" aria-hidden="true" />
-                <div className="relative z-10 mb-7 px-2">
+                <div className="relative z-10 mb-8 px-2">
                     <div className="flex items-center justify-between">
                         <div className="flex items-center gap-3">
-                            <Logo className="[&_span]:text-white [&_span_span]:text-[var(--color-accent)]" />
+                            <Logo className="[&>span]:text-[26px] [&_span]:text-white [&_span_span]:text-[var(--color-accent)]" />
                         </div>
                         <button type="button" onClick={() => setMobileNavOpen(false)} aria-label="Menüyü kapat" className="flex h-9 w-9 items-center justify-center rounded-xl text-white/60 hover:bg-white/8 hover:text-white md:hidden">
                             <X size={18} aria-hidden="true" />
@@ -106,8 +106,8 @@ function Shell({ children }) {
                     </div>
                 </div>
 
-                <div className="relative z-10 mb-3 px-3 text-[10px] font-bold uppercase tracking-[0.18em] text-white/35">Çalışma Alanı</div>
-                <nav className="relative z-10 flex flex-1 flex-col gap-1" aria-label="Ana navigasyon">
+                <div className="relative z-10 mb-4 px-3 text-[13px] font-bold uppercase tracking-[0.18em] text-white/35">Çalışma Alanı</div>
+                <nav className="relative z-10 flex min-h-0 flex-1 flex-col gap-2" aria-label="Ana navigasyon">
                     {NAV_ITEMS.map(({ to, key, icon: Icon, end }) => (
                         <NavLink
                             key={to}
@@ -116,36 +116,36 @@ function Shell({ children }) {
                             onClick={() => setMobileNavOpen(false)}
                             className={({ isActive }) =>
                                 cn(
-                                    'group flex items-center gap-3 rounded-xl px-3 py-2.5 text-[13px] font-semibold transition-all',
+                                    'group flex max-h-[84px] min-h-[60px] flex-1 items-center gap-4 rounded-2xl px-3.5 text-[18px] font-semibold transition-all',
                                     isActive
                                         ? 'bg-white/10 text-white shadow-[0_1px_0_rgba(255,255,255,0.06)_inset]'
                                         : 'text-white/55 hover:bg-white/6 hover:text-white'
                                 )
                             }
                         >
-                            <span className="flex h-8 w-8 items-center justify-center rounded-lg bg-white/[0.04] text-white/70 transition-colors group-hover:text-[var(--color-accent)] group-aria-[current=page]:bg-[image:var(--gradient-primary)] group-aria-[current=page]:text-white group-aria-[current=page]:shadow-(--shadow-primary)">
-                                <Icon size={16} strokeWidth={2} aria-hidden="true" />
+                            <span className="flex h-12 w-12 shrink-0 items-center justify-center rounded-xl bg-white/[0.04] text-white/70 transition-colors group-hover:text-[var(--color-accent)] group-aria-[current=page]:bg-[image:var(--gradient-primary)] group-aria-[current=page]:text-white group-aria-[current=page]:shadow-(--shadow-primary)">
+                                <Icon size={22} strokeWidth={2} aria-hidden="true" />
                             </span>
                             {t(`nav.${key}`)}
                         </NavLink>
                     ))}
                 </nav>
 
-                <div className="relative z-10 mt-auto flex items-center gap-3 rounded-2xl border border-white/8 bg-white/[0.05] px-3 py-3 backdrop-blur">
-                    <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-[var(--color-accent)] text-xs font-extrabold text-[var(--color-shell)]">
+                <div className="relative z-10 mt-4 flex items-center gap-3.5 rounded-2xl border border-white/8 bg-white/[0.05] px-3.5 py-4 backdrop-blur">
+                    <span className="flex h-12 w-12 shrink-0 items-center justify-center rounded-xl bg-[var(--color-accent)] text-sm font-extrabold text-[var(--color-shell)]">
                         {initials(user?.name || user?.email)}
                     </span>
                     <div className="min-w-0 flex-1">
-                        <p className="truncate text-sm font-semibold text-white">{user?.name || 'Kullanıcı'}</p>
-                        <p className="truncate text-[11px] text-white/45">{user?.email}</p>
+                        <p className="truncate text-base font-semibold text-white">{user?.name || 'Kullanıcı'}</p>
+                        <p className="truncate text-[14px] text-white/45">{user?.email}</p>
                     </div>
                     <button
                         onClick={onLogout}
                         title={t('nav.logout')}
                         aria-label={t('nav.logout')}
-                        className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg text-white/45 transition-colors hover:bg-white/8 hover:text-[#ff8a80]"
+                        className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg text-white/45 transition-colors hover:bg-white/8 hover:text-[#ff8a80]"
                     >
-                        <LogOut size={16} aria-hidden="true" />
+                        <LogOut size={19} aria-hidden="true" />
                     </button>
                 </div>
             </aside>
@@ -153,12 +153,12 @@ function Shell({ children }) {
             <div className="relative z-10 min-w-0 flex-1">
                 <header className="sticky top-0 z-20 flex h-[72px] items-center justify-between border-b border-border/80 bg-surface/85 px-4 backdrop-blur-xl md:px-7">
                     <div className="flex items-center gap-3 md:hidden">
-                        <Logo />
+                        <Logo className="[&>span]:text-[20px]" />
                     </div>
                     <div className="hidden items-center gap-3 md:flex">
                         <span className="flex h-9 w-9 items-center justify-center rounded-xl bg-brand/10 text-brand"><Sparkles size={17} /></span>
                         <div>
-                            <p className="text-[10px] font-bold uppercase tracking-[0.14em] text-text-muted">Aktif çalışma alanı</p>
+                            <p className="text-[12px] font-bold uppercase tracking-[0.14em] text-text-muted">Aktif çalışma alanı</p>
                             <button type="button" className="mt-0.5 flex items-center gap-1 text-sm font-bold text-text">
                                 {workspace?.name || 'SalesAI Workspace'} <ChevronDown size={14} className="text-text-muted" />
                             </button>

@@ -137,6 +137,22 @@ describe('buildTools', () => {
         expect(browser.focus).toHaveBeenCalledWith('1', 'text');
     });
 
+    it('offers circle and arrow marks through the same focus channel', async () => {
+        const browser = {
+            observe: vi.fn(async () => ({ ok: true, snapshot: 'uid=1 button "Open"' })),
+            perform: vi.fn(async () => ({ ok: true })),
+            focus: vi.fn(async () => ({ ok: true, cueId: 'presentation-1' }))
+        };
+        const tools = buildTools({ productId: 'p1', browser });
+
+        await expect(findTool(tools, 'browser_circle').handler({ uid: '1_4' }))
+            .resolves.toEqual({ ok: true, cueId: 'presentation-1' });
+        expect(browser.focus).toHaveBeenLastCalledWith('1_4', 'circle');
+        await findTool(tools, 'browser_arrow').handler({ uid: '1_5' });
+        expect(browser.focus).toHaveBeenLastCalledWith('1_5', 'point');
+        expect(toolNames(buildTools({ productId: 'p1' }))).not.toEqual(expect.arrayContaining(['browser_circle', 'browser_arrow']));
+    });
+
     describe('search_ui_guide', () => {
         it('is not offered unless the product has a crawled dashboard', () => {
             expect(toolNames(buildTools({ productId: 'p1' }))).not.toContain('search_ui_guide');

@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
+import { arrowGeometry, circlePath, nextAnnotation } from './annotation-geometry.js';
 import { containedVideoBox } from './video-geometry.js';
 
 function targetStyle(target, box) {
@@ -14,6 +15,12 @@ export function TourOverlay({ cue }) {
     const rootRef = useRef(null);
     const [size, setSize] = useState({ width: 0, height: 0 });
     const [cursor, setCursor] = useState({ x: 0.5, y: 0.55, visible: false, durationMs: 420 });
+    const [annotation, setAnnotation] = useState(null);
+    const [annotatedCue, setAnnotatedCue] = useState(cue);
+    if (cue !== annotatedCue) {
+        setAnnotatedCue(cue);
+        setAnnotation(nextAnnotation(annotation, cue));
+    }
 
     useEffect(() => {
         const node = rootRef.current;
@@ -46,6 +53,8 @@ export function TourOverlay({ cue }) {
     const markerRects = cue?.style === 'marker' && cue.target
         ? (cue.target.rects?.length ? cue.target.rects : [cue.target])
         : [];
+    const annotationRect = annotation ? targetStyle(annotation.target, box) : null;
+    const arrow = annotation?.style === 'arrow' ? arrowGeometry(annotationRect, box) : null;
     const cursorLeft = box.left + cursor.x * box.width;
     const cursorTop = box.top + cursor.y * box.height;
 
@@ -64,6 +73,32 @@ export function TourOverlay({ cue }) {
                     style={targetStyle(rect, box)}
                 />
             ))}
+            {annotationRect && box.width > 0 && (
+                <svg
+                    key={annotation.cueId}
+                    className="tour-annotation absolute inset-0 overflow-visible"
+                    width={size.width}
+                    height={size.height}
+                >
+                    {annotation.style === 'circle' && (
+                        <g className="tour-annotation__circle">
+                            <path className="tour-annotation__halo" d={circlePath(annotationRect)} pathLength="1" />
+                            <path className="tour-annotation__stroke" d={circlePath(annotationRect)} pathLength="1" />
+                        </g>
+                    )}
+                    {arrow && (
+                        <g
+                            className="tour-annotation__arrow"
+                            style={{ '--nudge-x': `${arrow.nudge.x}px`, '--nudge-y': `${arrow.nudge.y}px` }}
+                        >
+                            <path className="tour-annotation__halo" d={arrow.shaft} pathLength="1" />
+                            <path className="tour-annotation__stroke" d={arrow.shaft} pathLength="1" />
+                            <path className="tour-annotation__halo tour-annotation__tip" d={arrow.tip} />
+                            <path className="tour-annotation__stroke tour-annotation__tip" d={arrow.tip} />
+                        </g>
+                    )}
+                </svg>
+            )}
             <div
                 className={`tour-cursor absolute ${cursor.visible ? 'opacity-100' : 'opacity-0'} ${cue?.action === 'click' ? 'tour-cursor--clicking' : ''}`}
                 style={{

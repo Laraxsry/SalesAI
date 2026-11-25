@@ -7,6 +7,13 @@ const DEFAULT_TIMING = Object.freeze({
     focusTtlMs: 3200
 });
 
+const FOCUS_STYLES = Object.freeze({
+    text: 'marker',
+    panel: 'spotlight',
+    circle: 'circle',
+    point: 'arrow'
+});
+
 /** Presentation-only coordinator. It never owns browser lifecycle or policy. */
 export function createTourChoreographer({
     browser,
@@ -106,7 +113,7 @@ export function createTourChoreographer({
         const context = contextFor('focus', { uid }, operationId);
         return step(context, 'focus', async () => {
             const target = await targetFor(uid, context);
-            const style = intent === 'text' ? 'marker' : intent === 'panel' ? 'spotlight' : 'outline';
+            const style = FOCUS_STYLES[intent] ?? 'outline';
             return publishCue({
                 action: 'focus',
                 operationId: context.operationId,

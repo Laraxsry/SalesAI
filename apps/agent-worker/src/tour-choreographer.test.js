@@ -42,6 +42,23 @@ describe('tour choreographer', () => {
         expect(publishCue).toHaveBeenCalledWith(expect.objectContaining({ action: 'focus', style: 'marker' }));
     });
 
+    it('maps circle and point intents to pen-style marks', async () => {
+        const geometry = { x: 0.4, y: 0.2, width: 0.08, height: 0.04, rects: [] };
+        const publishCue = vi.fn(async (cue) => cue);
+        const choreography = createTourChoreographer({
+            browser: { describeElement: vi.fn(async () => ({ geometry })) },
+            publishCue,
+            getViewVersion: () => 3
+        });
+
+        await choreography.focus('1_2', 'circle');
+        await choreography.focus('1_3', 'point');
+        await choreography.focus('1_4', 'unknown');
+
+        expect(publishCue.mock.calls.map(([cue]) => cue.style)).toEqual(['circle', 'arrow', 'outline']);
+        expect(publishCue.mock.calls[0][0]).toMatchObject({ action: 'focus', target: geometry, viewVersion: 3 });
+    });
+
     it('shows a directional gesture before keyboard scrolling', async () => {
         const publishCue = vi.fn(async (cue) => cue);
         const choreography = createTourChoreographer({

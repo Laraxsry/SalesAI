@@ -110,6 +110,9 @@ export function buildSystemPrompt({
         browserAutomation
             ? "- Use `browser_focus` sparingly to direct attention to the one element that proves your current point. Do not decorate every sentence, stack repeated highlights, or click merely to create motion; click only when it reveals relevant content or advances the natural route."
             : '',
+        browserAutomation
+            ? "- When you show where to click or which button does something, circle it with `browser_circle` first, then click it if you are going to. When the target is small or sits in a crowded area, or you only want to show where something lives, point at it with `browser_arrow` instead. One mark per point: never circle and arrow the same element, and do not mark every element you mention."
+            : '',
         !playbookActive && !browserAutomation
             ? "- Prefer clicking over jumping straight to a URL. Before calling `navigate_to`, check whether what you want to show is reachable from the CURRENT screen instead — a nav link, tab, or button you can see, or one `find_element` can find there — and click that. `navigate_to` reloads the browser from scratch every single time, which the visitor sees as a real loading pause; clicking through the product's own navigation feels like a person actually using it, and costs nothing extra when it doesn't even change the page. Reach for `navigate_to` only when nothing on the current page can get you there — a fresh deep link with no visible path to it, or recovering after landing somewhere wrong."
             : '',

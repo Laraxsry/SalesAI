@@ -622,6 +622,26 @@ export function buildTools({
                 handler: async ({ uid, intent = 'emphasize' }) => browser.focus?.(uid, intent) ?? { ok: false }
             },
             {
+                name: 'browser_circle',
+                description: 'Draw a hand-drawn circle around one element, like a presenter circling it with a pen. Use it when you tell the visitor where to click or which button or control does the thing you are describing: right before you click it, or when explaining how they would do it themselves. Use a UID from the latest browser_snapshot. The circle stays until the page changes or you draw another mark.',
+                parameters: {
+                    type: 'object',
+                    properties: { uid: { type: 'string' } },
+                    required: ['uid']
+                },
+                handler: async ({ uid }) => browser.focus?.(uid, 'circle') ?? { ok: false }
+            },
+            {
+                name: 'browser_arrow',
+                description: 'Point at one element with an arrow drawn in from the nearest open space. Use it for small or crowded targets (an icon, one menu item, one field among many) or to show where something lives without circling it. Use a UID from the latest browser_snapshot. The arrow stays until the page changes or you draw another mark.',
+                parameters: {
+                    type: 'object',
+                    properties: { uid: { type: 'string' } },
+                    required: ['uid']
+                },
+                handler: async ({ uid }) => browser.focus?.(uid, 'point') ?? { ok: false }
+            },
+            {
                 name: 'browser_fill',
                 description: 'Fill one input, textarea, select, checkbox, or radio using a UID from the latest snapshot.',
                 parameters: {

@@ -143,6 +143,38 @@ h3 {
     animation: tour-marker-draw 360ms cubic-bezier(0.22, 1, 0.36, 1) both;
 }
 
+.tour-annotation path {
+    fill: none;
+    stroke-linecap: round;
+    stroke-linejoin: round;
+}
+
+/* Dark halo under the cyan pen keeps the mark readable on light dashboards. */
+.tour-annotation__halo {
+    stroke: rgb(7 20 38 / 38%);
+    stroke-width: 8;
+}
+
+.tour-annotation__stroke {
+    stroke: #67e8f9;
+    stroke-width: 3.5;
+}
+
+.tour-annotation path[pathLength] {
+    stroke-dasharray: 1;
+    stroke-dashoffset: 1;
+    animation: tour-annotation-draw 520ms cubic-bezier(0.65, 0, 0.35, 1) forwards;
+}
+
+.tour-annotation__tip {
+    opacity: 0;
+    animation: tour-annotation-tip 160ms ease-out 440ms forwards;
+}
+
+.tour-annotation__arrow {
+    animation: tour-arrow-nudge 900ms ease-in-out 700ms infinite;
+}
+
 .tour-click-ripple {
     height: 14px;
     width: 14px;
@@ -356,6 +388,19 @@ a:focus-visible {
 @keyframes tour-marker-draw {
     from { opacity: 0.3; transform: scaleX(0); }
     to { opacity: 1; transform: scaleX(1); }
+}
+
+@keyframes tour-annotation-draw {
+    to { stroke-dashoffset: 0; }
+}
+
+@keyframes tour-annotation-tip {
+    to { opacity: 1; }
+}
+
+@keyframes tour-arrow-nudge {
+    0%, 100% { transform: translate(0, 0); }
+    50% { transform: translate(var(--nudge-x), var(--nudge-y)); }
 }
 
 @keyframes tour-click-ripple {

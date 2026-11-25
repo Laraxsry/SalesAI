@@ -93,4 +93,23 @@ describe('Chrome MCP snapshot semantics', () => {
         expect(elements.find((element) => element.uid === '2_3').rowText).toContain('salesai-demo-abc12-name');
         expect(elements.find((element) => element.uid === '2_20').rowText).toBe('');
     });
+
+    it('parses a large, deeply nested marketing page without blocking the event loop', () => {
+        // The cubic implementation took ~3s on 5k lines and got the LiveKit job declared orphaned mid-tour.
+        const lines = ['uid=9_0 RootWebArea "Home" url="https://salesai.example/"'];
+        let id = 1;
+        for (let section = 0; section < 300; section++) {
+            for (let depth = 1; depth <= 10; depth++) {
+                const indent = '  '.repeat(depth);
+                lines.push(`${indent}uid=9_${id++} generic`);
+                for (let link = 0; link < 4; link++) lines.push(`${indent}  uid=9_${id++} link "Item ${link}"`);
+            }
+        }
+        const snapshot = lines.join('\n');
+        const startedAt = performance.now();
+        const elements = parseSnapshotElements(snapshot);
+        findCookieConsentCandidate(snapshot);
+        expect(elements).toHaveLength(lines.length);
+        expect(performance.now() - startedAt).toBeLessThan(1500);
+    });
 });

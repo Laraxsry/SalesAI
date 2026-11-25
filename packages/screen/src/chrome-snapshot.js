@@ -19,41 +19,76 @@ const MAX_ROW_LINES = 30;
  */
 export function parseSnapshotElements(snapshotText = '') {
     const lines = snapshotText.split('\n');
+    const count = lines.length;
     const indentOf = (line) => line.match(/^\s*/)?.[0].length ?? 0;
-    const subtreeLines = (start, indent) => {
-        const found = [lines[start]];
-        for (let next = start + 1; next < lines.length; next++) {
-            if (!lines[next].trim()) continue;
-            if (indentOf(lines[next]) <= indent) break;
-            found.push(lines[next]);
+
+    // This runs synchronously inside the LiveKit job process, several times per navigation, on snapshots of
+    // thousands of lines. Rescanning subtrees per element made it cubic and blocked the event loop long enough
+    // for LiveKit to declare the job orphaned. Everything below is precomputed in linear passes instead.
+    const indents = new Array(count);
+    const subtreeEnd = new Array(count).fill(count); // exclusive: first non-empty line back at or above this indent
+    const nonEmptyBefore = new Array(count + 1); // prefix counts over lines[0..i)
+    const uidBefore = new Array(count + 1);
+    nonEmptyBefore[0] = 0;
+    uidBefore[0] = 0;
+    const open = [];
+    for (let i = 0; i < count; i++) {
+        const line = lines[i];
+        const nonEmpty = line.trim() !== '';
+        indents[i] = indentOf(line);
+        nonEmptyBefore[i + 1] = nonEmptyBefore[i] + (nonEmpty ? 1 : 0);
+        uidBefore[i + 1] = uidBefore[i] + (/\buid=/.test(line) ? 1 : 0);
+        if (!nonEmpty) continue;
+        while (open.length && indents[open.at(-1)] >= indents[i]) subtreeEnd[open.pop()] = i;
+        open.push(i);
+    }
+    // A subtree is the line itself plus the non-empty lines nested under it.
+    const subtreeSize = (start) => 1 + nonEmptyBefore[subtreeEnd[start]] - nonEmptyBefore[start + 1];
+    const subtreeUids = (start) => uidBefore[subtreeEnd[start]] - uidBefore[start];
+    const rowTextCache = new Map();
+    const rowTextOf = (start) => {
+        if (!rowTextCache.has(start)) {
+            const found = [lines[start]];
+            for (let next = start + 1; next < subtreeEnd[start]; next++) {
+                if (lines[next].trim()) found.push(lines[next]);
+            }
+            rowTextCache.set(start, fold(found.join(' ')));
         }
-        return found;
+        return rowTextCache.get(start);
     };
 
     const ancestors = [];
-    return lines.flatMap((line, index) => {
+    let formDepth = 0;
+    const elements = [];
+    for (let index = 0; index < count; index++) {
+        const line = lines[index];
         const uid = line.match(/\buid=([^\s]+)/)?.[1];
-        if (!uid) return [];
-        const indent = indentOf(line);
-        while (ancestors.length && ancestors.at(-1).indent >= indent) ancestors.pop();
+        if (!uid) continue;
+        const indent = indents[index];
+        while (ancestors.length && ancestors.at(-1).indent >= indent) {
+            if (ancestors.pop().role === 'form') formDepth--;
+        }
         const afterUid = line.slice(line.indexOf(`uid=${uid}`) + uid.length + 4).trim();
         const role = afterUid.match(/^([\w-]+)/)?.[1]?.toLowerCase() ?? '';
         const name = afterUid.match(/^[\w-]+\s+"([^"]*)"/)?.[1] ?? '';
-        const insideForm = ancestors.some((ancestor) => ancestor.role === 'form');
+        const insideForm = formDepth > 0;
 
-        let row = [...ancestors].reverse().find((ancestor) => ROW_ROLES.has(ancestor.role));
-        if (!row) {
-            row = [...ancestors].reverse().find((ancestor) => {
-                const own = subtreeLines(ancestor.index, ancestor.indent);
-                return own.length > 1 && own.length <= MAX_ROW_LINES && own.filter((text) => /\buid=/.test(text)).length > 1;
-            });
+        let row = null;
+        for (let a = ancestors.length - 1; a >= 0 && !row; a--) {
+            if (ROW_ROLES.has(ancestors[a].role)) row = ancestors[a];
         }
-        const rowText = row ? fold(subtreeLines(row.index, row.indent).join(' ')) : '';
+        for (let a = ancestors.length - 1; a >= 0 && !row; a--) {
+            const size = subtreeSize(ancestors[a].index);
+            if (size > 1 && size <= MAX_ROW_LINES && subtreeUids(ancestors[a].index) > 1) row = ancestors[a];
+        }
+        const rowText = row ? rowTextOf(row.index) : '';
 
         ancestors.push({ indent, role, index });
-        return [{ uid, role, name, line, index, insideForm, rowText,
-            folded: fold(`${role} ${name} ${line}`) }];
-    });
+        if (role === 'form') formDepth++;
+        elements.push({ uid, role, name, line, index, insideForm, rowText,
+            folded: fold(`${role} ${name} ${line}`) });
+    }
+    return elements;
 }
 
 export function snapshotElementByUid(snapshotText, uid) {

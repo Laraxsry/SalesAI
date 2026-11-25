@@ -14,3 +14,12 @@ export function resolveEmbedParentOrigin(searchParams, referrer = '') {
         return null;
     }
 }
+
+/**
+ * Normalizes the SDK's `salesai:embed:layout` message. The loader owns the
+ * panel size; anything malformed reads as "compact, can't expand" so the
+ * expand button simply stays hidden.
+ */
+export function parseEmbedLayout(data) {
+    return { expanded: data?.expanded === true, canExpand: data?.canExpand === true };
+}

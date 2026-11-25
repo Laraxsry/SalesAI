@@ -47,6 +47,17 @@
         "reload": "Sayfayı yenile"
     },
     "landing": {
+        "widget": {
+            "launcher": "AI temsilciyle konuş",
+            "followUp": {
+                "eyebrow": "Az önce denediğiniz temsilci",
+                "title": "Bu temsilci sizin sitenizde de satış yapsın",
+                "body": "Ürününüzü öğretin, embed kodunu sitenize ekleyin. Ziyaretçileriniz az önce yaşadığınız görüşmeyi yaşasın.",
+                "cta": "Ücretsiz başla",
+                "dismiss": "Kapat",
+                "label": "Kendi AI temsilcinizi oluşturun"
+            }
+        },
         "nav": {
             "product": "Ürün",
             "experience": "Deneyim",

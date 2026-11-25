@@ -5,12 +5,14 @@ import { Logo } from '@repo/ui';
 import { Loader2, AlertCircle, PhoneOff, X } from 'lucide-react';
 import { VisitRoom } from './VisitRoom.jsx';
 import { PreCallSurvey } from './PreCallSurvey.jsx';
-import { isValidEmbedSession, resolveEmbedParentOrigin } from './embedProtocol.js';
+import { isValidEmbedSession, parseEmbedLayout, resolveEmbedParentOrigin } from './embedProtocol.js';
 
 const API = import.meta.env.VITE_API_URL || 'http://localhost:5001';
 const READY_MESSAGE = 'salesai:embed:ready';
 const SESSION_MESSAGE = 'salesai:embed:session';
 const CLOSE_MESSAGE = 'salesai:embed:close';
+const LAYOUT_MESSAGE = 'salesai:embed:layout';
+const EXPAND_MESSAGE = 'salesai:embed:expand';
 
 /** Per-share-link visitor identity kept in localStorage — the last name typed
  * and a stable random key, so a reconnect to the same meeting is recognised as
@@ -73,6 +75,8 @@ export function Visit() {
 
     const [conn, setConn] = useState(null);
     const [embedConfig, setEmbedConfig] = useState(null);
+    // Panel size as reported by the SDK loader (the source of truth — it owns the iframe's size).
+    const [embedLayout, setEmbedLayout] = useState(() => parseEmbedLayout(null));
     const [error, setError] = useState(null);
     const [ended, setEnded] = useState(false);
 
@@ -183,6 +187,10 @@ export function Visit() {
 
         function receiveSession(event) {
             if (event.source !== window.parent || event.origin !== embedParentOrigin) return;
+            if (event.data?.type === LAYOUT_MESSAGE) {
+                setEmbedLayout(parseEmbedLayout(event.data));
+                return;
+            }
             if (event.data?.type !== SESSION_MESSAGE) return;
             if (!isValidEmbedSession(event.data.session)) {
                 setError('Widget oturum bilgisi geçersiz.');
@@ -200,6 +208,12 @@ export function Visit() {
     function closeEmbed() {
         if (!embed) return;
         if (embedParentOrigin) window.parent.postMessage({ type: CLOSE_MESSAGE }, embedParentOrigin);
+    }
+
+    /** Asks the SDK to grow/shrink the panel; it answers with a layout message either way. */
+    function requestExpand(expanded) {
+        if (!embed || !embedParentOrigin) return;
+        window.parent.postMessage({ type: EXPAND_MESSAGE, expanded }, embedParentOrigin);
     }
 
     if (isDebug && !started) {
@@ -326,6 +340,8 @@ export function Visit() {
                     maxParticipants={conn.maxParticipants}
                     onClose={closeEmbed}
                     onEnd={() => setEnded(true)}
+                    embedLayout={embedLayout}
+                    onRequestExpand={requestExpand}
                 />
             </LiveKitRoom>
         </div>

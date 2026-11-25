@@ -13,6 +13,7 @@
   "dependencies": {
     "@hookform/resolvers": "^3.9.1",
     "@repo/contracts": "*",
+    "@repo/sdk": "*",
     "@repo/ui": "*",
     "@tanstack/react-query": "^5.62.0",
     "i18next": "^24.2.0",

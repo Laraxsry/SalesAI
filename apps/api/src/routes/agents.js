@@ -322,6 +322,7 @@ agentsRouter.get('/:id/embed', requireAuth, async (req, res, next) => {
         const snippet = link
             ? buildEmbedSnippet({
                   apiBaseUrl: process.env.API_PUBLIC_URL || 'http://localhost:5001',
+                  visitorBaseUrl: process.env.VISITOR_PUBLIC_URL || 'http://localhost:5174',
                   shareToken: link.token,
                   sdkVersion: getSdkVersion()
               })
@@ -376,6 +377,7 @@ agentsRouter.post('/:id/embed', requireAuth, validate({ body: EmbedConfigInput }
         const allowlist = await EmbedDomain.find({ agentId: agent._id }).sort({ domain: 1 }).lean();
         const snippet = buildEmbedSnippet({
             apiBaseUrl: process.env.API_PUBLIC_URL || 'http://localhost:5001',
+            visitorBaseUrl: process.env.VISITOR_PUBLIC_URL || 'http://localhost:5174',
             shareToken: link.token,
             sdkVersion: getSdkVersion()
         });

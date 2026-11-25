@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
 import { Logo, VoiceOrb } from '@repo/ui';
@@ -27,8 +27,17 @@ import {
     Zap
 } from 'lucide-react';
 import { useTheme } from '../lib/ThemeProvider.jsx';
+import { useSalesAIWidget } from '../lib/useSalesAIWidget.js';
 import { useAuthStore } from '../store/auth.js';
 import { ProductFilm } from '../components/ProductFilm.jsx';
+import { LandingSignupNudge } from '../components/LandingSignupNudge.jsx';
+
+/**
+ * Shorter than this, the visitor most likely opened the panel and backed out
+ * (or hit an error screen) — not the "just experienced it" moment the
+ * signup nudge is for.
+ */
+const NUDGE_MIN_CONVERSATION_MS = 15000;
 
 const NAV = [
     ['#urun', 'product'],
@@ -279,6 +288,19 @@ export function Landing() {
         window.addEventListener('scroll', onScroll, { passive: true });
         return () => window.removeEventListener('scroll', onScroll);
     }, []);
+
+    const [nudgeOpen, setNudgeOpen] = useState(false);
+    const dismissNudge = useCallback(() => setNudgeOpen(false), []);
+    const handleWidgetClose = useCallback(
+        ({ reason, connected, durationMs }) => {
+            // Signed-in users already have an account; host-initiated closes aren't the visitor's moment.
+            if (accessToken || reason !== 'visitor' || !connected || durationMs < NUDGE_MIN_CONVERSATION_MS) return;
+            setNudgeOpen(true);
+        },
+        [accessToken]
+    );
+
+    useSalesAIWidget({ label: t('landing.widget.launcher'), onClose: handleWidgetClose });
 
     return (
         <div ref={rootRef} className="lp-root min-h-screen overflow-hidden bg-bg text-text">
@@ -545,6 +567,7 @@ export function Landing() {
                     </div>
                 </div>
             </footer>
+            <LandingSignupNudge open={nudgeOpen} href="/register" onDismiss={dismissNudge} />
         </div>
     );
 }

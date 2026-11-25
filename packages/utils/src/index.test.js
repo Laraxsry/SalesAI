@@ -5,18 +5,20 @@ describe('buildEmbedSnippet', () => {
     it('renders the exact two-line snippet sellers paste onto their site', () => {
         const snippet = buildEmbedSnippet({
             apiBaseUrl: 'https://api.salesai.example',
+            visitorBaseUrl: 'https://app.salesai.example',
             shareToken: 's_x7k2m9',
             sdkVersion: '0.1.0'
         });
         expect(snippet).toBe(
             '<script src="https://api.salesai.example/sdk/salesai.js?v=0.1.0"></script>\n' +
-            "<script>SalesAI.init({ shareToken: 's_x7k2m9' }).mount();</script>"
+            "<script>SalesAI.init({ shareToken: 's_x7k2m9', apiBaseUrl: 'https://api.salesai.example', visitorBaseUrl: 'https://app.salesai.example' }).mount();</script>"
         );
     });
 
     it('changes the script URL when sdkVersion changes (cache-busting)', () => {
-        const a = buildEmbedSnippet({ apiBaseUrl: 'https://api.salesai.example', shareToken: 's_1', sdkVersion: '0.1.0' });
-        const b = buildEmbedSnippet({ apiBaseUrl: 'https://api.salesai.example', shareToken: 's_1', sdkVersion: '0.2.0' });
+        const base = { apiBaseUrl: 'https://api.salesai.example', visitorBaseUrl: 'https://app.salesai.example', shareToken: 's_1' };
+        const a = buildEmbedSnippet({ ...base, sdkVersion: '0.1.0' });
+        const b = buildEmbedSnippet({ ...base, sdkVersion: '0.2.0' });
         expect(a).not.toBe(b);
     });
 });

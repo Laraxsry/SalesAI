@@ -32,5 +32,9 @@ sdkRouter.get('/salesai.js', lightPublicRateLimit, requestTimeout(5000), (req, r
 
     res.set('Content-Type', 'application/javascript; charset=utf-8');
     res.set('Cache-Control', 'public, max-age=31536000, immutable');
+    // helmet's app-wide `Cross-Origin-Resource-Policy: same-origin` would make
+    // browsers refuse this script on every seller's site — loading it
+    // cross-origin is the whole point of this route, so relax it here only.
+    res.set('Cross-Origin-Resource-Policy', 'cross-origin');
     res.send(bundle.content);
 });

@@ -1,6 +1,6 @@
 {
   "name": "@repo/sdk",
-  "version": "0.1.0",
+  "version": "0.3.1",
   "type": "module",
   "main": "./src/index.js",
   "exports": {
@@ -15,6 +15,7 @@
   "devDependencies": {
     "@repo/eslint-config": "*",
     "@repo/testing": "*",
+    "@repo/ui": "*",
     "esbuild": "^0.25.12",
     "eslint": "^9.17.0",
     "vitest": "^4.1.10"

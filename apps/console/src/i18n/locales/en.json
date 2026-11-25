@@ -47,6 +47,17 @@
         "reload": "Reload page"
     },
     "landing": {
+        "widget": {
+            "launcher": "Talk to our AI rep",
+            "followUp": {
+                "eyebrow": "The rep you just talked to",
+                "title": "Put this rep to work on your site",
+                "body": "Teach it your product and add the embed snippet to your site. Your visitors get the conversation you just had.",
+                "cta": "Start free",
+                "dismiss": "Dismiss",
+                "label": "Create your own AI rep"
+            }
+        },
         "nav": {
             "product": "Product",
             "experience": "Experience",

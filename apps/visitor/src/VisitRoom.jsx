@@ -10,7 +10,7 @@ import {
 } from '@livekit/components-react';
 import { RoomEvent, Track } from 'livekit-client';
 import { Logo, Sparkle, VoiceOrb } from '@repo/ui';
-import { Mic, MicOff, PhoneOff, ScreenShare, ScreenShareOff, X, Hand } from 'lucide-react';
+import { Mic, MicOff, PhoneOff, ScreenShare, ScreenShareOff, X, Hand, Maximize2, Minimize2 } from 'lucide-react';
 import { ParticipantsPanel } from './ParticipantsPanel.jsx';
 import { useMeetingState } from './useMeetingState.js';
 import { buildMeetingStatusText } from './meeting-status.js';
@@ -117,7 +117,7 @@ function Captions({ segments, surveyActive = false }) {
 }
 
 /** Rendered inside <LiveKitRoom>; everything here relies on LiveKit's room context. */
-export function VisitRoom({ embed, embedConfig, sessionId, roomName, maxParticipants, onClose, onEnd }) {
+export function VisitRoom({ embed, embedConfig, sessionId, roomName, maxParticipants, onClose, onEnd, embedLayout, onRequestExpand }) {
     const { state, audioTrack, videoTrack, agentTranscriptions } = useVoiceAssistant();
     const { localParticipant, isMicrophoneEnabled, isScreenShareEnabled, microphoneTrack } = useLocalParticipant();
     const [closing, setClosing] = useState(false);
@@ -268,6 +268,20 @@ export function VisitRoom({ embed, embedConfig, sessionId, roomName, maxParticip
         onEnd();
     }
 
+    const expanded = Boolean(embed && embedLayout?.expanded);
+    const canExpand = Boolean(embed && embedLayout?.canExpand);
+
+    // Focus lives inside this iframe while the panel is open, so the host
+    // page can't see Escape — shrink an expanded panel from here instead.
+    useEffect(() => {
+        if (!expanded) return undefined;
+        const onKeyDown = (event) => {
+            if (event.key === 'Escape' && !showShareConsent) onRequestExpand?.(false);
+        };
+        window.addEventListener('keydown', onKeyDown);
+        return () => window.removeEventListener('keydown', onKeyDown);
+    }, [expanded, showShareConsent, onRequestExpand]);
+
     async function closeWidget() {
         if (closing) return;
         setClosing(true);
@@ -276,7 +290,11 @@ export function VisitRoom({ embed, embedConfig, sessionId, roomName, maxParticip
     }
 
     return (
-        <div className="visitor-stage relative flex h-full flex-col overflow-hidden bg-bg" data-closing={closing || undefined}>
+        <div
+            className="visitor-stage relative flex h-full flex-col overflow-hidden bg-bg"
+            data-closing={closing || undefined}
+            data-expanded={expanded || undefined}
+        >
             <RoomAudioRenderer />
             <div className="visitor-stars visitor-stars--room absolute inset-0" aria-hidden="true" />
             <div className="visitor-grid pointer-events-none absolute inset-0 opacity-30" />
@@ -294,14 +312,27 @@ export function VisitRoom({ embed, embedConfig, sessionId, roomName, maxParticip
             )}
 
             {embed && (
-                <button
-                    type="button"
-                    onClick={closeWidget}
-                    aria-label="Widget'ı kapat"
-                    className="absolute right-3 top-3 z-30 flex h-10 w-10 items-center justify-center rounded-xl border border-white/10 bg-black/50 text-white/70 backdrop-blur hover:bg-black/70 hover:text-white"
-                >
-                    <X size={17} aria-hidden="true" />
-                </button>
+                <div className="absolute right-3 top-3 z-30 flex items-center gap-2">
+                    {canExpand && (
+                        <button
+                            type="button"
+                            onClick={() => onRequestExpand?.(!expanded)}
+                            aria-label={expanded ? 'Pencereyi küçült' : 'Pencereyi genişlet'}
+                            title={expanded ? 'Küçült (Esc)' : 'Genişlet'}
+                            className="flex h-10 w-10 items-center justify-center rounded-xl border border-white/10 bg-black/50 text-white/70 backdrop-blur transition-colors hover:bg-black/70 hover:text-white focus-visible:outline focus-visible:outline-2 focus-visible:outline-white/60"
+                        >
+                            {expanded ? <Minimize2 size={16} aria-hidden="true" /> : <Maximize2 size={16} aria-hidden="true" />}
+                        </button>
+                    )}
+                    <button
+                        type="button"
+                        onClick={closeWidget}
+                        aria-label="Widget'ı kapat"
+                        className="flex h-10 w-10 items-center justify-center rounded-xl border border-white/10 bg-black/50 text-white/70 backdrop-blur transition-colors hover:bg-black/70 hover:text-white focus-visible:outline focus-visible:outline-2 focus-visible:outline-white/60"
+                    >
+                        <X size={17} aria-hidden="true" />
+                    </button>
+                </div>
             )}
 
             <div className="relative z-10 flex flex-1 items-center justify-center overflow-hidden">
@@ -311,7 +342,7 @@ export function VisitRoom({ embed, embedConfig, sessionId, roomName, maxParticip
                         className={`h-full w-full ${tourTrack ? 'object-contain' : 'object-cover'}`}
                     />
                 ) : (
-                    <div className="flex flex-col items-center gap-8">
+                    <div className={`flex flex-col items-center transition-[gap] duration-500 ${expanded ? 'gap-20' : 'gap-8'}`}>
                         <AssistantOrb
                             state={state}
                             agentAudioTrack={audioTrack}

@@ -106,12 +106,16 @@ export function compact(obj) {
  * tag here breaks every embed at once, not just the one seller who copies it
  * next.
  *
- * @param {{ apiBaseUrl: string, shareToken: string, sdkVersion: string }} params
+ * Both base URLs are written into the `init()` call explicitly: the loader's
+ * built-in defaults point at hosts this deployment doesn't own, so a snippet
+ * that omits them loads the script but can never open a conversation.
+ *
+ * @param {{ apiBaseUrl: string, visitorBaseUrl: string, shareToken: string, sdkVersion: string }} params
  */
-export function buildEmbedSnippet({ apiBaseUrl, shareToken, sdkVersion }) {
+export function buildEmbedSnippet({ apiBaseUrl, visitorBaseUrl, shareToken, sdkVersion }) {
     return [
         `<script src="${apiBaseUrl}/sdk/salesai.js?v=${sdkVersion}"></script>`,
-        `<script>SalesAI.init({ shareToken: '${shareToken}' }).mount();</script>`
+        `<script>SalesAI.init({ shareToken: '${shareToken}', apiBaseUrl: '${apiBaseUrl}', visitorBaseUrl: '${visitorBaseUrl}' }).mount();</script>`
     ].join('\n');
 }
 

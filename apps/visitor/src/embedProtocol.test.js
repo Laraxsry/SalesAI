@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { isValidEmbedSession, resolveEmbedParentOrigin } from './embedProtocol.js';
+import { isValidEmbedSession, parseEmbedLayout, resolveEmbedParentOrigin } from './embedProtocol.js';
 
 describe('embed protocol', () => {
     it('accepts a complete session payload', () => {
@@ -23,5 +23,14 @@ describe('embed protocol', () => {
     it('rejects a declared origin that conflicts with the browser referrer', () => {
         const params = new URLSearchParams('embed=1&parentOrigin=https%3A%2F%2Fevil.example.com');
         expect(resolveEmbedParentOrigin(params, 'https://shop.example.com/product/1')).toBeNull();
+    });
+
+    it('reads the SDK layout message', () => {
+        expect(parseEmbedLayout({ type: 'salesai:embed:layout', expanded: true, canExpand: true })).toEqual({ expanded: true, canExpand: true });
+    });
+
+    it('treats a malformed layout message as compact and not expandable', () => {
+        expect(parseEmbedLayout({ expanded: 'yes' })).toEqual({ expanded: false, canExpand: false });
+        expect(parseEmbedLayout(undefined)).toEqual({ expanded: false, canExpand: false });
     });
 });

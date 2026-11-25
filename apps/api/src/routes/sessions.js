@@ -1,6 +1,6 @@
 import { Router } from 'express';
 import { validate } from '@repo/validation';
-import { CreateSessionInput } from '@repo/contracts';
+import { CreateSessionInput, SessionFeedbackInput } from '@repo/contracts';
 import { Session, Message, SessionEvent, Agent, Product, Membership } from '@repo/database';
 import { requireAuth } from '@repo/auth';
 import { enqueue, QUEUES } from '@repo/queue';
@@ -8,6 +8,7 @@ import { resolveShareLink, mintSession } from '../services/share-link-sessions.j
 import { requestTimeout } from '../middleware/request-timeout.js';
 import { lightPublicRateLimit } from '../middleware/public-rate-limits.js';
 import { projectSessionDecisionTrace } from '../services/session-decision-trace.js';
+import { applyFeedback, isFeedbackOpen } from '../services/session-feedback.js';
 
 export const sessionsRouter = Router();
 
@@ -159,6 +160,53 @@ sessionsRouter.post('/:id/end', lightPublicRateLimit, requestTimeout(5000), asyn
         next(err);
     }
 });
+
+/**
+ * POST /sessions/:id/feedback
+ * Body: { roomName, rating: 1-5, comment?, visitorKey? }
+ * Auth: Yok (public) — /end gibi roomName ile doğrulanır.
+ *
+ * Görüşme bittikten sonra ziyaretçinin verdiği puan. Her ziyaretçi (visitorKey)
+ * bir kez puanlar; tekrar gönderirse kendi puanı güncellenir.
+ */
+sessionsRouter.post(
+    '/:id/feedback',
+    lightPublicRateLimit,
+    requestTimeout(5000),
+    validate({ body: SessionFeedbackInput }),
+    async (req, res, next) => {
+        try {
+            if (!req.params.id.match(/^[0-9a-fA-F]{24}$/)) return res.status(404).json({ error: 'Session not found' });
+
+            const session = await Session.findById(req.params.id).select('roomName startedAt createdAt visitorName participants feedback').lean();
+            if (!session) return res.status(404).json({ error: 'Session not found' });
+
+            const { roomName, rating, comment, visitorKey } = req.body;
+            if (session.roomName !== roomName) {
+                return res.status(403).json({ error: 'Invalid roomName' });
+            }
+            if (!isFeedbackOpen(session)) {
+                return res.status(410).json({ error: 'Feedback window has closed' });
+            }
+
+            const participant = visitorKey
+                ? (session.participants || []).find((p) => p.visitorKey === visitorKey)
+                : null;
+            const feedback = applyFeedback(session.feedback || [], {
+                rating,
+                comment: comment || undefined,
+                visitorKey,
+                visitorName: participant?.name || session.visitorName || undefined
+            });
+            if (!feedback) return res.status(409).json({ error: 'Feedback limit reached' });
+
+            await Session.updateOne({ _id: session._id }, { $set: { feedback } });
+            res.status(201).json({ ok: true });
+        } catch (err) {
+            next(err);
+        }
+    }
+);
 
 /**
  * Phase 4: Transcript full-text araması.

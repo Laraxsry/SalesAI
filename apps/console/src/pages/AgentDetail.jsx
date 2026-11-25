@@ -3,8 +3,10 @@ import { useParams, Link, useNavigate } from 'react-router-dom';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { Button } from '@repo/ui';
 import { ArrowLeft, Bot, Rocket, Pause, Copy, Check, ExternalLink, AlertCircle, Trash2, MessageSquare, Code, Target } from 'lucide-react';
-import { MAX_ROOM_PARTICIPANTS, REALTIME_VOICES } from '@repo/contracts';
+import { REALTIME_VOICES } from '@repo/contracts';
 import { agentsApi } from '../lib/api.js';
+import { AVATAR_LABEL, SCREEN_MODE_LABEL } from '../lib/agentLabels.js';
+import { ParticipantPicker } from '../components/ParticipantPicker.jsx';
 
 const STATUS_STYLE = {
     draft: 'text-text-muted bg-surface-raised',
@@ -182,7 +184,7 @@ export function AgentDetail() {
                             <dd className="text-text">{agent.persona?.language?.toUpperCase()}</dd>
                         </div>
                         <div className="flex items-center justify-between gap-4">
-                            <dt className="text-text-muted">Ses (Realtime)</dt>
+                            <dt className="text-text-muted">Ses</dt>
                             <dd>
                                 <select
                                     value={agent.persona?.voice || 'cedar'}
@@ -221,27 +223,36 @@ export function AgentDetail() {
                     <h3 className="mb-3 text-sm font-semibold text-text">Yapılandırma</h3>
                     <dl className="flex flex-col gap-2 text-sm">
                         <div className="flex justify-between gap-4">
-                            <dt className="text-text-muted">Avatar</dt>
-                            <dd className="text-text">{agent.avatarProvider}</dd>
-                        </div>
-                        <div className="flex justify-between gap-4">
-                            <dt className="text-text-muted">Ekran modları</dt>
-                            <dd className="text-right text-text">{agent.screenModes?.join(', ') || '—'}</dd>
+                            <dt className="text-text-muted">Görünüm</dt>
+                            <dd className="text-text">{AVATAR_LABEL[agent.avatarProvider] || agent.avatarProvider}</dd>
                         </div>
                         <div className="flex items-start justify-between gap-4">
-                            <dt className="pt-1.5 text-text-muted">Katılımcı</dt>
-                            <dd className="flex flex-col items-end gap-1.5">
-                                <div className="flex items-center gap-2">
-                                    <input
-                                        type="number"
-                                        min={1}
-                                        max={MAX_ROOM_PARTICIPANTS}
-                                        value={maxP === '' ? currentMaxP : maxP}
-                                        onChange={(e) => setMaxP(e.target.value)}
-                                        className="h-8 w-16 rounded-[var(--radius-input)] border border-border bg-bg px-2 text-right text-sm text-text outline-none focus:border-brand"
-                                    />
-                                    <span className="text-xs text-text-muted">müşteri</span>
-                                    {maxPDirty && (
+                            <dt className="text-text-muted">Ekran</dt>
+                            <dd className="flex flex-wrap justify-end gap-1.5">
+                                {agent.screenModes?.length ? (
+                                    agent.screenModes.map((mode) => (
+                                        <span key={mode} className="rounded-full bg-surface-raised px-2.5 py-0.5 text-xs text-text">
+                                            {SCREEN_MODE_LABEL[mode] || mode}
+                                        </span>
+                                    ))
+                                ) : (
+                                    <span className="text-text">{SCREEN_MODE_LABEL.none}</span>
+                                )}
+                            </dd>
+                        </div>
+                        <div className="flex flex-col gap-2 border-t border-border pt-3">
+                            <div className="flex items-center justify-between gap-4">
+                                <dt className="text-text-muted">Görüşme türü</dt>
+                                {maxPDirty && (
+                                    <div className="flex items-center gap-2">
+                                        <button
+                                            type="button"
+                                            onClick={() => setMaxP('')}
+                                            disabled={busy}
+                                            className="rounded-[var(--radius-input)] px-2.5 py-1 text-xs font-medium text-text-muted hover:text-text disabled:opacity-50"
+                                        >
+                                            Vazgeç
+                                        </button>
                                         <button
                                             type="button"
                                             onClick={saveMaxParticipants}
@@ -250,13 +261,11 @@ export function AgentDetail() {
                                         >
                                             Kaydet
                                         </button>
-                                    )}
-                                </div>
-                                <span className="text-[13px] text-text-muted">
-                                    {currentMaxP > 1
-                                        ? 'Grup toplantısı — agent bu sayıya dahil değil'
-                                        : '1 = birebir görüşme'}
-                                </span>
+                                    </div>
+                                )}
+                            </div>
+                            <dd>
+                                <ParticipantPicker value={maxP === '' ? currentMaxP : maxP} onChange={setMaxP} disabled={busy} />
                             </dd>
                         </div>
                         {currentMaxP <= 1 && (

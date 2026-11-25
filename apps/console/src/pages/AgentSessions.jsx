@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import { useParams, useSearchParams, Link } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
-import { ArrowLeft, MessageSquare, User, Bot as BotIcon, Search, GitBranch, Layers3, Wrench } from 'lucide-react';
+import { ArrowLeft, MessageSquare, User, Bot as BotIcon, Search, GitBranch, Layers3, Wrench, Star } from 'lucide-react';
 import { agentsApi, sessionsApi } from '../lib/api.js';
 import {
     AnalystExplorer, DecisionSummary, RouteExplorer, TechnicalTimeline
@@ -25,6 +25,49 @@ function formatDuration(startedAt, endedAt) {
     const m = Math.floor(seconds / 60);
     const s = seconds % 60;
     return `${m}:${String(s).padStart(2, '0')}`;
+}
+
+/** Average of a session's post-call ratings, or null when nobody rated it. */
+function averageRating(feedback) {
+    if (!feedback?.length) return null;
+    return feedback.reduce((sum, f) => sum + f.rating, 0) / feedback.length;
+}
+
+function RatingStars({ value, size = 12 }) {
+    return (
+        <span className="inline-flex items-center gap-0.5" aria-label={`5 üzerinden ${value.toFixed(1)}`}>
+            {[1, 2, 3, 4, 5].map((n) => (
+                <Star
+                    key={n}
+                    size={size}
+                    strokeWidth={1.8}
+                    className={n <= Math.round(value) ? 'fill-(--color-rating) text-(--color-rating)' : 'text-text-muted/40'}
+                />
+            ))}
+        </span>
+    );
+}
+
+/** What the visitor(s) said on the rating screen after the call. */
+function FeedbackPanel({ feedback }) {
+    if (!feedback?.length) return null;
+    return (
+        <div className="rounded-[var(--radius-card)] border border-border bg-surface p-4">
+            <h4 className="mb-3 text-xs font-semibold text-text-muted">Ziyaretçi değerlendirmesi</h4>
+            <div className="flex flex-col gap-3">
+                {feedback.map((f, i) => (
+                    <div key={f.visitorKey || i} className="flex flex-col gap-1">
+                        <div className="flex items-center gap-2">
+                            <RatingStars value={f.rating} size={14} />
+                            <span className="text-sm font-semibold text-text">{f.rating}/5</span>
+                            {f.visitorName && <span className="text-xs text-text-muted">· {f.visitorName}</span>}
+                        </div>
+                        {f.comment && <p className="text-sm leading-6 text-text">“{f.comment}”</p>}
+                    </div>
+                ))}
+            </div>
+        </div>
+    );
 }
 
 function TranscriptPanel({ sessionId }) {
@@ -96,7 +139,7 @@ const SESSION_TABS = [
     { id: 'technical', label: 'Teknik Detay', icon: Wrench }
 ];
 
-function SessionDetail({ sessionId }) {
+function SessionDetail({ sessionId, session }) {
     const [activeTab, setActiveTab] = useState('conversation');
     const [selectedRevision, setSelectedRevision] = useState(null);
     const { data: trace, isLoading: traceLoading, error: traceError } = useQuery({
@@ -131,6 +174,7 @@ function SessionDetail({ sessionId }) {
                 </div>
             </div>
 
+            {activeTab === 'conversation' && <FeedbackPanel feedback={session?.feedback} />}
             {activeTab === 'conversation' && <TranscriptPanel sessionId={sessionId} />}
             {activeTab !== 'conversation' && traceLoading && <p className="text-sm text-text-muted">Karar izi yükleniyor…</p>}
             {activeTab !== 'conversation' && traceError && (
@@ -168,6 +212,9 @@ export function AgentSessions() {
         enabled: query.trim().length >= 2
     });
 
+    const rated = (sessions || []).flatMap((s) => s.feedback || []);
+    const overallRating = averageRating(rated);
+
     function selectSession(sessionId) {
         setSearchParams({ session: sessionId });
     }
@@ -185,6 +232,15 @@ export function AgentSessions() {
             <div className="mb-6">
                 <h1 className="text-xl font-semibold text-text">Oturumlar & Transkriptler</h1>
                 <p className="mt-1 text-sm text-text-muted">Bu agent'ın tüm konuşmalarını incele.</p>
+                {overallRating !== null && (
+                    <div className="mt-4 inline-flex items-center gap-3 rounded-[var(--radius-card)] border border-border bg-surface px-4 py-3">
+                        <span className="text-2xl font-bold text-text">{overallRating.toFixed(1)}</span>
+                        <span className="flex flex-col gap-1">
+                            <RatingStars value={overallRating} size={14} />
+                            <span className="text-xs text-text-muted">Ortalama ziyaretçi puanı · {rated.length} değerlendirme</span>
+                        </span>
+                    </div>
+                )}
             </div>
 
             <div className="relative mb-6 max-w-md">
@@ -252,6 +308,13 @@ export function AgentSessions() {
                                     <p className="text-xs text-text-muted">
                                         {new Date(s.startedAt).toLocaleString('tr-TR')} · {formatDuration(s.startedAt, s.endedAt)}
                                     </p>
+                                    {averageRating(s.feedback) !== null && (
+                                        <p className="mt-1.5 flex items-center gap-1.5 text-xs text-text-muted">
+                                            <RatingStars value={averageRating(s.feedback)} />
+                                            {averageRating(s.feedback).toFixed(1)}
+                                            {s.feedback.some((f) => f.comment) && <span>· yorum var</span>}
+                                        </p>
+                                    )}
                                 </button>
                             ))}
                         </>
@@ -260,7 +323,11 @@ export function AgentSessions() {
 
                 <div>
                     {selectedSessionId ? (
-                        <SessionDetail key={selectedSessionId} sessionId={selectedSessionId} />
+                        <SessionDetail
+                            key={selectedSessionId}
+                            sessionId={selectedSessionId}
+                            session={sessions?.find((s) => s._id === selectedSessionId)}
+                        />
                     ) : (
                         <div className="flex h-full flex-col items-center justify-center rounded-[var(--radius-card)] border border-dashed border-border py-16 text-center">
                             <MessageSquare size={24} className="mb-3 text-text-muted" />

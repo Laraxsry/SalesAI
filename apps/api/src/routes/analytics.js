@@ -286,7 +286,7 @@ analyticsRouter.get('/leads', requireAuth, async (req, res, next) => {
         ]);
         const sessionIds = leads.map((lead) => lead.sessionId);
         const [sessions, summaries] = await Promise.all([
-            Session.find({ _id: { $in: sessionIds } }, 'visitorName startedAt endedAt status surveyAnswers').lean(),
+            Session.find({ _id: { $in: sessionIds } }, 'visitorName startedAt endedAt status surveyAnswers feedback').lean(),
             SessionSummary.find({ sessionId: { $in: sessionIds } }, 'sessionId tldr topics objections unanswered sentiment nextStep').lean()
         ]);
         const sessionById = new Map(sessions.map((session) => [String(session._id), session]));
@@ -303,6 +303,8 @@ analyticsRouter.get('/leads', requireAuth, async (req, res, next) => {
                     status: session.status
                 } : null,
                 surveyAnswers: session?.surveyAnswers || [],
+                // Post-call ratings (1-5 + optional note) the visitor left for this call.
+                feedback: session?.feedback || [],
                 summary: summary || null
             };
         });

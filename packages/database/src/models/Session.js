@@ -85,7 +85,21 @@ const SessionSchema = new Schema(
             phone: { type: String }
         },
         /** Validated in-call survey answers, keyed for later CRM mapping. */
-        surveyAnswers: { type: [Schema.Types.Mixed], default: [] }
+        surveyAnswers: { type: [Schema.Types.Mixed], default: [] },
+        /** Post-call ratings (1-5) from the visitor(s), one per visitorKey. */
+        feedback: {
+            type: [
+                {
+                    _id: false,
+                    rating: { type: Number, required: true, min: 1, max: 5 },
+                    comment: { type: String, maxlength: 1000 },
+                    visitorKey: { type: String },
+                    visitorName: { type: String },
+                    createdAt: { type: Date, default: Date.now }
+                }
+            ],
+            default: []
+        }
     },
     { timestamps: true }
 );

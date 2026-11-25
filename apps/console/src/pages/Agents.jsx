@@ -4,12 +4,14 @@ import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { useForm, Controller } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { z } from 'zod';
-import { AgentConfigInput, MAX_ROOM_PARTICIPANTS, REALTIME_VOICES } from '@repo/contracts';
+import { AgentConfigInput, REALTIME_VOICES } from '@repo/contracts';
 import { Button, Input } from '@repo/ui';
 import { Plus, Bot, X, AlertCircle } from 'lucide-react';
 import { productsApi, agentsApi } from '../lib/api.js';
 import { useAuthStore } from '../store/auth.js';
 import { productSelectionKey, rememberSelection, resolveRememberedSelection } from '../lib/selectionMemory.js';
+import { AVATAR_LABEL, SCREEN_MODE_LABEL } from '../lib/agentLabels.js';
+import { ParticipantPicker } from '../components/ParticipantPicker.jsx';
 
 const STATUS_STYLE = {
     draft: 'text-text-muted bg-surface-raised',
@@ -25,18 +27,9 @@ const STATUS_LABEL = {
     archived: 'Arşivlendi'
 };
 
-const AVATAR_PROVIDERS = [
-    { value: 'voice-only', label: 'Sadece ses' },
-    { value: 'tavus', label: 'Tavus' },
-    { value: 'simli', label: 'Simli' },
-    { value: 'heygen', label: 'HeyGen' },
-    { value: 'did', label: 'D-ID' }
-];
+const AVATAR_PROVIDERS = ['voice-only', 'tavus', 'simli', 'heygen', 'did'].map((value) => ({ value, label: AVATAR_LABEL[value] }));
 
-const SCREEN_MODES = [
-    { value: 'guided-tour', label: 'Rehberli tur' },
-    { value: 'customer-share', label: 'Müşteri ekran paylaşımı' }
-];
+const SCREEN_MODES = ['guided-tour', 'customer-share'].map((value) => ({ value, label: SCREEN_MODE_LABEL[value] }));
 
 const LANGUAGES = [
     { value: 'tr', label: 'Türkçe' },
@@ -56,9 +49,9 @@ const ARCHETYPES = [
 
 const DEFAULT_PERSONA_TONE = 'consultative, persuasive, concise, outcome-focused';
 const DEFAULT_PERSONA_GOALS = [
-    'Musterinin ihtiyacini hizlica anlamak',
-    'Urun degerini is sonucuna baglayarak anlatmak',
-    'Uygun oldugunda demo veya sonraki adima ilerletmek'
+    'Müşterinin ihtiyacını hızlıca anlamak',
+    'Ürün değerini iş sonucuna bağlayarak anlatmak',
+    'Uygun olduğunda demo veya sonraki adıma ilerletmek'
 ].join(', ');
 
 /** Form values use a flat tone/language/goalsText shape; this reshapes + validates against the real API contract. */
@@ -204,18 +197,22 @@ function NewAgentModal({ productId, onClose, onCreated }) {
                         {...register('goalsText')}
                     />
 
-                    <Input
-                        id="agent-max-participants"
-                        type="number"
-                        min={1}
-                        max={MAX_ROOM_PARTICIPANTS}
-                        label="Aynı anda kaç müşteriye sunum yapsın? (1 = birebir; agent bu sayıya dahil değil)"
-                        error={errors.maxParticipants?.message}
-                        {...register('maxParticipants')}
+                    <Controller
+                        name="maxParticipants"
+                        control={control}
+                        render={({ field }) => (
+                            <div className="mb-4">
+                                <span className="mb-1.5 block text-sm font-medium text-text-muted">Görüşme türü</span>
+                                <ParticipantPicker value={field.value} onChange={field.onChange} />
+                                {errors.maxParticipants?.message && (
+                                    <span className="mt-1 block text-xs text-red-400">{errors.maxParticipants.message}</span>
+                                )}
+                            </div>
+                        )}
                     />
 
                     <label className="mb-4 block text-sm">
-                        <span className="mb-1.5 block font-medium text-text-muted">Avatar sağlayıcı</span>
+                        <span className="mb-1.5 block font-medium text-text-muted">Görünüm</span>
                         <select
                             {...register('avatarProvider')}
                             className="h-10 w-full rounded-[var(--radius-input)] border border-border bg-bg px-3 text-sm text-text outline-none focus:border-brand"
@@ -229,7 +226,7 @@ function NewAgentModal({ productId, onClose, onCreated }) {
                     </label>
 
                     <label className="mb-4 block text-sm">
-                        <span className="mb-1.5 block font-medium text-text-muted">Ses (Realtime Voice)</span>
+                        <span className="mb-1.5 block font-medium text-text-muted">Ses</span>
                         <select
                             {...register('voice')}
                             className="h-10 w-full rounded-[var(--radius-input)] border border-border bg-bg px-3 text-sm text-text outline-none focus:border-brand"
@@ -247,7 +244,7 @@ function NewAgentModal({ productId, onClose, onCreated }) {
                         control={control}
                         render={({ field }) => (
                             <div className="mb-4">
-                                <span className="mb-1.5 block text-sm font-medium text-text-muted">Ekran modları</span>
+                                <span className="mb-1.5 block text-sm font-medium text-text-muted">Ekran</span>
                                 <div className="flex flex-col gap-2">
                                     {SCREEN_MODES.map((m) => (
                                         <label key={m.value} className="flex items-center gap-2 text-sm text-text">
@@ -409,7 +406,7 @@ export function Agents() {
                                 </span>
                             </div>
                             <h3 className="font-semibold text-text group-hover:text-brand">{a.name}</h3>
-                            <p className="mt-1 text-xs text-text-muted">{a.persona?.language?.toUpperCase() || 'EN'} · {a.avatarProvider}</p>
+                            <p className="mt-1 text-xs text-text-muted">{a.persona?.language?.toUpperCase() || 'EN'} · {AVATAR_LABEL[a.avatarProvider] || a.avatarProvider}</p>
                         </Link>
                     ))}
                 </div>

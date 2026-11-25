@@ -24,7 +24,10 @@
         "registering": "Oluşturuluyor…",
         "haveAccount": "Zaten hesabın var mı?",
         "showPassword": "Şifreyi göster",
-        "hidePassword": "Şifreyi gizle"
+        "hidePassword": "Şifreyi gizle",
+        "sideSubtitle": "Ürününüzü öğretin, temsilcinizi tanımlayın, birkaç dakikada yayına alın.",
+        "sideSecurity": "Kurumsal güvenlik",
+        "sideChips": ["Sesli görüşme", "Canlı ekran turu", "Görüşme analizi"]
     },
     "settings": {
         "title": "Ayarlar",

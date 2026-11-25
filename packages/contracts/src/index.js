@@ -328,6 +328,21 @@ export const CreateSessionInput = z.object({
     planToken: z.string().max(64).optional()
 });
 
+/** Max length of a visitor's written comment on the post-call rating. */
+export const SESSION_FEEDBACK_COMMENT_MAX = 1000;
+
+// Post-call rating: the visitor scores the conversation 1-5 (optionally with a
+// comment) on the screen shown after the call ends. Public — like
+// POST /sessions/:id/end it is authorized by the session's roomName.
+export const SessionFeedbackInput = z.object({
+    roomName: z.string().min(1).max(200),
+    rating: z.coerce.number().int().min(1).max(5),
+    comment: z.string().trim().max(SESSION_FEEDBACK_COMMENT_MAX).optional(),
+    // Same stable per-visitor id as CreateSessionInput: in a group session each
+    // visitor rates once, and re-sending replaces that visitor's own rating.
+    visitorKey: z.string().max(64).optional()
+});
+
 // Görev #7 — pre-call survey rounds: the client re-sends every answer so far
 // each round (stateless, like the chat endpoint).
 export const PreCallSurveyInput = z.object({

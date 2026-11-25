@@ -22,6 +22,7 @@
     --color-accent: #c4b5fd;
     --color-accent-hover: #ddd6fe;
     --color-pink: #f472b6;
+    --color-rating: #db2777;
     --color-brand-glow: rgb(124 58 237 / 10%);
     --color-scrim: rgb(11 7 38 / 62%);
     --color-overview-dots: radial-gradient(circle, #c4b5fd 1.2px, transparent 1.2px);
@@ -55,6 +56,7 @@
     --color-accent: #c4b5fd;
     --color-accent-hover: #ddd6fe;
     --color-brand-glow: rgb(139 92 246 / 18%);
+    --color-rating: #f0abfc;
     --color-scrim: rgb(5 3 20 / 72%);
     --gradient-brand: linear-gradient(90deg, #a78bfa 0%, #f472b6 100%);
     --chart-bar-from: #a78bfa;
@@ -333,6 +335,9 @@ a {
 }
 
 .lp-gradient-text {
+    /* Room for descenders (ş, ç, g): the fill is clipped to the line box. */
+    padding-bottom: 0.14em;
+    margin-bottom: -0.14em;
     background: linear-gradient(92deg, #ffffff 0%, #ddd6fe 40%, #c4b5fd 65%, #f9a8d4 100%);
     -webkit-background-clip: text;
     background-clip: text;

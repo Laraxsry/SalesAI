@@ -17,6 +17,7 @@ import { buildMeetingStatusText } from './meeting-status.js';
 import { useInCallSurvey } from './useInCallSurvey.js';
 import { InCallSurvey } from './InCallSurvey.jsx';
 import { TourOverlay } from './TourOverlay.jsx';
+import { NightSky } from './NightSky.jsx';
 import {
     applyPresentationMessage,
     decodePresentationMessage,
@@ -296,15 +297,14 @@ export function VisitRoom({ embed, embedConfig, sessionId, roomName, maxParticip
             data-expanded={expanded || undefined}
         >
             <RoomAudioRenderer />
-            <div className="visitor-stars visitor-stars--room absolute inset-0" aria-hidden="true" />
-            <div className="visitor-grid pointer-events-none absolute inset-0 opacity-30" />
+            <NightSky room />
 
             {!embed && (
-                <div className="relative z-20 flex h-[72px] items-center justify-between border-b border-white/8 bg-(--color-shell)/85 px-5 backdrop-blur-xl sm:px-7">
+                <div className="relative z-20 flex h-[72px] items-center justify-between px-5 sm:px-7">
                     <div className="flex items-center gap-3">
                         <Logo className="[&_span]:text-white [&_span_span]:text-(--color-accent)" />
                     </div>
-                    <span className="inline-flex items-center gap-2 rounded-full border border-white/10 bg-white/[0.06] px-3 py-1.5 text-[11px] font-bold text-white/60">
+                    <span className="inline-flex items-center gap-2 rounded-full border border-white/10 bg-surface/70 px-3 py-1.5 text-[11px] font-bold text-white/70 backdrop-blur-xl">
                         <span className="h-1.5 w-1.5 rounded-full bg-(--color-accent)" />
                         {STATE_LABEL[state] ?? state}
                     </span>
@@ -319,7 +319,7 @@ export function VisitRoom({ embed, embedConfig, sessionId, roomName, maxParticip
                             onClick={() => onRequestExpand?.(!expanded)}
                             aria-label={expanded ? 'Pencereyi küçült' : 'Pencereyi genişlet'}
                             title={expanded ? 'Küçült (Esc)' : 'Genişlet'}
-                            className="flex h-10 w-10 items-center justify-center rounded-xl border border-white/10 bg-black/50 text-white/70 backdrop-blur transition-colors hover:bg-black/70 hover:text-white focus-visible:outline focus-visible:outline-2 focus-visible:outline-white/60"
+                            className="flex h-10 w-10 items-center justify-center rounded-xl border border-white/10 bg-surface/70 text-white/70 backdrop-blur-xl transition-colors hover:bg-surface-raised hover:text-white focus-visible:outline focus-visible:outline-2 focus-visible:outline-white/60"
                         >
                             {expanded ? <Minimize2 size={16} aria-hidden="true" /> : <Maximize2 size={16} aria-hidden="true" />}
                         </button>
@@ -328,7 +328,7 @@ export function VisitRoom({ embed, embedConfig, sessionId, roomName, maxParticip
                         type="button"
                         onClick={closeWidget}
                         aria-label="Widget'ı kapat"
-                        className="flex h-10 w-10 items-center justify-center rounded-xl border border-white/10 bg-black/50 text-white/70 backdrop-blur transition-colors hover:bg-black/70 hover:text-white focus-visible:outline focus-visible:outline-2 focus-visible:outline-white/60"
+                        className="flex h-10 w-10 items-center justify-center rounded-xl border border-white/10 bg-surface/70 text-white/70 backdrop-blur-xl transition-colors hover:bg-surface-raised hover:text-white focus-visible:outline focus-visible:outline-2 focus-visible:outline-white/60"
                     >
                         <X size={17} aria-hidden="true" />
                     </button>
@@ -424,49 +424,51 @@ export function VisitRoom({ embed, embedConfig, sessionId, roomName, maxParticip
                 </div>
             )}
 
-            <div className="room-controls relative z-20 flex items-center justify-center gap-3 border-t border-white/8 bg-(--color-shell)/90 px-6 py-4 backdrop-blur-xl">
-                <button
-                    onClick={toggleMic}
-                    title={isMicrophoneEnabled ? 'Mikrofonu kapat' : 'Mikrofonu aç'}
-                    className={`flex h-12 w-12 items-center justify-center rounded-2xl border transition-colors ${
-                        isMicrophoneEnabled ? 'border-white/10 bg-white/[0.07] text-white hover:bg-white/10' : 'border-red-400/30 bg-red-500/15 text-red-300'
-                    }`}
-                >
-                    {isMicrophoneEnabled ? <Mic size={18} /> : <MicOff size={18} />}
-                </button>
-
-                {isGroup && (
+            <div className="room-controls relative z-20 flex justify-center px-4 pb-5 pt-3">
+                <div className="room-dock flex items-center justify-center gap-3 p-3">
                     <button
-                        onClick={toggleHand}
-                        title={handRaised ? 'Eli indir' : 'Söz iste (el kaldır)'}
-                        aria-pressed={handRaised}
+                        onClick={toggleMic}
+                        title={isMicrophoneEnabled ? 'Mikrofonu kapat' : 'Mikrofonu aç'}
                         className={`flex h-12 w-12 items-center justify-center rounded-2xl border transition-colors ${
-                            handRaised
-                                ? 'border-(--color-accent) bg-(--color-accent) text-[#1a1145]'
-                                : 'border-white/10 bg-white/[0.07] text-white hover:bg-white/10'
+                            isMicrophoneEnabled ? 'border-white/10 bg-white/[0.07] text-white hover:bg-white/10' : 'border-red-400/30 bg-red-500/15 text-red-300'
                         }`}
                     >
-                        <Hand size={18} />
+                        {isMicrophoneEnabled ? <Mic size={18} /> : <MicOff size={18} />}
                     </button>
-                )}
 
-                <button
-                    onClick={toggleScreenShare}
-                    title={isScreenShareEnabled ? 'Ekran paylaşımını durdur' : 'Ekranımı paylaş'}
-                    className={`flex h-12 w-12 items-center justify-center rounded-2xl border transition-colors ${
-                        isScreenShareEnabled ? 'border-(--color-accent) bg-(--color-accent) text-[#1a1145]' : 'border-white/10 bg-white/[0.07] text-white hover:bg-white/10'
-                    }`}
-                >
-                    {isScreenShareEnabled ? <ScreenShareOff size={18} /> : <ScreenShare size={18} />}
-                </button>
+                    {isGroup && (
+                        <button
+                            onClick={toggleHand}
+                            title={handRaised ? 'Eli indir' : 'Söz iste (el kaldır)'}
+                            aria-pressed={handRaised}
+                            className={`flex h-12 w-12 items-center justify-center rounded-2xl border transition-colors ${
+                                handRaised
+                                    ? 'border-(--color-accent) bg-(--color-accent) text-[#1a1145]'
+                                    : 'border-white/10 bg-white/[0.07] text-white hover:bg-white/10'
+                            }`}
+                        >
+                            <Hand size={18} />
+                        </button>
+                    )}
 
-                <button
-                    onClick={endCall}
-                    title="Görüşmeyi sonlandır"
-                    className="ml-2 flex h-12 w-12 items-center justify-center rounded-2xl bg-[#f43f5e] text-white transition-colors hover:bg-[#e11d48]"
-                >
-                    <PhoneOff size={18} />
-                </button>
+                    <button
+                        onClick={toggleScreenShare}
+                        title={isScreenShareEnabled ? 'Ekran paylaşımını durdur' : 'Ekranımı paylaş'}
+                        className={`flex h-12 w-12 items-center justify-center rounded-2xl border transition-colors ${
+                            isScreenShareEnabled ? 'border-(--color-accent) bg-(--color-accent) text-[#1a1145]' : 'border-white/10 bg-white/[0.07] text-white hover:bg-white/10'
+                        }`}
+                    >
+                        {isScreenShareEnabled ? <ScreenShareOff size={18} /> : <ScreenShare size={18} />}
+                    </button>
+
+                    <button
+                        onClick={endCall}
+                        title="Görüşmeyi sonlandır"
+                        className="ml-2 flex h-12 w-12 items-center justify-center rounded-2xl bg-[#f43f5e] text-white transition-colors hover:bg-[#e11d48]"
+                    >
+                        <PhoneOff size={18} />
+                    </button>
+                </div>
             </div>
         </div>
     );

@@ -24,7 +24,10 @@
         "registering": "Creating…",
         "haveAccount": "Already have an account?",
         "showPassword": "Show password",
-        "hidePassword": "Hide password"
+        "hidePassword": "Hide password",
+        "sideSubtitle": "Teach it your product, set up your agent and go live in minutes.",
+        "sideSecurity": "Enterprise-grade security",
+        "sideChips": ["Voice calls", "Live screen tour", "Call analytics"]
     },
     "settings": {
         "title": "Settings",

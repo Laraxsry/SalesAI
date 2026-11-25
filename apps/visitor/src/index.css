@@ -58,20 +58,36 @@ h3 {
     background: rgb(167 139 250 / 32%);
 }
 
-/* Indigo night with the landing hero's aurora (violet, pink, indigo). Sized in
-   percentages so it reads the same full-page as in a small embedded widget. */
+/* ── Night stage ─────────────────────────────────────────────────────
+   One backdrop for every visitor screen: indigo night, the landing hero's
+   aurora and a faint starfield (rendered by NightSky.jsx). Narrow screens and
+   the embedded widget size the aurora in percentages to get the same picture. */
 .visitor-stage {
-    background:
-        radial-gradient(circle at 50% 35%, rgb(139 92 246 / 14%), transparent 31rem),
-        radial-gradient(66% 72% at 78% 30%, rgb(109 40 217 / 34%), transparent 62%),
-        radial-gradient(44% 60% at 92% 75%, rgb(236 72 153 / 14%), transparent 60%),
-        radial-gradient(52% 64% at 8% 0%, rgb(79 70 229 / 22%), transparent 60%),
-        linear-gradient(145deg, #0b0726, #140d38 58%, #0f0a2e);
+    background: var(--color-night);
+    isolation: isolate;
 }
 
-/* Faint starfield over the night stage (same recipe as the landing hero).
-   Use as an absolutely positioned, aria-hidden decorative child. */
-.visitor-stars {
+.night-sky {
+    pointer-events: none;
+}
+
+.night-sky__aurora {
+    background:
+        radial-gradient(42rem 28rem at 78% 22%, rgb(109 40 217 / 34%), transparent 62%),
+        radial-gradient(30rem 24rem at 88% 82%, rgb(236 72 153 / 15%), transparent 60%),
+        radial-gradient(36rem 26rem at 10% 4%, rgb(79 70 229 / 22%), transparent 60%);
+}
+
+@media (max-width: 640px) {
+    .night-sky__aurora {
+        background:
+            radial-gradient(110% 60% at 78% 22%, rgb(109 40 217 / 34%), transparent 62%),
+            radial-gradient(90% 50% at 88% 82%, rgb(236 72 153 / 15%), transparent 60%),
+            radial-gradient(100% 55% at 10% 4%, rgb(79 70 229 / 22%), transparent 60%);
+    }
+}
+
+.night-sky__stars {
     background-image:
         radial-gradient(1px 1px at 12% 18%, rgb(255 255 255 / 55%), transparent 60%),
         radial-gradient(1px 1px at 27% 72%, rgb(255 255 255 / 40%), transparent 60%),
@@ -82,28 +98,59 @@ h3 {
         radial-gradient(1px 1px at 88% 28%, rgb(255 255 255 / 45%), transparent 60%),
         radial-gradient(1px 1px at 94% 88%, rgb(255 255 255 / 35%), transparent 60%);
     background-size: 520px 420px;
-    opacity: 0.8;
     animation: visitor-twinkle 6s ease-in-out infinite alternate;
-    pointer-events: none;
 }
 
-/* Call room only: the state label, banners and captions sit straight on the
-   stage with no glass card behind them, and a star under a label reads as
-   stray punctuation. Keep the stars out of that centre column. */
-.visitor-stars--room {
-    mask-image: linear-gradient(90deg, #000 0 18%, transparent 34% 66%, #000 82% 100%);
+/* Call room: the sky lights up together with the assistant's opening, and the
+   stars keep clear of the orb and its label, where one under the text would
+   read as stray punctuation. */
+.night-sky--room {
+    animation: sky-in 1600ms ease-out both;
+}
+
+.night-sky--room .night-sky__stars {
+    mask-image: radial-gradient(ellipse 17rem 18rem at 50% 50%, transparent 70%, #000 100%);
+}
+
+/* The glass card that floats on the night stage. */
+.night-card {
+    border: 1px solid rgb(255 255 255 / 10%);
+    border-radius: 28px;
+    background: rgb(20 13 56 / 70%);
+    box-shadow: 0 30px 90px -40px rgb(76 29 149 / 70%), inset 0 1px 0 rgb(255 255 255 / 6%);
+    backdrop-filter: blur(24px);
+    animation: night-card-in 700ms cubic-bezier(0.16, 1, 0.3, 1) both;
+}
+
+/* Same glass for the call's floating control dock. */
+.room-dock {
+    border: 1px solid rgb(255 255 255 / 10%);
+    border-radius: 26px;
+    background: rgb(20 13 56 / 70%);
+    box-shadow: 0 24px 60px -30px rgb(76 29 149 / 80%), inset 0 1px 0 rgb(255 255 255 / 6%);
+    backdrop-filter: blur(24px);
+    animation: caption-in 600ms cubic-bezier(0.22, 1, 0.36, 1) 700ms both;
+}
+
+.orb-badge__spark {
+    position: absolute;
+    right: 2px;
+    top: 4px;
+    z-index: 2;
+    filter: drop-shadow(0 0 8px rgb(236 72 153 / 75%));
+    animation: twinkle 2.6s ease-in-out infinite;
+}
+
+/* Connecting: the glint that the assistant then opens out of. */
+.connecting-spark {
+    filter: drop-shadow(0 0 16px rgb(236 72 153 / 70%));
+    animation: connecting-spark 1.8s ease-in-out infinite;
 }
 
 /* Backdrop behind dialogs. */
 .app-scrim {
     background: var(--color-scrim);
     backdrop-filter: blur(6px);
-}
-
-.visitor-grid {
-    background-image: radial-gradient(circle, rgb(196 181 253 / 14%) 1px, transparent 1.2px);
-    background-size: 20px 20px;
-    mask-image: radial-gradient(circle at center, black, transparent 68%);
 }
 
 .tour-cursor {
@@ -149,14 +196,15 @@ h3 {
     stroke-linejoin: round;
 }
 
-/* Dark halo under the cyan pen keeps the mark readable on light dashboards. */
+/* Same pink pen as the other tour marks. The white halo keeps it readable on
+   dark and mid-tone pages; on light ones it simply disappears. */
 .tour-annotation__halo {
-    stroke: rgb(7 20 38 / 38%);
-    stroke-width: 8;
+    stroke: rgb(255 255 255 / 70%);
+    stroke-width: 6.5;
 }
 
 .tour-annotation__stroke {
-    stroke: #67e8f9;
+    stroke: var(--color-pink);
     stroke-width: 3.5;
 }
 
@@ -234,15 +282,6 @@ a:focus-visible {
     animation: load-bar 1.8s cubic-bezier(0.65, 0, 0.35, 1) infinite;
 }
 
-.status-card {
-    animation: card-in 380ms cubic-bezier(0.22, 1, 0.36, 1) both;
-}
-
-@keyframes card-in {
-    from { opacity: 0; transform: translateY(8px) scale(0.985); }
-    to { opacity: 1; transform: translateY(0) scale(1); }
-}
-
 @keyframes load-bar {
     from { transform: translateX(-100%); }
     to { transform: translateX(250%); }
@@ -256,6 +295,21 @@ a:focus-visible {
     position: relative;
     display: grid;
     place-items: center;
+}
+
+/* Soft violet/pink light the orb sits in; it spreads as the orb blooms. */
+.assistant-portal::before {
+    position: absolute;
+    inset: -90px;
+    content: '';
+    border-radius: 999px;
+    background: radial-gradient(closest-side, rgb(139 92 246 / 26%), rgb(124 58 237 / 12%) 52%, transparent);
+    pointer-events: none;
+    animation: halo-in 1500ms cubic-bezier(0.16, 1, 0.3, 1) 500ms both;
+}
+
+.assistant-portal[data-phase='exit']::before {
+    animation: halo-out 620ms ease-in both;
 }
 
 .assistant-portal__orb {
@@ -299,7 +353,8 @@ a:focus-visible {
 }
 
 .assistant-caption {
-    animation: caption-in 600ms cubic-bezier(0.22, 1, 0.36, 1) 900ms both;
+    /* backwards, not both: a forwards fill would override the closing fade below. */
+    animation: caption-in 600ms cubic-bezier(0.22, 1, 0.36, 1) 900ms backwards;
 }
 
 /* Expanded embed panel (SDK grows the iframe to ~90% of the viewport): the
@@ -351,6 +406,16 @@ a:focus-visible {
     100% { opacity: 1; transform: scale(1); filter: none; }
 }
 
+@keyframes halo-in {
+    from { opacity: 0; transform: scale(0.3); }
+    to { opacity: 1; transform: scale(1); }
+}
+
+@keyframes halo-out {
+    from { opacity: 1; transform: scale(1); }
+    to { opacity: 0; transform: scale(0.2); }
+}
+
 @keyframes orb-collapse {
     0% { opacity: 1; transform: scale(1); filter: none; }
     22% { transform: scale(1.05); }
@@ -384,6 +449,21 @@ a:focus-visible {
 @keyframes caption-in {
     from { opacity: 0; transform: translateY(8px); }
     to { opacity: 1; transform: translateY(0); }
+}
+
+@keyframes sky-in {
+    from { opacity: 0.25; }
+    to { opacity: 1; }
+}
+
+@keyframes connecting-spark {
+    0%, 100% { opacity: 0.55; transform: scale(0.82) rotate(-8deg); }
+    50% { opacity: 1; transform: scale(1.06) rotate(8deg); }
+}
+
+@keyframes night-card-in {
+    from { opacity: 0; transform: translateY(14px) scale(0.98); }
+    to { opacity: 1; transform: none; }
 }
 
 @keyframes visitor-twinkle {
@@ -449,5 +529,27 @@ a:focus-visible {
         animation-duration: 0.01ms !important;
         animation-iteration-count: 1 !important;
         transition-duration: 0.01ms !important;
+    }
+}
+
+/* ── Post-call rating screen ─────────────────────────────────────── */
+.feedback-orb__check {
+    background: linear-gradient(135deg, #8b5cf6 0%, #ec4899 100%);
+    box-shadow: 0 0 0 6px rgb(139 92 246 / 18%), 0 18px 40px -12px rgb(236 72 153 / 70%);
+    animation: feedback-pop 520ms cubic-bezier(0.34, 1.56, 0.64, 1) both;
+}
+
+.feedback-star[data-active] svg {
+    filter: drop-shadow(0 0 10px rgb(232 121 249 / 55%));
+}
+
+@keyframes feedback-pop {
+    from { opacity: 0; transform: scale(0.6); }
+    to { opacity: 1; transform: scale(1); }
+}
+
+@media (prefers-reduced-motion: reduce) {
+    .orb-badge__spark {
+        animation: none;
     }
 }

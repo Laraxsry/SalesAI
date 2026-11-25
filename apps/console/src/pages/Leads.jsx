@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
-import { Users, Mail, Building2, X, Phone, StickyNote, CalendarDays, Search, ChevronRight, Clock, CheckCircle2 } from 'lucide-react';
+import { Users, Mail, Building2, X, Phone, StickyNote, CalendarDays, Search, ChevronRight, Clock, CheckCircle2, Star } from 'lucide-react';
 import { leadsApi } from '../lib/api.js';
 import { useAuthStore } from '../store/auth.js';
 
@@ -29,6 +29,38 @@ function displayName(lead) {
 
 function formatLeadDate(value) {
     return value ? new Date(value).toLocaleString('tr-TR', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' }) : 'Tarih yok';
+}
+
+/** The visitor's post-call rating(s) of this lead's conversation: stars (1-5) and an optional note. */
+function FeedbackSection({ feedback }) {
+    return (
+        <section className="mt-6">
+            <h3 className="mb-2 flex items-center gap-2 text-sm font-semibold text-text"><Star size={15} />Görüşme değerlendirmesi</h3>
+            {feedback?.length ? (
+                <div className="space-y-2">
+                    {feedback.map((entry, index) => (
+                        <div key={entry.visitorKey || index} className="rounded-[var(--radius-card)] border border-border bg-surface p-4">
+                            <div className="flex items-center gap-2">
+                                <span className="inline-flex gap-0.5" aria-label={`5 üzerinden ${entry.rating} yıldız`}>
+                                    {[1, 2, 3, 4, 5].map((n) => (
+                                        <Star key={n} size={15} strokeWidth={1.8} className={n <= entry.rating ? 'fill-(--color-rating) text-(--color-rating)' : 'text-text-muted/40'} />
+                                    ))}
+                                </span>
+                                <span className="text-sm font-semibold text-text">Yıldız: {entry.rating}/5</span>
+                                {feedback.length > 1 && entry.visitorName && <span className="text-xs text-text-muted">· {entry.visitorName}</span>}
+                            </div>
+                            <p className="mt-2 text-sm leading-6 text-text-muted">
+                                <span className="font-medium text-text">Not: </span>
+                                {entry.comment || 'Not bırakılmadı.'}
+                            </p>
+                        </div>
+                    ))}
+                </div>
+            ) : (
+                <p className="rounded-[var(--radius-card)] border border-dashed border-border p-4 text-sm text-text-muted">Ziyaretçi bu görüşmeyi henüz değerlendirmedi.</p>
+            )}
+        </section>
+    );
 }
 
 export function Leads() {
@@ -152,6 +184,7 @@ export function Leads() {
                         {selectedLead.summary && <section className="mt-6"><h3 className="mb-2 flex items-center gap-2 text-sm font-semibold text-text"><StickyNote size={15} />Görüşme özeti</h3><div className="rounded-[var(--radius-card)] border border-border bg-surface p-4"><p className="text-sm leading-6 text-text-muted">{selectedLead.summary.tldr || 'Özet mevcut değil.'}</p>{selectedLead.summary.nextStep && <p className="mt-3 flex items-start gap-2 border-t border-border pt-3 text-sm text-text"><CheckCircle2 size={15} className="mt-0.5 shrink-0 text-emerald-400" />{selectedLead.summary.nextStep}</p>}</div></section>}
                         {selectedLead.surveyAnswers?.length > 0 && <section className="mt-6"><h3 className="mb-2 text-sm font-semibold text-text">Survey cevapları</h3><div className="space-y-2">{selectedLead.surveyAnswers.map((answer, index) => <div key={`${answer.nodeId || 'answer'}-${index}`} className="rounded-lg border border-border bg-surface p-3 text-sm"><p className="text-xs text-text-muted">{answer.question || answer.fieldKey || 'Özel soru'}</p><p className="mt-1 text-text">{answer.answer || 'Atlandı'}</p></div>)}</div></section>}
                         {selectedLead.availability?.date && <section className="mt-6"><h3 className="mb-2 flex items-center gap-2 text-sm font-semibold text-text"><CalendarDays size={15} />Uygunluk</h3><p className="text-sm text-text-muted">{selectedLead.availability.date}{selectedLead.availability.timeRange ? ` · ${selectedLead.availability.timeRange}` : ''}</p></section>}
+                        <FeedbackSection feedback={selectedLead.feedback} />
                     </aside>
                 </div>
             )}

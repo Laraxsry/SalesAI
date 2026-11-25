@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from 'react';
 import { Logo } from '@repo/ui';
 import { Loader2, SkipForward } from 'lucide-react';
+import { NightSky } from './NightSky.jsx';
 
 const API = import.meta.env.VITE_API_URL || 'http://localhost:5001';
 
@@ -83,9 +84,8 @@ export function PreCallSurvey({ token, onComplete }) {
 
     const shell = (children) => (
         <div className="visitor-stage relative flex h-full flex-col items-center justify-center overflow-hidden px-6 text-center">
-            <div className="visitor-stars absolute inset-0" aria-hidden="true" />
-            <div className="visitor-grid pointer-events-none absolute inset-0 opacity-50" />
-            <div className="relative z-10 w-full max-w-md rounded-[28px] border border-white/10 bg-surface/80 p-8 shadow-2xl shadow-black/20 backdrop-blur-xl">
+            <NightSky />
+            <div className="night-card relative z-10 w-full max-w-md p-8">
                 <div className="mb-6 flex items-center justify-center">
                     <Logo className="[&_span]:text-white [&_span_span]:text-(--color-accent)" />
                 </div>

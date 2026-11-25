@@ -1,10 +1,13 @@
 import { useEffect, useRef, useState } from 'react';
 import { useParams, useSearchParams } from 'react-router-dom';
 import { LiveKitRoom } from '@livekit/components-react';
-import { Logo } from '@repo/ui';
-import { Loader2, AlertCircle, PhoneOff, X } from 'lucide-react';
+import { Logo, Sparkle } from '@repo/ui';
+import { AlertCircle, PhoneOff, X } from 'lucide-react';
 import { VisitRoom } from './VisitRoom.jsx';
 import { PreCallSurvey } from './PreCallSurvey.jsx';
+import { PostCallFeedback } from './PostCallFeedback.jsx';
+import { NightSky } from './NightSky.jsx';
+import { RestingOrb } from './RestingOrb.jsx';
 import { isValidEmbedSession, parseEmbedLayout, resolveEmbedParentOrigin } from './embedProtocol.js';
 
 const API = import.meta.env.VITE_API_URL || 'http://localhost:5001';
@@ -44,22 +47,27 @@ function makeKey() {
 function CenteredMessage({ embed, icon: Icon, loading = false, onClose, children }) {
     return (
         <div className="visitor-stage relative flex h-full flex-col items-center justify-center overflow-hidden px-6 text-center">
-            <div className="visitor-stars absolute inset-0" aria-hidden="true" />
-            <div className="visitor-grid pointer-events-none absolute inset-0 opacity-50" />
+            <NightSky />
             {embed && onClose && (
                 <button type="button" onClick={onClose} aria-label="Widget'ı kapat" className="absolute right-4 top-4 z-10 flex h-10 w-10 items-center justify-center rounded-xl border border-white/10 bg-white/[0.06] text-white/60 hover:bg-white/10 hover:text-white">
                     <X size={17} aria-hidden="true" />
                 </button>
             )}
-            <div className="status-card relative z-10 w-full max-w-sm rounded-[28px] border border-white/10 bg-surface/80 p-8 shadow-2xl shadow-black/20 backdrop-blur-xl">
+            <div className="night-card relative z-10 w-full max-w-sm p-8">
                 {!embed && (
                     <div className="mb-9 flex items-center justify-center gap-3">
                         <Logo className="[&_span]:text-white [&_span_span]:text-(--color-accent)" />
                     </div>
                 )}
-                <span className="mx-auto flex h-14 w-14 items-center justify-center rounded-2xl border border-white/10 bg-white/[0.06] text-(--color-accent)">
-                    <Icon size={23} className={loading ? 'animate-spin' : ''} />
-                </span>
+                {loading ? (
+                    <span className="connecting-spark mx-auto flex h-14 w-14 items-center justify-center">
+                        <Sparkle size={46} />
+                    </span>
+                ) : (
+                    <span className="mx-auto flex h-14 w-14 items-center justify-center rounded-2xl border border-white/10 bg-white/[0.06] text-(--color-accent)">
+                        <Icon size={23} aria-hidden="true" />
+                    </span>
+                )}
                 <p className="mt-5 text-sm font-medium leading-6 text-white/60">{children}</p>
                 {loading && <div className="mx-auto mt-6 h-1.5 w-28 overflow-hidden rounded-full bg-white/8"><div className="load-bar-fill h-full w-2/5 rounded-full bg-[linear-gradient(90deg,transparent,#a78bfa,#f472b6,transparent)]" /></div>}
             </div>
@@ -218,7 +226,7 @@ export function Visit() {
 
     if (isDebug && !started) {
         return (
-            <div className="visitor-stage flex h-full flex-col items-center justify-center gap-4 px-6">
+            <div className="visitor-stage relative flex h-full flex-col items-center justify-center gap-4 px-6">
                 <Logo className="[&_span_span]:text-[#a78bfa]" />
                 <p className="text-sm text-text-muted">Test için çerezlerinizi JSON olarak yapıştırın:</p>
                 <textarea 
@@ -247,14 +255,16 @@ export function Visit() {
         };
         return (
             <div className="visitor-stage relative flex h-full flex-col items-center justify-center overflow-hidden px-6 text-center">
-                <div className="visitor-stars absolute inset-0" aria-hidden="true" />
-                <div className="visitor-grid pointer-events-none absolute inset-0 opacity-50" />
+                <NightSky />
                 <form
                     onSubmit={submit}
-                    className="relative z-10 w-full max-w-sm rounded-[28px] border border-white/10 bg-surface/80 p-8 shadow-2xl shadow-black/20 backdrop-blur-xl"
+                    className="night-card relative z-10 w-full max-w-sm p-8"
                 >
-                    <div className="mb-7 flex items-center justify-center">
+                    <div className="mb-6 flex items-center justify-center">
                         <Logo className="[&_span]:text-white [&_span_span]:text-(--color-accent)" />
+                    </div>
+                    <div className="relative mx-auto mb-5 flex h-[104px] w-[104px] items-center justify-center">
+                        <RestingOrb />
                     </div>
                     <p className="mb-4 text-sm font-medium leading-6 text-white/70">
                         Görüşmeye başlamadan önce, size nasıl hitap edelim?
@@ -294,6 +304,19 @@ export function Visit() {
     // connect() reject with a "client initiated disconnect" error — once the
     // visitor has intentionally left, that trailing rejection is just noise.
     if (ended) {
+        // A call that actually connected gets the rating screen; one that
+        // ended before the session existed has nothing to rate.
+        if (conn?.sessionId && conn?.roomName) {
+            return (
+                <PostCallFeedback
+                    embed={embed}
+                    onClose={closeEmbed}
+                    sessionId={conn.sessionId}
+                    roomName={conn.roomName}
+                    visitorKey={visitorKeyRef.current}
+                />
+            );
+        }
         return (
             <CenteredMessage embed={embed} icon={PhoneOff} onClose={closeEmbed}>
                 Görüşme sona erdi.
@@ -311,7 +334,7 @@ export function Visit() {
 
     if (!conn) {
         return (
-            <CenteredMessage embed={embed} icon={Loader2} loading onClose={closeEmbed}>
+            <CenteredMessage embed={embed} loading onClose={closeEmbed}>
                 {embed ? 'Güvenli widget oturumu hazırlanıyor…' : 'AI temsilciye bağlanılıyor…'}
             </CenteredMessage>
         );
